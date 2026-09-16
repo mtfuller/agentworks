@@ -1,0 +1,75 @@
+package tui
+
+import (
+	"fmt"
+
+	"github.com/charmbracelet/huh"
+
+	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/targets"
+)
+
+// NewArtifactAnswers is what RunNewArtifactWizard collects: enough to call
+// scaffold.New. Pre-populate fields the caller already has (e.g. from CLI
+// flags) and the wizard shows them as editable defaults instead of asking
+// again.
+type NewArtifactAnswers struct {
+	Kind        string
+	Name        string
+	Description string
+	Targets     []string
+}
+
+// RunNewArtifactWizard prompts interactively (via huh) for whatever fields
+// are still needed to scaffold a new artifact, so `agentworks new` and the
+// TUI's "create artifact" action share one prompt flow instead of two.
+func RunNewArtifactWizard(defaults NewArtifactAnswers) (NewArtifactAnswers, error) {
+	a := defaults
+
+	kindOptions := make([]huh.Option[string], 0, len(artifact.Kinds()))
+	for _, k := range artifact.Kinds() {
+		kindOptions = append(kindOptions, huh.NewOption(string(k), string(k)))
+	}
+
+	targetOptions := make([]huh.Option[string], 0, len(targets.All()))
+	for _, t := range targets.All() {
+		targetOptions = append(targetOptions, huh.NewOption(t.Name, t.ID))
+	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Kind").
+				Options(kindOptions...).
+				Value(&a.Kind),
+			huh.NewInput().
+				Title("Name").
+				Description("lowercase letters, digits, and hyphens").
+				Value(&a.Name).
+				Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("name is required")
+					}
+					return nil
+				}),
+			huh.NewInput().
+				Title("Description").
+				Value(&a.Description).
+				Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("description is required")
+					}
+					return nil
+				}),
+			huh.NewMultiSelect[string]().
+				Title("Targets").
+				Description("which vendors should be able to use this artifact").
+				Options(targetOptions...).
+				Value(&a.Targets),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return NewArtifactAnswers{}, err
+	}
+	return a, nil
+}

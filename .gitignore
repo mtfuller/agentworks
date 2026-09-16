@@ -9,7 +9,7 @@
 *.dylib
 
 # Built binary
-starterpack-go-cli
+agentworks
 
 # Test binary, built with `go test -c`
 *.test
@@ -19,6 +19,13 @@ starterpack-go-cli
 coverage.*
 *.coverprofile
 profile.cov
+
+# Default `agentworks export` output directory
+/dist
+
+# Python bytecode cache, e.g. under scaffolded skill/tool scripts
+__pycache__/
+*.pyc
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

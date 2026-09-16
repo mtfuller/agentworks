@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	verbose  bool
-	logLevel string
+	verbose     bool
+	logLevel    string
+	projectFlag string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -48,4 +49,5 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output (debug level)")
 	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "info", "set log level (debug, info, warn, error)")
+	rootCmd.PersistentFlags().StringVarP(&projectFlag, "project", "p", ".", "path inside the AgentWorks project to operate on")
 }

@@ -14,133 +14,147 @@ bet on any one vendor winning; it lets you build against a vendor-agnostic core 
 and generate whatever vendor-specific format you need from it, so switching or
 supporting multiple harnesses doesn't mean maintaining N copies by hand.
 
-## What it's for
-
-- **Skills** — e.g. a data-processing skill (script + tests + sample inputs) exported
-  as a ChatGPT skill upload and a Microsoft 365 Copilot package from one source.
-- **Tools** — e.g. a Jira-fetching tool with real tests and a simulated API, exported to
-  both Claude Code and GitHub Copilot.
-- **Agents** — e.g. a domain-specific research agent with its own guidance/resources,
-  exported to ChatGPT, Claude, and others as drag-and-drop artifacts.
-- **Workflows/plugins** — multiple agents, tools, and MCP servers composed into a
-  pipeline ("software factory"), exported as one or more vendor plugins.
-- **Scaffolding & discovery** — guided boilerplate generation for any of the above, and
-  an early, explicit view of which capabilities are portable across every target versus
-  specific to one.
-
 See [AGENTS.md](AGENTS.md) for the guiding scenarios and how the project is organized
 for agentic development.
-
-## Status
-
-Early scaffold. The CLI currently provides the base command surface (help, version,
-logging, colored output) that the artifact/skill/agent/export functionality described
-above will be built on top of — that functionality doesn't exist yet.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.24 or higher
 - [Task](https://taskfile.dev) (optional, for build automation)
 
 ### Installation
 
-1. Clone the repository:
 ```bash
 git clone git@github.com:mtfuller/agentworks.git
 cd agentworks
-```
-
-2. Build the application:
-```bash
 task build
-```
-
-3. Run the application:
-```bash
 ./agentworks --help
 ```
 
-## Usage
+### Try it
 
-### Available Commands
-
-#### Version Command
-Display version information:
 ```bash
-./agentworks version
+./agentworks init my-project
+cd my-project
+../agentworks new skill csv-analyzer --description "Analyze a CSV and flag rows that stand out." --target claude-code
+../agentworks list
+../agentworks validate
+../agentworks targets
+../agentworks export skills/csv-analyzer --target claude-code --out dist
+../agentworks tui
 ```
 
-Short version output:
-```bash
-./agentworks version --short
+Or look at [`examples/starter-project`](examples/starter-project) — a checked-in
+project with one of each artifact kind (including a real, tested CSV-outlier skill) —
+to see a finished example without building one yourself.
+
+## A project, on disk
+
+`agentworks init` creates a project manifest plus one directory per artifact kind:
+
+```
+myproject/
+├── agentworks.yaml       # project manifest: name, description, default targets
+├── agents/
+├── skills/
+├── tools/
+├── hooks/
+└── workflows/
 ```
 
-### Global Flags
+Each artifact is a directory containing one `<kind>.md` file — YAML frontmatter plus a
+Markdown body, the same shape as Claude Code's own `SKILL.md` — alongside whatever
+supporting files it needs (scripts, tests, samples, resources). It's navigable in a
+plain text editor; no build step is needed to read or edit it. For example:
 
-- `-v, --verbose`: Enable verbose output (debug level logging)
-- `-l, --log-level`: Set log level (debug, info, warn, error)
-- `-h, --help`: Display help information
+```
+skills/csv-analyzer/
+├── skill.md
+├── scripts/main.py
+├── tests/test_main.py
+└── samples/sample.csv
+```
+
+```yaml
+---
+kind: skill
+name: csv-analyzer
+description: Analyze a CSV file and flag rows that stand out.
+version: 0.1.0
+targets: [claude-code, chatgpt, m365-copilot]
+entrypoint: scripts/main.py
+test: python3 -m unittest discover -s tests -p "test_*.py"
+---
+
+# CSV Analyzer
+
+<instructions / prompt body the vendor sees>
+```
+
+`agents/`, `tools/`, `hooks/`, and `workflows/` follow the same `<kind>.md` shape, each
+with a few kind-specific frontmatter fields (a tool's `entrypoint`/`test`, a hook's
+`events`/`command`, a workflow's `steps` referencing other artifacts by name).
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `agentworks init [path]` | Scaffold a new project (`agentworks.yaml` + the 5 kind directories). |
+| `agentworks new <kind> [name]` | Scaffold a new agent/skill/tool/hook/workflow. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. |
+| `agentworks list [kind]` | Table of the project's discovered artifacts. |
+| `agentworks validate [path]` | Parse and validate one artifact or the whole project. |
+| `agentworks test [path]` | Run the `test:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it). |
+| `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
+| `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format. Currently implemented for `claude-code` (skills); other targets are registered but not yet exportable — `agentworks targets` shows which. |
+| `agentworks tui` | Full-screen Bubble Tea browser: drill from kind → artifact → its rendered frontmatter and body. |
+| `agentworks version` | Print version/commit/build-date info. |
+
+Global flags: `-p, --project` (path inside the project to operate on, default `.`,
+resolved upward like `git` finds a repo root), `-v, --verbose`, `-l, --log-level`.
 
 ## Development
 
 ### Running Tests
 
-Run all tests:
 ```bash
-task test
-```
-
-Run only unit tests:
-```bash
+task test              # unit + integration
 task test-unit
-```
-
-Run only integration tests:
-```bash
 task test-integration
-```
-
-Generate coverage report:
-```bash
-task coverage
+task coverage           # coverage.html
 ```
 
 ### Building
 
-Build the binary:
 ```bash
-task build
-```
-
-Install to GOPATH/bin:
-```bash
-task install
+task build              # ./agentworks
+task install             # to GOPATH/bin
 ```
 
 ### Project Structure
 
 ```
 .
-├── cmd/                    # Command definitions
-│   ├── root.go            # Root command
-│   └── version.go         # Version command
-├── internal/              # Internal packages
-│   ├── color/             # Colored text utilities
-│   ├── logger/            # Structured logging
-│   ├── spinner/           # Spinner animations
-│   └── version/           # Version management
-├── pkg/                   # Public packages (reusable, no CLI dependency)
-├── tests/                 # Integration tests
-├── main.go               # Application entry point
-├── Taskfile.yml          # Build and test automation
-└── README.md             # This file
+├── cmd/                        # Cobra commands (one file per command)
+├── internal/
+│   ├── artifact/               # vendor-agnostic artifact model (Kind, Frontmatter, <kind>.md parsing)
+│   ├── project/                # agentworks.yaml manifest, project discovery
+│   ├── scaffold/                # `new` boilerplate generation, one starter per kind
+│   ├── targets/                 # vendor registry (capability matrix) + Exporter interface
+│   │   └── claudecode/          # the "claude-code" skill exporter
+│   ├── tui/                     # Bubble Tea project browser + the `new` wizard (huh)
+│   ├── color/ logger/ spinner/ version/   # CLI-support packages from the starter template
+├── examples/starter-project/    # a finished example project, one artifact of each kind
+├── tests/                       # black-box CLI integration tests
+├── main.go
+├── Taskfile.yml
+└── README.md
 ```
 
 ## Adding New Commands
 
-To add a new command, create a new file in the `cmd/` directory (or use the
+To add a new CLI command, create a new file in the `cmd/` directory (or use the
 `add-command` skill in `.claude/skills/`):
 
 ```go
