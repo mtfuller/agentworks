@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/mtfuller/starterpack-go-cli/internal/color"
-	"github.com/mtfuller/starterpack-go-cli/internal/version"
+	"github.com/mtfuller/agentworks/internal/color"
+	"github.com/mtfuller/agentworks/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,7 @@ var versionCmd = &cobra.Command{
 		if short {
 			fmt.Println(version.GetShortVersion())
 		} else {
-			fmt.Println(color.Bold("starterpack-go-cli"))
+			fmt.Println(color.Bold("agentworks"))
 			fmt.Printf("Version:    %s\n", color.Cyan(version.Version))
 			fmt.Printf("Commit:     %s\n", version.Commit)
 			fmt.Printf("Built:      %s\n", version.BuildDate)

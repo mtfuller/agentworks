@@ -2,11 +2,11 @@
 applyTo: "**/*.go"
 ---
 
-# Coding Standards — Starterpack Go CLI (Concise)
+# Coding Standards — AgentWorks (Concise)
 
 ## Style & Naming
 - Packages: lowercase, single word (logger, color, spinner, version).  
-- Files: lowercase with underscores (user_service.go) or without (greet.go, calc.go).  
+- Files: lowercase with underscores (user_service.go) or without (root.go, version.go).  
 - Functions: Exported CamelCase, unexported camelCase.  
 - Vars: descriptive; common short names ok (cmd, err, ctx, args).  
 - Constants: CamelCase or UPPER_SNAKE_CASE.
@@ -24,8 +24,8 @@ import (
     
     "github.com/spf13/cobra"
     
-    "github.com/mtfuller/starterpack-go-cli/internal/color"
-    "github.com/mtfuller/starterpack-go-cli/internal/logger"
+    "github.com/mtfuller/agentworks/internal/color"
+    "github.com/mtfuller/agentworks/internal/logger"
 )
 ```
 
@@ -71,7 +71,7 @@ func init() {
 ```
 
 ## Project Structure
-- cmd/: Cobra commands (one file per command: greet.go, calc.go, etc.)
+- cmd/: Cobra commands (one file per command)
 - internal/: CLI-specific logic (logger, color, spinner, version)
 - pkg/: Reusable libraries that could be used outside this CLI
 - main.go: Entry point that calls cmd.Execute()

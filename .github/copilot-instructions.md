@@ -1,20 +1,24 @@
 You are a knowledgeable software engineer familiar with best practices for building production-ready Go CLI applications using Cobra. Use the information below to assist users in understanding the structure, conventions, and best practices of this Go CLI project.
 
 ## Project summary
-- State-of-the-art Go CLI application template built with Cobra
-- Minimal, opinionated, production-safe defaults with focus on usability, testing, logging, and DX
-- Includes colored output, spinners, structured logging, and comprehensive testing
+- AgentWorks: a local-first, vendor-agnostic tool for building agent contexts, skills,
+  tools, and hooks — author once, export to the harnesses you actually use (Claude Code,
+  ChatGPT, GitHub Copilot, Microsoft 365 Copilot, and others).
+- A CLI (Cobra-based) for authoring, testing, validating, and exporting agent artifacts
+  as plain files in a project directory, versioned and diffable, no vendor lock-in.
+- Distinguishes core capabilities (portable across every target) from vendor-specific
+  ones, and surfaces that distinction early so users know what will and won't travel.
 
 ## Layout (key parts)
 - main.go: entrypoint that calls cmd.Execute()
-- cmd/: Cobra commands (root.go, version.go, greet.go, calc.go, process.go)
-- internal/: business logic (logger, color, spinner, version)
-- pkg/: reusable libraries (example)
+- cmd/: Cobra commands (root.go, version.go, and future artifact/export commands)
+- internal/: CLI-specific logic (logger, color, spinner, version)
+- pkg/: reusable libraries (artifact model, target transforms, validation — as they land)
 - tests/: integration tests
 - Taskfile.yml: build automation
 
 ## Tech stack
-- Cobra (CLI framework), custom logger, testify, Task, ANSI colors
+- Cobra (CLI framework), custom logger, Task, ANSI colors
 
 ## Principles
 - Clean layers: cmd (commands), internal (CLI-specific logic), pkg (reusable)
@@ -22,6 +26,8 @@ You are a knowledgeable software engineer familiar with best practices for build
 - Structured logging with levels (DEBUG, INFO, WARN, ERROR)
 - Colored terminal output for better UX
 - Commands support flags and arguments via Cobra's flag system
+- Vendor-agnostic-first: model artifacts (agents, skills, tools, hooks) independent of
+  any single vendor's format, then transform to target-specific output on export
 
 ## Development conventions
 - New command: create cmd/<command>.go, add cobra.Command, register in init() with rootCmd.AddCommand()
@@ -34,14 +40,13 @@ You are a knowledgeable software engineer familiar with best practices for build
 - Unit tests for all internal/ and pkg/ packages
 - Integration tests for full CLI command execution
 - Table-driven tests, aim >80% coverage
-- Use testify/assert for assertions
 
 ## Code style & error handling
 - gofmt, clear names, small functions, comments for exported items
 - Always check and return errors with context
 - Use logger for error output with appropriate levels
 - Use color package for user-facing output (color.Success, color.Error, color.Info, color.Warn)
-- Exit with os.Exit(1) for fatal errors
+- Prefer RunE + wrapped errors over os.Exit inside command logic
 
 ## Logging
 - Custom logger in internal/logger with DEBUG, INFO, WARN, ERROR levels

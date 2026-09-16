@@ -1,4 +1,4 @@
-module github.com/mtfuller/starterpack-go-cli
+module github.com/mtfuller/agentworks
 
 go 1.21
 

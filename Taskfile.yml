@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  BINARY_NAME: starterpack-go-cli
+  BINARY_NAME: agentworks
   VERSION:
     sh: echo "${VERSION:-dev}"
   COMMIT:
@@ -9,9 +9,9 @@ vars:
   BUILD_DATE:
     sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
   LDFLAGS: >-
-    -ldflags "-X github.com/mtfuller/starterpack-go-cli/internal/version.Version={{.VERSION}}
-    -X github.com/mtfuller/starterpack-go-cli/internal/version.Commit={{.COMMIT}}
-    -X github.com/mtfuller/starterpack-go-cli/internal/version.BuildDate={{.BUILD_DATE}}"
+    -ldflags "-X github.com/mtfuller/agentworks/internal/version.Version={{.VERSION}}
+    -X github.com/mtfuller/agentworks/internal/version.Commit={{.COMMIT}}
+    -X github.com/mtfuller/agentworks/internal/version.BuildDate={{.BUILD_DATE}}"
 
 tasks:
   default:

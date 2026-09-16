@@ -8,7 +8,7 @@ import (
 func TestColorize(t *testing.T) {
 	text := "hello"
 	result := Colorize(red, text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Colorize() should contain text %v", text)
 	}
@@ -23,7 +23,7 @@ func TestColorize(t *testing.T) {
 func TestRedColorFunction(t *testing.T) {
 	text := "error"
 	result := Red(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Red() should contain text %v", text)
 	}
@@ -35,7 +35,7 @@ func TestRedColorFunction(t *testing.T) {
 func TestGreenColorFunction(t *testing.T) {
 	text := "success"
 	result := Green(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Green() should contain text %v", text)
 	}
@@ -47,7 +47,7 @@ func TestGreenColorFunction(t *testing.T) {
 func TestYellowColorFunction(t *testing.T) {
 	text := "warning"
 	result := Yellow(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Yellow() should contain text %v", text)
 	}
@@ -59,7 +59,7 @@ func TestYellowColorFunction(t *testing.T) {
 func TestBlueColorFunction(t *testing.T) {
 	text := "info"
 	result := Blue(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Blue() should contain text %v", text)
 	}
@@ -71,7 +71,7 @@ func TestBlueColorFunction(t *testing.T) {
 func TestCyanColorFunction(t *testing.T) {
 	text := "cyan"
 	result := Cyan(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Cyan() should contain text %v", text)
 	}
@@ -83,7 +83,7 @@ func TestCyanColorFunction(t *testing.T) {
 func TestMagentaColorFunction(t *testing.T) {
 	text := "magenta"
 	result := Magenta(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Magenta() should contain text %v", text)
 	}
@@ -95,7 +95,7 @@ func TestMagentaColorFunction(t *testing.T) {
 func TestWhiteColorFunction(t *testing.T) {
 	text := "white"
 	result := White(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("White() should contain text %v", text)
 	}
@@ -107,7 +107,7 @@ func TestWhiteColorFunction(t *testing.T) {
 func TestBoldFunction(t *testing.T) {
 	text := "bold"
 	result := Bold(text)
-	
+
 	if !strings.Contains(result, text) {
 		t.Errorf("Bold() should contain text %v", text)
 	}

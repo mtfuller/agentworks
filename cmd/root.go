@@ -3,31 +3,27 @@ package cmd
 import (
 	"os"
 
-	"github.com/mtfuller/starterpack-go-cli/internal/color"
-	"github.com/mtfuller/starterpack-go-cli/internal/logger"
+	"github.com/mtfuller/agentworks/internal/color"
+	"github.com/mtfuller/agentworks/internal/logger"
 	"github.com/spf13/cobra"
 )
 
 var (
-	verbose bool
+	verbose  bool
 	logLevel string
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "starterpack-go-cli",
-	Short: "A state-of-the-art Go CLI application template",
-	Long: color.Bold("starterpack-go-cli") + ` is a comprehensive Go CLI application template
-that includes many features out-of-the-box:
-  • Argument parsing with Cobra
-  • Structured logging
-  • Colored text output
-  • Spinner animations
-  • Version command
-  • Help command
-  • Unit and integration tests
+	Use:   "agentworks",
+	Short: "A local-first, vendor-agnostic tool for building agent contexts, skills, tools, and hooks",
+	Long: color.Bold("agentworks") + ` is a local-first, vendor-agnostic platform for authoring agents,
+skills, tools, and hooks once and exporting them to the harnesses you actually use
+(Claude Code, ChatGPT, GitHub Copilot, Microsoft 365 Copilot, and others).
 
-This template helps developers quickly bootstrap a professional Go CLI application.`,
+Author artifacts as plain files in a project directory, test and validate them
+locally, then export versioned, target-specific bundles (skill zips, plugins,
+or vendor-native formats) without hand-maintaining a copy per vendor.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Configure logger based on flags
 		if verbose {

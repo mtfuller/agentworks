@@ -1,20 +1,41 @@
-# starterpack-go-cli
+# AgentWorks
 
-A state-of-the-art Go CLI application template that includes many features out-of-the-box to help developers quickly bootstrap a professional command-line application.
+A local-first, vendor-agnostic tool for building agent contexts, skills, tools, hooks,
+and workflows — author them once as plain files, then export target-specific artifacts
+for the AI harnesses you actually use (Claude Code, ChatGPT, GitHub Copilot,
+Microsoft 365 Copilot, and others).
 
-## Features
+## Why
 
-✨ **Out-of-the-box features:**
+The industry has started standardizing pieces of the agent-tooling stack (e.g.
+`AGENTS.md`), but most of it — skills, tools, hooks, agent definitions, workflows — is
+still vendor-specific, and that's likely to stay true for a while. AgentWorks doesn't
+bet on any one vendor winning; it lets you build against a vendor-agnostic core model
+and generate whatever vendor-specific format you need from it, so switching or
+supporting multiple harnesses doesn't mean maintaining N copies by hand.
 
-- 🎯 **Argument Parsing**: Built with [Cobra](https://github.com/spf13/cobra) for robust command-line interface
-- 📝 **Structured Logging**: Custom logger with multiple log levels (DEBUG, INFO, WARN, ERROR)
-- 🎨 **Colored Text Output**: ANSI color support for beautiful terminal output
-- ⏳ **Spinner Animations**: Visual feedback for long-running operations
-- 📦 **Version Command**: Built-in version management with build metadata
-- ❓ **Help Command**: Auto-generated help documentation for all commands
-- ✅ **Unit Tests**: Comprehensive unit tests for all packages
-- 🧪 **Integration Tests**: End-to-end integration tests for CLI commands
-- 🔨 **Taskfile**: Easy build, test, and run commands with [Task](https://taskfile.dev)
+## What it's for
+
+- **Skills** — e.g. a data-processing skill (script + tests + sample inputs) exported
+  as a ChatGPT skill upload and a Microsoft 365 Copilot package from one source.
+- **Tools** — e.g. a Jira-fetching tool with real tests and a simulated API, exported to
+  both Claude Code and GitHub Copilot.
+- **Agents** — e.g. a domain-specific research agent with its own guidance/resources,
+  exported to ChatGPT, Claude, and others as drag-and-drop artifacts.
+- **Workflows/plugins** — multiple agents, tools, and MCP servers composed into a
+  pipeline ("software factory"), exported as one or more vendor plugins.
+- **Scaffolding & discovery** — guided boilerplate generation for any of the above, and
+  an early, explicit view of which capabilities are portable across every target versus
+  specific to one.
+
+See [AGENTS.md](AGENTS.md) for the guiding scenarios and how the project is organized
+for agentic development.
+
+## Status
+
+Early scaffold. The CLI currently provides the base command surface (help, version,
+logging, colored output) that the artifact/skill/agent/export functionality described
+above will be built on top of — that functionality doesn't exist yet.
 
 ## Quick Start
 
@@ -27,8 +48,8 @@ A state-of-the-art Go CLI application template that includes many features out-o
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/mtfuller/starterpack-go-cli.git
-cd starterpack-go-cli
+git clone git@github.com:mtfuller/agentworks.git
+cd agentworks
 ```
 
 2. Build the application:
@@ -38,7 +59,7 @@ task build
 
 3. Run the application:
 ```bash
-./starterpack-go-cli --help
+./agentworks --help
 ```
 
 ## Usage
@@ -48,33 +69,12 @@ task build
 #### Version Command
 Display version information:
 ```bash
-./starterpack-go-cli version
+./agentworks version
 ```
 
 Short version output:
 ```bash
-./starterpack-go-cli version --short
-```
-
-#### Greet Command
-Simple greeting with colored output:
-```bash
-./starterpack-go-cli greet Alice
-```
-
-#### Calc Command
-Perform calculations with different operations:
-```bash
-./starterpack-go-cli calc 10 5 --operation add
-./starterpack-go-cli calc 10 5 --operation subtract
-./starterpack-go-cli calc 10 5 --operation multiply
-./starterpack-go-cli calc 10 5 --operation divide
-```
-
-#### Process Command
-Demonstrates spinner animation and logging:
-```bash
-./starterpack-go-cli process
+./agentworks version --short
 ```
 
 ### Global Flags
@@ -82,18 +82,6 @@ Demonstrates spinner animation and logging:
 - `-v, --verbose`: Enable verbose output (debug level logging)
 - `-l, --log-level`: Set log level (debug, info, warn, error)
 - `-h, --help`: Display help information
-
-### Examples with Flags
-
-Enable verbose logging:
-```bash
-./starterpack-go-cli greet World --verbose
-```
-
-Set specific log level:
-```bash
-./starterpack-go-cli process --log-level debug
-```
 
 ## Development
 
@@ -137,17 +125,13 @@ task install
 .
 ├── cmd/                    # Command definitions
 │   ├── root.go            # Root command
-│   ├── version.go         # Version command
-│   ├── greet.go           # Example greet command
-│   ├── calc.go            # Example calc command
-│   └── process.go         # Example process command
+│   └── version.go         # Version command
 ├── internal/              # Internal packages
 │   ├── color/             # Colored text utilities
 │   ├── logger/            # Structured logging
 │   ├── spinner/           # Spinner animations
 │   └── version/           # Version management
-├── pkg/                   # Public packages
-│   └── example/           # Example business logic
+├── pkg/                   # Public packages (reusable, no CLI dependency)
 ├── tests/                 # Integration tests
 ├── main.go               # Application entry point
 ├── Taskfile.yml          # Build and test automation
@@ -156,14 +140,15 @@ task install
 
 ## Adding New Commands
 
-To add a new command, create a new file in the `cmd/` directory:
+To add a new command, create a new file in the `cmd/` directory (or use the
+`add-command` skill in `.claude/skills/`):
 
 ```go
 package cmd
 
 import (
     "github.com/spf13/cobra"
-    "github.com/mtfuller/starterpack-go-cli/internal/color"
+    "github.com/mtfuller/agentworks/internal/color"
 )
 
 var myCmd = &cobra.Command{
