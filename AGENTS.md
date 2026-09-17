@@ -255,8 +255,10 @@ Also done as of this pass: BRAINSTORM.md's "Starter templates" item. A `Template
 (`internal/scaffold/templates.go`) is just a named, curated `kindSpec` — the exact same
 shape `specs` already uses for each kind's generic default — selected instead of it via
 `scaffold.Options.Template`, so `scaffold.New` stays the one code path `agentworks new`
-and the TUI both go through. Ten built-in templates ship (two per kind, e.g. a tool's
-`api-wrapper`/`cli-wrapper`), discoverable via `agentworks templates [kind]` (a static
+and the TUI both go through. Thirteen built-in templates ship (two per kind, except
+agent (three) and skill (four) -- e.g. a tool's `api-wrapper`/`cli-wrapper`, a skill's
+`pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's PowerPoint/Excel
+skills), discoverable via `agentworks templates [kind]` (a static
 table, no interactivity — mirrors `agentworks targets`) and `agentworks new
 --from-template <id>`, or interactively via `agentworks tui`'s `b` key, which opens a
 browse/search pane (`internal/tui/templates.go`) and, on enter, pre-fills the *same*

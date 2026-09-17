@@ -95,6 +95,42 @@ needs one. Flag anything you couldn't confirm rather than guessing.
 		},
 	},
 	{
+		ID: "reference-file-qa", Kind: artifact.KindAgent,
+		Title:       "Reference file Q&A",
+		Description: "Answers questions strictly from a set of provided reference files, citing which one backs each answer.",
+		spec: kindSpec{
+			extra: func(name string) map[string]any { return map[string]any{} },
+			bodyTmpl: `# {{.Title}}
+
+{{.Description}}
+
+## Reference material
+
+Put the markdown (or other text) files this agent should answer from under
+` + "`resources/`" + `. List them here so it's clear what's in scope, e.g.:
+
+- ` + "`resources/architecture.md`" + ` -- TODO: what this covers
+- ` + "`resources/faq.md`" + ` -- TODO: what this covers
+
+## Guidance
+
+- Answer only from the files under ` + "`resources/`" + `; don't fill gaps from outside
+  knowledge or guess at anything the files don't state.
+- If the answer isn't in the reference material, say so explicitly rather
+  than inferring one.
+- When files disagree, surface the conflict instead of silently picking a
+  side.
+
+## Output format
+
+Give a direct answer, then cite which file(s) it came from (e.g. "per
+` + "`resources/architecture.md`" + `"). Keep citations next to the claim they support,
+not bundled at the end.
+`,
+			extraDirs: []string{"resources"},
+		},
+	},
+	{
 		ID: "checklist", Kind: artifact.KindSkill,
 		Title:       "Checklist",
 		Description: "Walks through a fixed step-by-step procedure.",
@@ -158,6 +194,155 @@ with headings) so results are consistent across runs.
 			files: func(name string) []extraFile {
 				return []extraFile{
 					{"scripts/main.py", "#!/usr/bin/env python3\n\"\"\"" + name + ": reads a document path from argv and analyzes it.\"\"\"\n\nimport sys\n\n\ndef main() -> None:\n    if len(sys.argv) < 2:\n        raise SystemExit(\"usage: main.py <path-to-document>\")\n    raise NotImplementedError(\"" + name + " is not implemented yet\")\n\n\nif __name__ == \"__main__\":\n    main()\n"},
+				}
+			},
+			extraDirs: []string{"samples"},
+		},
+	},
+	{
+		ID: "pptx-style-refresh", Kind: artifact.KindSkill,
+		Title:       "PowerPoint style refresh",
+		Description: "Applies a defined design style to an existing PowerPoint deck without changing its content, for Microsoft 365 Copilot's PowerPoint skill.",
+		spec: kindSpec{
+			extra: func(name string) map[string]any { return map[string]any{} },
+			bodyTmpl: `# {{.Title}}
+
+{{.Description}}
+
+## When to use this
+
+Invoke this when a deck's content is final but its look needs to match a
+defined design style -- a rebrand, a template swap, or bringing an
+inconsistent deck in line with one set of rules.
+
+## Design style
+
+Edit ` + "`styles/design-style.md`" + ` with the deck's actual design rules (palette,
+type, logo placement, slide-master layout choices). Treat that file as the
+source of truth -- don't invent style choices that aren't in it.
+
+## Rules
+
+- Change layout, color, type, and imagery treatment only -- never rewrite,
+  summarize, or reorder the deck's actual content.
+- Reuse the deck's existing slide layouts/masters where the style allows it
+  instead of building one-off slide designs.
+- Flag any slide that doesn't fit the defined style cleanly (e.g. a dense
+  table, an odd aspect-ratio image) rather than forcing a bad fit silently.
+
+## Output format
+
+After restyling, list which slides changed and what was touched on each, so
+the outcome can be reviewed against the original deck.
+
+## Exporting to Microsoft 365 Copilot
+
+` + "`agentworks export <path> --target m365-copilot`" + ` packages this skill as a
+declarative agent whose instructions are this file's body -- keep the
+sections above self-contained, since ` + "`styles/design-style.md`" + ` itself isn't
+exported with it.
+`,
+			files: func(name string) []extraFile {
+				return []extraFile{
+					{"styles/design-style.md", `# Design style
+
+TODO: fill in this deck's actual design rules.
+
+## Color palette
+
+- Primary:
+- Secondary:
+- Accent:
+- Background:
+
+## Typography
+
+- Heading font:
+- Body font:
+
+## Logo & branding
+
+- Logo placement:
+- Minimum clear space:
+
+## Layout rules
+
+- Preferred slide layouts:
+- Rules for tables/charts/images:
+`},
+				}
+			},
+			extraDirs: []string{"samples"},
+		},
+	},
+	{
+		ID: "xlsx-workbook-updater", Kind: artifact.KindSkill,
+		Title:       "Excel workbook updater",
+		Description: "Updates an existing Excel workbook's data and formulas while preserving its structure, for Microsoft 365 Copilot's Excel skill.",
+		spec: kindSpec{
+			extra: func(name string) map[string]any { return map[string]any{} },
+			bodyTmpl: `# {{.Title}}
+
+{{.Description}}
+
+## When to use this
+
+Invoke this when a workbook already exists and needs new or corrected data,
+without breaking the formulas, named ranges, or formatting other sheets
+depend on.
+
+## Workbook map
+
+Edit ` + "`reference/workbook-map.md`" + ` with the workbook's actual layout (what
+each sheet is for, what each column means, which cells are formulas vs. raw
+input). Treat that file as the source of truth for how the workbook is
+structured before making any change.
+
+## Rules
+
+- Only edit the cells/ranges the request actually calls for -- don't
+  reformat or restructure sheets outside that scope.
+- Never overwrite a formula cell with a hard-coded value; extend a formula's
+  pattern into new rows/columns instead of writing one-off values.
+- Preserve existing number formats, named ranges, and data validation
+  unless the request specifically asks to change them.
+- If a change would break a formula or named range elsewhere in the
+  workbook, flag it instead of applying it silently.
+
+## Output format
+
+After updating, list which sheets/ranges changed and what changed in each,
+so the edit can be checked against the workbook map.
+
+## Exporting to Microsoft 365 Copilot
+
+` + "`agentworks export <path> --target m365-copilot`" + ` packages this skill as a
+declarative agent whose instructions are this file's body -- keep the
+sections above self-contained, since ` + "`reference/workbook-map.md`" + ` itself isn't
+exported with it.
+`,
+			files: func(name string) []extraFile {
+				return []extraFile{
+					{"reference/workbook-map.md", `# Workbook map
+
+TODO: fill in this workbook's actual structure.
+
+## Sheets
+
+- ` + "`Sheet1`" + `: TODO -- purpose of this sheet
+
+## Columns
+
+- ` + "`Sheet1!A`" + `: TODO -- what this column holds, and whether it's raw input or a formula
+
+## Named ranges
+
+- TODO: name -> what it refers to and what depends on it
+
+## Formula conventions
+
+- TODO: any pattern formulas should follow (e.g. "always SUMIFS against the Date column")
+`},
 				}
 			},
 			extraDirs: []string{"samples"},
