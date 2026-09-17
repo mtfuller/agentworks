@@ -46,12 +46,10 @@ var validateCmd = &cobra.Command{
 				failed++
 				continue
 			}
-			if a.Kind == artifact.KindWorkflow {
-				if _, err := workflowsteps.Resolve(a); err != nil {
-					color.Error("%v", err)
-					failed++
-					continue
-				}
+			if err := validateKindSpecific(a); err != nil {
+				color.Error("%v", err)
+				failed++
+				continue
 			}
 			color.Success("%s (%s)", a.Name, a.Kind)
 		}
@@ -61,6 +59,32 @@ var validateCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// validateKindSpecific checks the frontmatter fields specific to a kind
+// that Artifact.Validate() can't (it's kind-agnostic). These catch a
+// mistake at `validate` time rather than only when `export`/`test` later
+// shells out to a field that was never filled in.
+func validateKindSpecific(a *artifact.Artifact) error {
+	switch a.Kind {
+	case artifact.KindWorkflow:
+		if _, err := workflowsteps.Resolve(a); err != nil {
+			return err
+		}
+	case artifact.KindHook:
+		events := a.ExtraStringSlice("events")
+		command := a.ExtraString("command")
+		if (len(events) > 0) != (command != "") {
+			return fmt.Errorf("%s: \"events\" and \"command\" must be set together (a hook needs both to do anything)", a.Dir)
+		}
+	case artifact.KindTool:
+		auth := a.ExtraStringSlice("auth")
+		command := a.ExtraString("command")
+		if len(auth) > 0 && command == "" {
+			return fmt.Errorf("%s: declares \"auth\" but no \"command\" -- nothing will use those environment variables", a.Dir)
+		}
+	}
+	return nil
 }
 
 func init() {

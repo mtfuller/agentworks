@@ -47,8 +47,9 @@ cd my-project
 ```
 
 Or look at [`examples/starter-project`](examples/starter-project) — a checked-in
-project with one of each artifact kind (including a real, tested CSV-outlier skill) —
-to see a finished example without building one yourself.
+project with one of each artifact kind, including two real, tested implementations (a
+CSV-outlier skill and a Jira-fetching MCP server tool) — to see a finished example
+without building one yourself.
 
 ## A project, on disk
 
@@ -106,7 +107,7 @@ artifacts by name).
 | `agentworks init [path]` | Scaffold a new project (`agentworks.yaml` + the 5 kind directories). |
 | `agentworks new <kind> [name]` | Scaffold a new agent/skill/tool/hook/workflow. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |
-| `agentworks validate [path]` | Parse and validate one artifact or the whole project (for a workflow, this also checks that every `steps:` entry resolves to a real agent/tool in the project). |
+| `agentworks validate [path]` | Parse and validate one artifact or the whole project. Beyond the generic checks (name/description/kind), also catches export-readiness gaps per kind: a workflow's `steps:` must resolve to real artifacts, a hook's `events`/`command` must be set together, and a tool declaring `auth` must also declare `command`. |
 | `agentworks test [path]` | Run the `test:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it). |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
 | `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format. `claude-code` and `github-copilot` have a real exporter for all five kinds: skills (the shared [Agent Skills](https://agentskills.io/specification) format, also used by `chatgpt`), tools and workflow tool-steps as an MCP server registration (`.mcp.json` / Agent Plugins' `mcp.json`, `auth` env vars passed through as `${VAR}` references, never literal secrets), agents as a subagent file (`agents/<name>.md` / `com.github.copilot/agents/<name>.agent.md`), hooks as a lifecycle-event handler (`hooks/hooks.json` / `com.github.copilot/hooks/hooks.json`), and workflows as a bundled plugin composing all of the above plus a generated orchestrator command (the vendor's own agent loop runs it; AgentWorks doesn't execute anything itself). `m365-copilot` exports skills and agents as a declarative agent in a Microsoft 365 app package zip (placeholder publisher info you'll need to edit before submitting to AppSource). `agentworks targets` shows the full matrix. |

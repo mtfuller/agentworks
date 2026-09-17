@@ -29,12 +29,12 @@ of truth for what "done" looks like for any given piece of functionality:
    chatgpt` and `--target m365-copilot` are both real.)*
 2. **Developer** — a tool that fetches/parses a Jira ticket (real API + auth, with a
    simulated API for tests), validated locally, then exported to both Claude Code and
-   GitHub Copilot. *(Tool scaffolding, local testing, and export to both vendors (as an
-   MCP server registration — `command`/`auth` frontmatter fields → `.mcp.json` /
-   Agent Plugins' `mcp.json`, auth passed through as `${VAR}` references, never literal
-   secrets) all work. The remaining gap is `examples/starter-project/tools/jira-fetch`
-   itself: still empty placeholders, no real fetch/parse logic or a simulated-API test
-   suite — a good next scenario-2 pass.)*
+   GitHub Copilot. *(Done end to end — see `examples/starter-project/tools/jira-fetch`:
+   a real MCP server (`pip install mcp`, one `fetch_issue` tool) fetching a Jira Cloud
+   issue via its REST API v2, with `tests/test_main.py` simulating that API rather than
+   calling a real instance. Verified for real (not just researched) against the actual
+   `mcp` package before landing: importing it, listing its registered tool, invoking it
+   through the SDK's own call path, and starting/stopping the stdio server cleanly.)*
 3. **AI researcher** — a domain-specific agent with its own guidance markdown and
    resources, exported to ChatGPT, Claude, and others as drag-and-drop artifacts.
    *(`claude-code`, `github-copilot`, and `m365-copilot` all export a standalone agent
@@ -146,8 +146,11 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 ### What's real vs. deferred
 
 Implemented: the project/artifact model, scaffolding for all 5 kinds, project-wide
-discovery/validation (including a workflow's step references)/test-running, the vendor
-capability matrix, and real exporters for all four registered targets. `claude-code`
+discovery/test-running, the vendor capability matrix, and real exporters for all four
+registered targets. `validate` checks each kind's export-readiness, not just the four
+generic fields `Artifact.Validate()` covers — a workflow's `steps:` resolve to real
+artifacts, a hook's `events`/`command` are set together, a tool with `auth` also has a
+`command` (see `cmd/validate.go`'s `validateKindSpecific`). `claude-code`
 and `github-copilot` each export *all five* artifact kinds now — skills via the shared
 `agentskills` writer, tools via the shared `mcpconfig` MCP-registration builder, agents
 as a subagent-file plugin, hooks as a lifecycle-event plugin, and workflows as a bundled
@@ -164,10 +167,7 @@ workflow *execution* engine — a workflow export produces a real plugin the ven
 agent loop runs, AgentWorks never executes a workflow itself, and that's permanent, not
 a gap; wiring export/test actions into the TUI itself (it's browse-only for now);
 `m365-copilot`'s placeholder developer/privacy/terms URLs becoming real project-level
-config in `agentworks.yaml` instead of TODO strings a human has to find and edit;
-`examples/starter-project/tools/jira-fetch` still being empty
-placeholders rather than a real fetch/parse implementation with a simulated-API test
-suite (the rest of scenario 2, see above).
+config in `agentworks.yaml` instead of TODO strings a human has to find and edit.
 
 ## Conventions
 
