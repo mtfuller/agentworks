@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mtfuller/agentworks/internal/targets/filecopy"
@@ -62,7 +64,7 @@ func Fetch(ctx context.Context, src Source, destDir string) (string, error) {
 			return "", err
 		}
 	case SourceArchive:
-		if err := download(ctx, src.URL, archivePath); err != nil {
+		if err := download(ctx, src.URL, archivePath, ""); err != nil {
 			return "", err
 		}
 	default:
@@ -93,13 +95,30 @@ func Fetch(ctx context.Context, src Source, destDir string) (string, error) {
 // repo's actual default branch for you.
 func fetchGitHub(ctx context.Context, src Source, archivePath string) error {
 	if src.Ref != "" {
-		return download(ctx, codeloadURL(src.Repo, src.Ref), archivePath)
+		return fetchRef(ctx, src.Repo, src.Ref, archivePath)
 	}
-	err := download(ctx, codeloadURL(src.Repo, "main"), archivePath)
+	err := fetchRef(ctx, src.Repo, "main", archivePath)
 	if errors.Is(err, errNotFound) {
-		return download(ctx, codeloadURL(src.Repo, "master"), archivePath)
+		return fetchRef(ctx, src.Repo, "master", archivePath)
 	}
 	return err
+}
+
+// fetchRef downloads repo@ref's tarball. It tries codeload unauthenticated
+// first -- fast, no rate limit, works for any public repo -- and only
+// reaches for a token and GitHub's authenticated tarball API when that 404s
+// and a token is actually available, so a public-repo fetch never pays for
+// token resolution (which may shell out to gh) at all.
+func fetchRef(ctx context.Context, repo, ref, archivePath string) error {
+	err := download(ctx, codeloadURL(repo, ref), archivePath, "")
+	if !errors.Is(err, errNotFound) {
+		return err
+	}
+	tok := githubToken()
+	if tok == "" {
+		return err
+	}
+	return download(ctx, tarballAPIURL(repo, ref), archivePath, tok)
 }
 
 // codeloadBase is a var, not a const, so tests can redirect it to an
@@ -110,14 +129,62 @@ func codeloadURL(repo, ref string) string {
 	return fmt.Sprintf("%s/%s/tar.gz/%s", codeloadBase, repo, ref)
 }
 
-// download fetches url into destFile. A plain http.Get does not return an
-// error on a 404 -- without this explicit status check, a GitHub 404 HTML
-// page would reach the gzip reader and fail as "invalid header" instead of
-// the much clearer "not found" this returns.
-func download(ctx context.Context, url, destFile string) error {
+// githubAPIBase is a var, not a const, so tests can redirect it to an
+// httptest.Server instead of the real api.github.com.
+var githubAPIBase = "https://api.github.com"
+
+// tarballAPIURL is GitHub's authenticated tarball endpoint -- unlike
+// codeload, it accepts a bearer token and works for private repos. It
+// responds with a redirect to a signed codeload URL; Go's http.Client
+// follows it automatically and strips the Authorization header since the
+// redirect target is a different host, which is exactly what's wanted since
+// the signed URL doesn't need (or want) the token repeated at it.
+func tarballAPIURL(repo, ref string) string {
+	return fmt.Sprintf("%s/repos/%s/tarball/%s", githubAPIBase, repo, ref)
+}
+
+// ghAuthToken runs `gh auth token`, capturing an already-authenticated
+// GitHub CLI's token. It's a var so tests can substitute a fake without
+// requiring gh to be installed.
+var ghAuthToken = func() (string, error) {
+	out, err := exec.Command("gh", "auth", "token").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// githubToken resolves a token for authenticating to a private GitHub repo:
+// GITHUB_TOKEN or GH_TOKEN first (the conventions gh and GitHub Actions
+// already use), then a token from an already-logged-in gh CLI. Empty means
+// unauthenticated -- fetchRef only calls this once the unauthenticated
+// codeload request 404s.
+func githubToken() string {
+	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
+		return tok
+	}
+	if tok := os.Getenv("GH_TOKEN"); tok != "" {
+		return tok
+	}
+	tok, err := ghAuthToken()
+	if err != nil {
+		return ""
+	}
+	return tok
+}
+
+// download fetches url into destFile, sending an Authorization header when
+// token is non-empty. A plain http.Get does not return an error on a 404 --
+// without this explicit status check, a GitHub 404 HTML page would reach
+// the gzip reader and fail as "invalid header" instead of the much clearer
+// "not found" this returns.
+func download(ctx context.Context, url, destFile, token string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {

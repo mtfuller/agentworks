@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -204,6 +205,69 @@ func TestFetchGitHubFallsBackToMaster(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
 		t.Errorf("SKILL.md not found after master fallback: %v", err)
+	}
+}
+
+// withAuthTestServer additionally points githubAPIBase at ts, for tests of
+// the authenticated-tarball fallback.
+func withAuthTestServer(t *testing.T, ts *httptest.Server) {
+	t.Helper()
+	withTestServer(t, ts)
+	origAPIBase := githubAPIBase
+	githubAPIBase = ts.URL
+	t.Cleanup(func() { githubAPIBase = origAPIBase })
+}
+
+// stubGHToken makes githubToken() return tok without touching the real
+// environment or shelling out to gh, and restores both paths afterward.
+func stubGHToken(t *testing.T, tok string) {
+	t.Helper()
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+	origGH := ghAuthToken
+	ghAuthToken = func() (string, error) { return tok, nil }
+	t.Cleanup(func() { ghAuthToken = origGH })
+}
+
+func TestFetchGitHubFallsBackToAuthedAPIWhenTokenAvailable(t *testing.T) {
+	body := buildTarGzBytes(t, "repo-main", map[string]string{"SKILL.md": "x"})
+	var sawAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/repos/owner/repo/tarball/main") {
+			sawAuth = r.Header.Get("Authorization")
+			w.Write(body)
+			return
+		}
+		// Unauthenticated codeload path: simulate a private repo 404.
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	withAuthTestServer(t, ts)
+	stubGHToken(t, "secret-token")
+
+	dir, err := Fetch(context.Background(), Source{Kind: SourceGitHub, Repo: "owner/repo", Ref: "main"}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Fetch() error = %v, want it to fall back to the authenticated tarball API", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Errorf("SKILL.md not found after authenticated fallback: %v", err)
+	}
+	if sawAuth != "Bearer secret-token" {
+		t.Errorf("Authorization header = %q, want Bearer secret-token", sawAuth)
+	}
+}
+
+func TestFetchGitHubReportsNotFoundWithoutToken(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	withAuthTestServer(t, ts)
+	stubGHToken(t, "")
+
+	_, err := Fetch(context.Background(), Source{Kind: SourceGitHub, Repo: "owner/repo", Ref: "main"}, t.TempDir())
+	if !errors.Is(err, errNotFound) {
+		t.Errorf("Fetch() error = %v, want errNotFound with no token available", err)
 	}
 }
 

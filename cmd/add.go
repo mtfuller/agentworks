@@ -34,7 +34,11 @@ decomposed into one artifact per skill/agent it contains; tools and hooks
 inside a fetched plugin aren't supported yet and are reported, not imported.
 
 With no URL, in an interactive terminal, this launches the marketplace search
-pane instead (the same one "agentworks tui"'s "a" key opens).`,
+pane instead (the same one "agentworks tui"'s "a" key opens).
+
+For a private GitHub repo, set GITHUB_TOKEN or GH_TOKEN, or just have the gh
+CLI logged in (gh auth login) -- agentworks falls back to an authenticated
+fetch automatically when the unauthenticated download 404s.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := projectRoot()
