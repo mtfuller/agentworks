@@ -1,0 +1,13 @@
+# See the "eval" section of README.md for the full agentworks eval format.
+#
+# This case's "prompt" is illustrative only -- scripts/eval-runner.sh is a
+# canned stand-in for a real model call (the same "simulate rather than
+# call the real thing" approach tools/jira-fetch's tests use for its API),
+# so every prompt gets the same fixed response back. Point eval_runner at
+# something that actually calls a model to get a real behavior test.
+cases:
+  - name: flags unconfirmed claims instead of repeating them
+    prompt: "Research whether switching to library X gives a 2x speedup."
+    assert:
+      contains: ["unconfirmed"]
+      not_contains: ["TODO"]

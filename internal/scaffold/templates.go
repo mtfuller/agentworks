@@ -1,6 +1,9 @@
 package scaffold
 
-import "github.com/mtfuller/agentworks/internal/artifact"
+import (
+	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/targets/agentcaps"
+)
 
 // Template is a named, curated starting point for a kind -- an alternative
 // to that kind's generic default kindSpec (see specs), selected by ID
@@ -50,7 +53,9 @@ var templates = []Template{
 		Title:       "Code reviewer",
 		Description: "Reviews a code change for correctness, security, and style.",
 		spec: kindSpec{
-			extra: func(name string) map[string]any { return map[string]any{} },
+			extra: func(name string) map[string]any {
+				return map[string]any{"tools": []string{agentcaps.ReadFiles}, "model": agentcaps.ModelBalanced}
+			},
 			bodyTmpl: `# {{.Title}}
 
 {{.Description}}
@@ -67,7 +72,10 @@ var templates = []Template{
 For each finding: file, line (if applicable), what's wrong, and why it matters.
 Group by severity (blocking vs. nice-to-have) so the author can triage quickly.
 `,
-			extraDirs: []string{"resources"},
+			files: func(name string) []extraFile {
+				return []extraFile{{"evals/example.yaml", evalExampleContent(name)}}
+			},
+			extraDirs: []string{"resources", "evals"},
 		},
 	},
 	{
@@ -75,7 +83,9 @@ Group by severity (blocking vs. nice-to-have) so the author can triage quickly.
 		Title:       "Researcher",
 		Description: "Investigates a question and reports findings with sources.",
 		spec: kindSpec{
-			extra: func(name string) map[string]any { return map[string]any{} },
+			extra: func(name string) map[string]any {
+				return map[string]any{"tools": []string{agentcaps.WebSearch, agentcaps.ReadFiles}, "model": agentcaps.ModelBalanced}
+			},
 			bodyTmpl: `# {{.Title}}
 
 {{.Description}}
@@ -91,7 +101,10 @@ Group by severity (blocking vs. nice-to-have) so the author can triage quickly.
 A short summary up front, then supporting detail with a source per claim that
 needs one. Flag anything you couldn't confirm rather than guessing.
 `,
-			extraDirs: []string{"resources"},
+			files: func(name string) []extraFile {
+				return []extraFile{{"evals/example.yaml", evalExampleContent(name)}}
+			},
+			extraDirs: []string{"resources", "evals"},
 		},
 	},
 	{
@@ -99,7 +112,9 @@ needs one. Flag anything you couldn't confirm rather than guessing.
 		Title:       "Reference file Q&A",
 		Description: "Answers questions strictly from a set of provided reference files, citing which one backs each answer.",
 		spec: kindSpec{
-			extra: func(name string) map[string]any { return map[string]any{} },
+			extra: func(name string) map[string]any {
+				return map[string]any{"tools": []string{agentcaps.ReadFiles}, "model": agentcaps.ModelFast}
+			},
 			bodyTmpl: `# {{.Title}}
 
 {{.Description}}
@@ -127,7 +142,10 @@ Give a direct answer, then cite which file(s) it came from (e.g. "per
 ` + "`resources/architecture.md`" + `"). Keep citations next to the claim they support,
 not bundled at the end.
 `,
-			extraDirs: []string{"resources"},
+			files: func(name string) []extraFile {
+				return []extraFile{{"evals/example.yaml", evalExampleContent(name)}}
+			},
+			extraDirs: []string{"resources", "evals"},
 		},
 	},
 	{
@@ -159,9 +177,10 @@ and under what condition.
 				return []extraFile{
 					{"scripts/main.py", "#!/usr/bin/env python3\n\"\"\"" + name + " entrypoint. Replace with real logic.\"\"\"\n\n\ndef main() -> None:\n    raise NotImplementedError(\"" + name + " is not implemented yet\")\n\n\nif __name__ == \"__main__\":\n    main()\n"},
 					{"tests/test_main.py", "\"\"\"Tests for " + name + ". Wire this up with pytest (or your tool of choice),\nthen add a `test:` command to skill.md's frontmatter.\n\"\"\"\n\n\ndef test_placeholder():\n    assert True\n"},
+					{"evals/example.yaml", evalExampleContent(name)},
 				}
 			},
-			extraDirs: []string{"samples"},
+			extraDirs: []string{"samples", "evals"},
 		},
 	},
 	{
@@ -194,9 +213,10 @@ with headings) so results are consistent across runs.
 			files: func(name string) []extraFile {
 				return []extraFile{
 					{"scripts/main.py", "#!/usr/bin/env python3\n\"\"\"" + name + ": reads a document path from argv and analyzes it.\"\"\"\n\nimport sys\n\n\ndef main() -> None:\n    if len(sys.argv) < 2:\n        raise SystemExit(\"usage: main.py <path-to-document>\")\n    raise NotImplementedError(\"" + name + " is not implemented yet\")\n\n\nif __name__ == \"__main__\":\n    main()\n"},
+					{"evals/example.yaml", evalExampleContent(name)},
 				}
 			},
-			extraDirs: []string{"samples"},
+			extraDirs: []string{"samples", "evals"},
 		},
 	},
 	{
@@ -270,9 +290,10 @@ TODO: fill in this deck's actual design rules.
 - Preferred slide layouts:
 - Rules for tables/charts/images:
 `},
+					{"evals/example.yaml", evalExampleContent(name)},
 				}
 			},
-			extraDirs: []string{"samples"},
+			extraDirs: []string{"samples", "evals"},
 		},
 	},
 	{
@@ -343,9 +364,10 @@ TODO: fill in this workbook's actual structure.
 
 - TODO: any pattern formulas should follow (e.g. "always SUMIFS against the Date column")
 `},
+					{"evals/example.yaml", evalExampleContent(name)},
 				}
 			},
-			extraDirs: []string{"samples"},
+			extraDirs: []string{"samples", "evals"},
 		},
 	},
 	{

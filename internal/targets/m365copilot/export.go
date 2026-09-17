@@ -19,6 +19,7 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/targets"
+	"github.com/mtfuller/agentworks/internal/targets/agentcaps"
 )
 
 func init() {
@@ -35,14 +36,25 @@ const (
 )
 
 // declarativeAgent is the minimal declarative agent manifest (schema
-// v1.8): the required version/name/description/instructions fields. See
-// https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/declarative-agent-manifest-1.7
+// v1.8): the required version/name/description/instructions fields, plus
+// an optional Capabilities array. See
+// https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/declarative-agent-manifest-1.8
 type declarativeAgent struct {
-	Schema       string `json:"$schema"`
-	Version      string `json:"version"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Instructions string `json:"instructions"`
+	Schema       string       `json:"$schema"`
+	Version      string       `json:"version"`
+	Name         string       `json:"name"`
+	Description  string       `json:"description"`
+	Instructions string       `json:"instructions"`
+	Capabilities []capability `json:"capabilities,omitempty"`
+}
+
+// capability is a declarative-agent capabilities-array entry. Only the
+// name-only capabilities agentcaps.ForM365Capabilities can produce
+// (WebSearch, CodeInterpreter) are needed -- both are valid with just a
+// "name" field (e.g. WebSearch's "sites" is optional and, if omitted,
+// means "search all sites").
+type capability struct {
+	Name string `json:"name"`
 }
 
 // teamsManifest is the (partial) Microsoft 365 app manifest -- only the
@@ -113,6 +125,11 @@ func (agentExporter) Export(a *artifact.Artifact, outDir string, opts targets.Ex
 		Name:         truncate(a.Name, 100),
 		Description:  truncate(a.Description, 1000),
 		Instructions: truncate(instructions, 8000),
+	}
+	if a.Kind == artifact.KindAgent {
+		for _, name := range agentcaps.ForM365Capabilities(a.ExtraStringSlice("tools")) {
+			da.Capabilities = append(da.Capabilities, capability{Name: name})
+		}
 	}
 
 	pub, _ := publisherFor(a)

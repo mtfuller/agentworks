@@ -9,16 +9,22 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/targets"
+	"github.com/mtfuller/agentworks/internal/targets/agentcaps"
 	"github.com/mtfuller/agentworks/internal/targets/filecopy"
 )
 
-// agentFrontmatter is a Claude Code subagent's minimal, documented
-// frontmatter. Richer fields (model, effort, tools, ...) are human tuning
-// AgentWorks has no real value for, so they're left out rather than
-// invented.
+// agentFrontmatter is a Claude Code subagent's frontmatter (see
+// https://code.claude.com/docs/en/sub-agents). Tools/Model are populated
+// from an agent artifact's vendor-agnostic "tools"/"model" fields via
+// agentcaps.ForClaudeCode; left empty (omitempty), Claude Code's own
+// default applies (inherit every tool, resolve the model from context) --
+// the same behavior an agent that doesn't set those fields had before this
+// mapping existed.
 type agentFrontmatter struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
+	Tools       string `yaml:"tools,omitempty"`
+	Model       string `yaml:"model,omitempty"`
 }
 
 // exportAgent bundles a single agent into a real Claude Code plugin: a
@@ -44,7 +50,8 @@ func exportAgent(a *artifact.Artifact, outDir string, opts targets.ExportOptions
 }
 
 func writeClaudeAgentFile(path string, a *artifact.Artifact) error {
-	fm := agentFrontmatter{Name: a.Name, Description: a.Description}
+	tools, model := agentcaps.ForClaudeCode(a.ExtraStringSlice("tools"), a.ExtraString("model"))
+	fm := agentFrontmatter{Name: a.Name, Description: a.Description, Tools: tools, Model: model}
 	data, err := yaml.Marshal(fm)
 	if err != nil {
 		return fmt.Errorf("encoding %s frontmatter: %w", path, err)

@@ -1,0 +1,146 @@
+// Package agentcaps is AgentWorks' vendor-agnostic vocabulary for what an
+// agent may do and how capable a model it needs: a small, closed set of
+// "tools" capabilities and "model" tiers set via an agent artifact's
+// frontmatter, plus the per-vendor mapping functions that turn them into
+// each target's real, native shape (Claude Code's comma-separated `tools:`
+// allowlist + `model:` alias, Microsoft 365's declarative-agent
+// `capabilities` array). GitHub Copilot's custom-agent frontmatter has no
+// publicly confirmed tools/model fields yet, so there's deliberately no
+// ForGitHubCopilot here -- see internal/targets/githubcopilot/agent.go.
+//
+// Tiers and curated tool categories are used instead of literal per-vendor
+// tool/model names so the mapping stays valid as vendors rename or add
+// models and tools -- the same reasoning already applied to the ChatGPT and
+// M365 publisher decisions elsewhere in this codebase.
+package agentcaps
+
+import (
+	"sort"
+	"strings"
+)
+
+// Tool identifiers in AgentWorks' vendor-agnostic vocabulary, set via an
+// agent artifact's "tools:" frontmatter field (a YAML list). Not every
+// vendor has a real equivalent for every one of these -- see ForM365Capabilities.
+const (
+	ReadFiles     = "read-files"
+	EditFiles     = "edit-files"
+	RunCommands   = "run-commands"
+	WebSearch     = "web-search"
+	CodeExecution = "code-execution"
+)
+
+// Model tiers, set via an agent artifact's "model:" frontmatter field (a
+// single string). Portable stand-ins for a literal model ID.
+const (
+	ModelFast     = "fast"
+	ModelBalanced = "balanced"
+	ModelPowerful = "powerful"
+)
+
+// ValidTools returns every recognized "tools:" value, in a stable order.
+func ValidTools() []string {
+	return []string{ReadFiles, EditFiles, RunCommands, WebSearch, CodeExecution}
+}
+
+// IsValidTool reports whether s is a recognized "tools:" value.
+func IsValidTool(s string) bool {
+	for _, t := range ValidTools() {
+		if s == t {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidModels returns every recognized "model:" value, in a stable order.
+func ValidModels() []string {
+	return []string{ModelFast, ModelBalanced, ModelPowerful}
+}
+
+// IsValidModel reports whether s is a recognized "model:" value.
+func IsValidModel(s string) bool {
+	for _, m := range ValidModels() {
+		if s == m {
+			return true
+		}
+	}
+	return false
+}
+
+// ForClaudeCode maps AgentWorks' vendor-agnostic tools/model to Claude
+// Code's real subagent frontmatter shape: a comma-separated "tools:"
+// allowlist and a "model:" alias (see
+// https://code.claude.com/docs/en/sub-agents). Empty/unrecognized input on
+// either side yields an empty return value so the caller can omit the
+// field entirely -- Claude Code's own default when "tools:" is omitted is
+// to inherit every tool available to subagents, and omitting "model:"
+// resolves it from the main conversation, both of which match AgentWorks'
+// own default (an agent scaffolded without "tools:"/"model:" set behaves
+// exactly as it did before this mapping existed).
+func ForClaudeCode(tools []string, model string) (toolsField, modelField string) {
+	claudeTools := map[string]bool{}
+	for _, t := range tools {
+		switch t {
+		case ReadFiles:
+			claudeTools["Read"] = true
+			claudeTools["Glob"] = true
+			claudeTools["Grep"] = true
+		case EditFiles:
+			claudeTools["Edit"] = true
+			claudeTools["Write"] = true
+		case RunCommands, CodeExecution:
+			claudeTools["Bash"] = true
+		case WebSearch:
+			claudeTools["WebSearch"] = true
+			claudeTools["WebFetch"] = true
+		}
+	}
+	if len(claudeTools) > 0 {
+		names := make([]string, 0, len(claudeTools))
+		for name := range claudeTools {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		toolsField = strings.Join(names, ", ")
+	}
+
+	switch model {
+	case ModelFast:
+		modelField = "haiku"
+	case ModelBalanced:
+		modelField = "sonnet"
+	case ModelPowerful:
+		modelField = "opus"
+	}
+	return toolsField, modelField
+}
+
+// ForM365Capabilities maps AgentWorks' vendor-agnostic tools to Microsoft
+// 365 declarative-agent capability names (see
+// https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/declarative-agent-manifest-1.8).
+// Only "web-search" and "code-execution" have a real declarative-agent
+// equivalent (WebSearch, CodeInterpreter) -- declarative agents have no
+// local filesystem or shell-execution concept, so read-files/edit-files/
+// run-commands intentionally map to nothing here. That's a deliberate
+// partial mapping, the same "not every vendor supports every capability"
+// shape as internal/targets.Target.Supports, not a bug to fix later.
+func ForM365Capabilities(tools []string) []string {
+	seen := map[string]bool{}
+	var caps []string
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			caps = append(caps, name)
+		}
+	}
+	for _, t := range tools {
+		switch t {
+		case WebSearch:
+			add("WebSearch")
+		case CodeExecution:
+			add("CodeInterpreter")
+		}
+	}
+	return caps
+}

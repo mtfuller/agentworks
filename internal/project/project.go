@@ -34,6 +34,19 @@ type Manifest struct {
 	// back to clearly-labeled placeholder values a human has to find and
 	// edit before submitting anywhere -- setting it here means they don't.
 	Publisher *Publisher `yaml:"publisher,omitempty"`
+	// Eval is optional project-level eval configuration, currently just a
+	// default runner command for `agentworks eval` (see internal/evalspec)
+	// when an individual artifact doesn't declare its own "eval_runner".
+	// Left unset, an artifact with no runner of its own is skipped.
+	Eval *EvalConfig `yaml:"eval,omitempty"`
+}
+
+// EvalConfig is a project's default behavior-eval settings.
+type EvalConfig struct {
+	// DefaultRunner is the shell command `agentworks eval` pipes a case's
+	// prompt to when an artifact doesn't declare its own "eval_runner"
+	// frontmatter field.
+	DefaultRunner string `yaml:"default_runner,omitempty"`
 }
 
 // Publisher is a project's publishing identity: who's shipping the

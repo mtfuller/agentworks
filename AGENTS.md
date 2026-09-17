@@ -82,7 +82,7 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 ```
 
 - **`cmd/`** — one file per Cobra command (`init`, `new`, `list`, `validate`, `test`,
-  `targets`, `export`, `tui`, `version`). Commands parse flags/args, call into the
+  `eval`, `targets`, `export`, `tui`, `version`). Commands parse flags/args, call into the
   packages below, and format output. Keep business logic out of `Run`/`RunE` — a
   command file should read as "gather input, call one function, print the result."
 - **`internal/artifact`** — the vendor-agnostic artifact model: `Kind`
@@ -103,6 +103,15 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 - **`internal/scaffold`** — `New(root, kind, name, opts)` writes a new artifact's
   directory + starter files. This is the single code path both `cmd/new.go` and the TUI
   wizard call — never generate an artifact's files by hand in either front end.
+- **`internal/evalspec`** — the `evals/*.yaml` case file format (`Case`/`Assertions`,
+  `LoadDir`) and `Evaluate`, a pure function checking a runner's output string against
+  a case's deterministic assertions (`contains`/`not_contains`/`matches`/`not_matches`/
+  `max_length`/`min_length`). It doesn't run anything — `cmd/eval.go` is what pipes a
+  case's `prompt` to an artifact's declared `eval_runner` command (or the project's
+  `agentworks.yaml` `eval.default_runner`) and hands the runner's stdout back to
+  `Evaluate`. Same "AgentWorks never executes anything itself" principle already
+  applied to workflow export, extended to evals: `eval_runner` is the project's own
+  shell command, not a vendor SDK call AgentWorks makes on its behalf.
 - **`internal/targets`** — the static vendor registry (which artifact kinds each vendor
   can consume — this is what `agentworks targets` prints) and the `Exporter` interface.
   Vendor-specific exporters live in their own subpackage and self-register via `init()`
@@ -130,6 +139,18 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
     `com.github.copilot/agents/<name>.agent.md` — so that part isn't shared) plus one
     `mcpconfig.ServerFor` entry per tool step. `cmd/validate.go` also calls `Resolve` to
     catch a workflow pointing at an artifact that doesn't exist.
+  - `internal/targets/agentcaps` is AgentWorks' vendor-agnostic vocabulary for what an
+    agent may do (`tools:`, a closed set like `read-files`/`web-search`) and how capable
+    a model it needs (`model:`, a tier: `fast`/`balanced`/`powerful`), plus the mapping
+    functions that turn them into each target's real shape: `ForClaudeCode` builds
+    Claude Code's confirmed `tools:`/`model:` subagent frontmatter (see
+    https://code.claude.com/docs/en/sub-agents), `ForM365Capabilities` builds Microsoft
+    365's confirmed declarative-agent `capabilities` array entries (`WebSearch`,
+    `CodeInterpreter`). Both `claudecode/agent.go` and `githubcopilot/agent.go`'s
+    `writeClaudeAgentFile`/`writeCopilotAgentFile` are the single source of truth their
+    respective standalone-agent and workflow-bundled-agent exporters both call, so
+    enriching those two functions enriches both export paths at once. There's
+    deliberately no `ForGitHubCopilot` — see "What's real vs. deferred" below.
 
   `m365copilot` is genuinely different from all of this (a declarative agent + Teams app
   package, not a skill directory or an MCP registration) and doesn't use any of these
@@ -289,6 +310,37 @@ guiding scenario 6 (local validate workflows) directly — a description is how 
 AgentWorks. `agentworks init`'s generated `AGENTS.md`/`agentworks-cli` `SKILL.md`
 (`internal/project/agentdocs.go`) mention it too, so a coding agent working inside a
 scaffolded project knows to heed the warnings.
+
+Also done as of this pass: agents are no longer just a name + prompt. An agent
+artifact can set `tools:`/`model:` frontmatter in `internal/targets/agentcaps`'s
+vocabulary; `agentworks validate` rejects an unrecognized value in either
+(`cmd/validate.go`'s `validateKindSpecific`, `KindAgent` case) rather than silently
+exporting nothing for it. `claude-code` maps them to that vendor's confirmed
+`tools:`/`model:` subagent fields; `m365-copilot` maps `tools:` to that vendor's
+confirmed declarative-agent `capabilities` array (only `web-search`/`code-execution`
+have a real M365 equivalent — declarative agents have no local filesystem/shell
+concept, so the other three tools intentionally map to nothing there, not a bug).
+`github-copilot`'s mapping is still deferred, same treatment as the ChatGPT decision
+below: its custom-agent frontmatter spec doesn't publicly confirm tools/model fields
+exist, so AgentWorks doesn't guess at one (see `internal/targets/githubcopilot/
+agent.go`'s comment). Re-open once a confirmed spec exists.
+
+Also done as of this pass: a lightweight behavior-eval mechanism, `agentworks eval`
+(see `internal/evalspec`, `cmd/eval.go`). A skill or agent can have an `evals/`
+directory of YAML case files (`prompt` + deterministic `assert` rules); scaffolding a
+new agent or skill now creates a starter one automatically. `agentworks eval` pipes
+each case's prompt to the artifact's declared `eval_runner` frontmatter command (or
+the project's `agentworks.yaml` `eval.default_runner`) and checks the runner's stdout
+— AgentWorks itself never calls a model, extending the same principle already applied
+to workflow export (the vendor's own agent loop executes; AgentWorks only
+orchestrates) to behavior testing. `agentworks validate` also parses any `evals/`
+directory it finds (regardless of kind) so a malformed case file fails at validate
+time, not only when `eval` runs it. Deliberately out of scope for this pass, not
+overlooked: an LLM-graded rubric assertion type (a case's response graded by a second
+model call rather than a deterministic check) and assertions on an agent's actual
+tool-call trace rather than just its final text output — both would need a runner
+protocol richer than "a prompt in, text out," which is a real design question, not
+just unfinished work.
 
 `chatgpt` staying skill-only is different from the above: it's a *closed* investigation,
 not an open TODO — see the next section for why, so nobody re-opens it without first

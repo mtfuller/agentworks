@@ -60,9 +60,10 @@ command to this file's frontmatter once they exist, so ` + "`agentworks test`" +
 			return []extraFile{
 				{"scripts/main.py", "#!/usr/bin/env python3\n\"\"\"" + name + " entrypoint. Replace with real logic.\"\"\"\n\n\ndef main() -> None:\n    raise NotImplementedError(\"" + name + " is not implemented yet\")\n\n\nif __name__ == \"__main__\":\n    main()\n"},
 				{"tests/test_main.py", "\"\"\"Tests for " + name + ". Wire this up with pytest (or your tool of choice),\nthen add a `test:` command to skill.md's frontmatter.\n\"\"\"\n\n\ndef test_placeholder():\n    assert True\n"},
+				{"evals/example.yaml", evalExampleContent(name)},
 			}
 		},
-		extraDirs: []string{"samples"},
+		extraDirs: []string{"samples", "evals"},
 	},
 	artifact.KindTool: {
 		extra: func(name string) map[string]any {
@@ -106,8 +107,21 @@ or ` + "`--target github-copilot`" + ` uses these fields to generate the server 
 
 Write the agent's instructions/system prompt here. Put longer reference
 material the agent should be able to consult under ` + "`resources/`" + `.
+
+## Capabilities
+
+Optionally set ` + "`tools:`" + ` (a list) and ` + "`model:`" + ` in this file's
+frontmatter to describe what this agent may do and how capable a model it
+needs, portably across export targets -- see ` + "`agentworks validate`" + ` for the
+recognized values. Leaving both unset exports exactly as before (the vendor's
+own default: inherit every tool, resolve the model from context).
 `,
-		extraDirs: []string{"resources"},
+		files: func(name string) []extraFile {
+			return []extraFile{
+				{"evals/example.yaml", evalExampleContent(name)},
+			}
+		},
+		extraDirs: []string{"resources", "evals"},
 	},
 	artifact.KindHook: {
 		extra: func(name string) map[string]any {
@@ -234,6 +248,29 @@ func renderBody(tmpl, name, description string) (string, error) {
 		return "", fmt.Errorf("rendering body template: %w", err)
 	}
 	return sb.String(), nil
+}
+
+// evalExampleContent is the starter evals/example.yaml given to a new
+// agent or skill. Unlike frontmatter (round-tripped through artifact.Render,
+// which doesn't preserve comments), this is a plain file write, so the
+// explanatory "#" comments here survive as-is.
+func evalExampleContent(name string) string {
+	return `# agentworks eval case file -- see the "eval" section of README.md.
+#
+# Each case pipes "prompt" to this artifact's "eval_runner" frontmatter
+# field (or the project's agentworks.yaml "eval.default_runner" if this
+# artifact doesn't set its own) and checks the runner's stdout against
+# "assert". Until "eval_runner" is set, "agentworks eval" skips this file
+# with an info message rather than failing.
+cases:
+  - name: replace me with a real case
+    prompt: "Describe a task for ` + name + ` here."
+    assert:
+      contains: ["replace me with an expected word or phrase"]
+      # not_contains: ["a word or phrase the response should never include"]
+      # matches: "a regex the response should match"
+      # max_length: 500
+`
 }
 
 // title turns a kebab-case artifact name into a human-readable heading,

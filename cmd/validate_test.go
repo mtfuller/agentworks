@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
@@ -98,5 +100,47 @@ func TestValidateKindSpecificSkillAndAgentAreNoOps(t *testing.T) {
 		if err := validateKindSpecific(a); err != nil {
 			t.Errorf("validateKindSpecific(%s) error = %v, want nil", kind, err)
 		}
+	}
+}
+
+func TestValidateKindSpecificAgent(t *testing.T) {
+	tests := []struct {
+		name    string
+		tools   []string
+		model   string
+		wantErr bool
+	}{
+		{"fresh scaffold, both unset", nil, "", false},
+		{"recognized tools and model", []string{"read-files", "web-search"}, "balanced", false},
+		{"unknown tool", []string{"delete-everything"}, "", true},
+		{"unknown model", nil, "gpt-5", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := newValidateTestArtifact(t, artifact.KindAgent, map[string]any{
+				"tools": tt.tools,
+				"model": tt.model,
+			})
+			err := validateKindSpecific(a)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateKindSpecific() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateKindSpecificEvalsDir(t *testing.T) {
+	// A freshly scaffolded agent already has a valid evals/example.yaml
+	// (see internal/scaffold), so this must still pass as-is.
+	a := newValidateTestArtifact(t, artifact.KindAgent, nil)
+	if err := validateKindSpecific(a); err != nil {
+		t.Fatalf("validateKindSpecific() with the scaffolded evals/ dir error = %v, want nil", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(a.Dir, "evals", "broken.yaml"), []byte("cases: [not valid :::"), 0o644); err != nil {
+		t.Fatalf("writing broken eval file: %v", err)
+	}
+	if err := validateKindSpecific(a); err == nil {
+		t.Fatal("validateKindSpecific() with a malformed evals/ file expected error, got nil")
 	}
 }

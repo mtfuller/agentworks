@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/color"
+	"github.com/mtfuller/agentworks/internal/evalspec"
 	"github.com/mtfuller/agentworks/internal/project"
+	"github.com/mtfuller/agentworks/internal/targets/agentcaps"
 	"github.com/mtfuller/agentworks/internal/targets/workflowsteps"
 )
 
@@ -91,6 +95,15 @@ set.`,
 // shells out to a field that was never filled in.
 func validateKindSpecific(a *artifact.Artifact) error {
 	switch a.Kind {
+	case artifact.KindAgent:
+		for _, tool := range a.ExtraStringSlice("tools") {
+			if !agentcaps.IsValidTool(tool) {
+				return fmt.Errorf("%s: unknown tool %q (want one of: %s)", a.Dir, tool, strings.Join(agentcaps.ValidTools(), ", "))
+			}
+		}
+		if model := a.ExtraString("model"); model != "" && !agentcaps.IsValidModel(model) {
+			return fmt.Errorf("%s: unknown model %q (want one of: %s)", a.Dir, model, strings.Join(agentcaps.ValidModels(), ", "))
+		}
 	case artifact.KindWorkflow:
 		if _, err := workflowsteps.Resolve(a); err != nil {
 			return err
@@ -107,6 +120,14 @@ func validateKindSpecific(a *artifact.Artifact) error {
 		if len(auth) > 0 && command == "" {
 			return fmt.Errorf("%s: declares \"auth\" but no \"command\" -- nothing will use those environment variables", a.Dir)
 		}
+	}
+
+	// An "evals/" directory is valid for any kind (skills and agents are
+	// the common case, but nothing stops a tool from having one too), so
+	// this isn't inside the switch above -- catches a malformed eval file
+	// at validate time rather than only when `agentworks eval` runs it.
+	if _, err := evalspec.LoadDir(filepath.Join(a.Dir, "evals")); err != nil {
+		return err
 	}
 	return nil
 }

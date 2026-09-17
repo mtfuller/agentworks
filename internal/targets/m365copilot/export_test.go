@@ -146,6 +146,59 @@ func TestExportAgentFallsBackToDescriptionWhenBodyEmpty(t *testing.T) {
 	}
 }
 
+func TestExportAgentCapabilities(t *testing.T) {
+	root := t.TempDir()
+	a, err := scaffold.New(root, artifact.KindAgent, "researcher", scaffold.Options{Description: "Researches things."})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	a.Extra["tools"] = []string{"web-search", "code-execution", "read-files"}
+	if err := a.Save(); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	reloaded, err := artifact.Load(a.Dir, artifact.KindAgent)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	dest, err := (agentExporter{}).Export(reloaded, t.TempDir(), targets.ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+	var da declarativeAgent
+	if err := json.Unmarshal(readZipEntry(t, dest, "declarativeAgent.json"), &da); err != nil {
+		t.Fatalf("parsing declarativeAgent.json: %v", err)
+	}
+	want := []capability{{Name: "WebSearch"}, {Name: "CodeInterpreter"}}
+	if len(da.Capabilities) != len(want) {
+		t.Fatalf("Capabilities = %+v, want %+v", da.Capabilities, want)
+	}
+	for i := range want {
+		if da.Capabilities[i] != want[i] {
+			t.Errorf("Capabilities = %+v, want %+v", da.Capabilities, want)
+		}
+	}
+}
+
+func TestExportSkillHasNoCapabilities(t *testing.T) {
+	root := t.TempDir()
+	a, err := scaffold.New(root, artifact.KindSkill, "csv-analyzer", scaffold.Options{Description: "Analyze a CSV file."})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	dest, err := (agentExporter{}).Export(a, t.TempDir(), targets.ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+	var da declarativeAgent
+	if err := json.Unmarshal(readZipEntry(t, dest, "declarativeAgent.json"), &da); err != nil {
+		t.Fatalf("parsing declarativeAgent.json: %v", err)
+	}
+	if len(da.Capabilities) != 0 {
+		t.Errorf("skill export Capabilities = %+v, want none", da.Capabilities)
+	}
+}
+
 func TestRegisteredWithTargets(t *testing.T) {
 	e, err := targets.GetExporter(TargetID)
 	if err != nil {

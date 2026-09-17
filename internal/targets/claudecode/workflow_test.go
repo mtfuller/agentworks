@@ -118,6 +118,51 @@ func TestExportWorkflow(t *testing.T) {
 	}
 }
 
+func TestExportWorkflowAgentToolsAndModel(t *testing.T) {
+	root := t.TempDir()
+	if _, err := project.Init(root, "proj", nil); err != nil {
+		t.Fatalf("project.Init() error = %v", err)
+	}
+	agent, err := scaffold.New(root, artifact.KindAgent, "researcher", scaffold.Options{Description: "Researches things."})
+	if err != nil {
+		t.Fatalf("scaffold.New(agent) error = %v", err)
+	}
+	agent.Extra["tools"] = []string{"run-commands"}
+	agent.Extra["model"] = "fast"
+	if err := agent.Save(); err != nil {
+		t.Fatalf("Save(agent) error = %v", err)
+	}
+
+	wf, err := scaffold.New(root, artifact.KindWorkflow, "solo-research", scaffold.Options{Description: "Just research."})
+	if err != nil {
+		t.Fatalf("scaffold.New(workflow) error = %v", err)
+	}
+	wf.Extra["steps"] = []any{map[string]any{"agent": "researcher"}}
+	if err := wf.Save(); err != nil {
+		t.Fatalf("Save(workflow) error = %v", err)
+	}
+	reloaded, err := artifact.Load(wf.Dir, artifact.KindWorkflow)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	dest, err := (exporter{}).Export(reloaded, t.TempDir(), targets.ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+	agentData, err := os.ReadFile(filepath.Join(dest, "agents", "researcher.md"))
+	if err != nil {
+		t.Fatalf("reading agents/researcher.md: %v", err)
+	}
+	content := string(agentData)
+	if !strings.Contains(content, "tools: Bash") {
+		t.Errorf("workflow-bundled agent missing mapped tools field, got:\n%s", content)
+	}
+	if !strings.Contains(content, "model: haiku") {
+		t.Errorf("workflow-bundled agent missing mapped model field, got:\n%s", content)
+	}
+}
+
 func TestExportWorkflowZip(t *testing.T) {
 	a := newTestWorkflowProject(t)
 	dest, err := (exporter{}).Export(a, t.TempDir(), targets.ExportOptions{Zip: true})

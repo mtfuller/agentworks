@@ -18,6 +18,13 @@ import (
 // is newer and less documented) -- name/description + body is the one
 // concretely confirmed shape, so that's what AgentWorks generates rather
 // than guessing at unconfirmed fields like model/tools.
+//
+// Revisited alongside AgentWorks' agentcaps package (which maps a
+// vendor-agnostic "tools"/"model" to Claude Code's confirmed subagent
+// fields and Microsoft 365's confirmed declarative-agent capabilities):
+// still deferred here for the same reason as above, not overlooked. Same
+// treatment as the ChatGPT decision in AGENTS.md -- re-open once a
+// confirmed spec exists, don't guess at one now.
 type agentFrontmatter struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`

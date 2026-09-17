@@ -106,7 +106,16 @@ test: python3 -m unittest discover -s tests -p "test_*.py"
 with a few kind-specific frontmatter fields (a tool's `entrypoint`/`test`/`command`/
 `auth` -- `command` and `auth` are what `agentworks export` turns into an MCP server
 registration -- a hook's `events`/`command`, a workflow's `steps` referencing other
-artifacts by name).
+artifacts by name). An agent can also set `tools:` (a list) and `model:` (a tier) --
+a small, closed, vendor-agnostic vocabulary (`agentworks validate` lists the
+recognized values) that `agentworks export` maps to each target's real shape: Claude
+Code's `tools:`/`model:` subagent frontmatter, and Microsoft 365's declarative-agent
+`capabilities` array. GitHub Copilot's custom-agent spec doesn't confirm these fields
+yet, so that mapping is deliberately deferred (see AGENTS.md).
+
+A skill or agent can also have an `evals/` directory (a starter one is scaffolded
+automatically) of `<kind>.md`-adjacent YAML case files for `agentworks eval` -- see
+that command below.
 
 ## Commands
 
@@ -118,6 +127,7 @@ artifacts by name).
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |
 | `agentworks validate [path]` | Parse and validate one artifact or the whole project. Beyond the generic checks (name/description/kind), also catches export-readiness gaps per kind: a workflow's `steps:` must resolve to real artifacts, a hook's `events`/`command` must be set together, and a tool declaring `auth` must also declare `command`. Also lints description quality — too long (over the [Agent Skills spec](https://agentskills.io/specification)'s 1024-character limit), too short/vague, redundant with the name, or overlapping heavily with another same-kind artifact's description (checked project-wide) — printed as warnings that don't fail the command unless `--strict` is passed. |
 | `agentworks test [path]` | Run the `test:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it). |
+| `agentworks eval [path]` | Behavior-test a skill/agent: for each case under its `evals/` directory, pipe the case's `prompt` to the artifact's `eval_runner` command (or the project's `agentworks.yaml` `eval.default_runner` if it doesn't set its own) and check the runner's stdout against the case's `assert` rules (`contains`/`not_contains`/`matches`/`not_matches`/`max_length`/`min_length`). AgentWorks never calls a model itself here — `eval_runner` is your own shell command (a script calling whatever model/API you want, `claude -p`, or anything else reading a prompt on stdin and printing a response on stdout), the same "orchestrate, don't execute" split `agentworks test` and workflow export already follow. With no path, runs every artifact with an `evals/` directory; artifacts without one, or without a runner configured, are skipped rather than failed. Pass `--case <name>` to re-run a single case. |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
 | `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format. `claude-code` and `github-copilot` have a real exporter for all five kinds: skills (the shared [Agent Skills](https://agentskills.io/specification) format, also used by `chatgpt`), tools and workflow tool-steps as an MCP server registration (`.mcp.json` / Agent Plugins' `mcp.json`, `auth` env vars passed through as `${VAR}` references, never literal secrets), agents as a subagent file (`agents/<name>.md` / `com.github.copilot/agents/<name>.agent.md`), hooks as a lifecycle-event handler (`hooks/hooks.json` / `com.github.copilot/hooks/hooks.json`), and workflows as a bundled plugin composing all of the above plus a generated orchestrator command (the vendor's own agent loop runs it; AgentWorks doesn't execute anything itself). `m365-copilot` exports skills and agents as a declarative agent in a Microsoft 365 app package zip. Its `manifest.json` developer/privacy/terms fields come from an optional `publisher:` block in `agentworks.yaml` (`name`/`website`/`privacy_url`/`terms_url`/`accent_color`) when a project sets one; otherwise they're clearly-labeled placeholders, and the CLI warns you after export so it's not a silent gap. `agentworks targets` shows the full matrix. Pass `--all` (every artifact in the project) or `--kind <kind>` (every artifact of one kind) instead of a path to export the whole project in one call, each artifact to its own output; a kind the target can't consume is skipped with a warning rather than failing the run. Pass several paths (or one path with `--bundle <name>`) to package multiple artifacts into a single plugin instead of one per artifact -- only `claude-code`/`github-copilot` support this, since it's their native format that's actually meant to bundle several components together; a tool member's own `src/`-relative command is namespaced under `tools/<name>/` so multiple tools' files don't collide. |
 | `agentworks add <url>` | Import a published skill or Claude Code plugin into this project — the reverse of `export`. Accepts an `owner/repo` GitHub shorthand, a full `github.com` repo/tree/blob URL, a `raw.githubusercontent.com` file URL, or a direct `.zip`/`.tar.gz` archive URL (including agentskills.codes's download links). A bare Agent Skill (`SKILL.md` at its root) becomes one skill artifact, supporting files included. A Claude Code plugin (`.claude-plugin/plugin.json` at its root) decomposes into one artifact per skill/agent it contains; tools and hooks inside a fetched plugin aren't supported yet and are reported, not silently dropped. A name that doesn't fit AgentWorks' slug rules is converted automatically, with the original preserved in a `source:` provenance block alongside where it came from. `--name` overrides the derived name (single-skill imports only); `--dry-run` shows what would be imported without writing anything. With no URL and no argument, it launches the marketplace search TUI in an interactive terminal. |
@@ -154,11 +164,13 @@ task install             # to GOPATH/bin
 │   ├── artifact/               # vendor-agnostic artifact model (Kind, Frontmatter, <kind>.md parsing)
 │   ├── project/                # agentworks.yaml manifest, project discovery
 │   ├── scaffold/                # `new` boilerplate generation, one starter per kind, plus built-in named templates.go
+│   ├── evalspec/                # `evals/*.yaml` case format + deterministic assertion checker for `agentworks eval`
 │   ├── targets/                 # vendor registry (capability matrix) + Exporter interface
 │   │   ├── agentskills/         # shared Agent Skills (agentskills.io) SKILL.md writer
 │   │   ├── mcpconfig/           # shared MCP server-entry builder (for tool/workflow export)
 │   │   ├── filecopy/            # shared copy-artifact-files / zip-a-directory helpers
 │   │   ├── workflowsteps/       # shared `steps:` parser -- resolves agent/tool references
+│   │   ├── agentcaps/           # vendor-agnostic agent tools/model vocabulary + per-vendor mapping
 │   │   ├── claudecode/          # "claude-code": all 5 kinds, each a real Claude Code plugin
 │   │   ├── chatgpt/             # the "chatgpt" skill exporter (wraps agentskills)
 │   │   ├── githubcopilot/       # "github-copilot": all 5 kinds, each a real Agent Plugin

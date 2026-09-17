@@ -8,6 +8,11 @@ targets:
   - chatgpt
 resources:
   - resources/source-checklist.md
+tools:
+  - web-search
+  - read-files
+model: balanced
+eval_runner: "sh scripts/eval-runner.sh"
 ---
 
 # Researcher

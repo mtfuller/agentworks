@@ -22,6 +22,32 @@ Status markers: 🎯 picked to build next, ✅ done, otherwise unprioritized.
   `test`/`validate` already support "no path = whole project"; `export` doesn't. Done:
   `--all`/`--kind` flags on `agentworks export` (see [AGENTS.md](AGENTS.md)).
 
+## Agent model & behavior testing
+
+- ✅ **Enrich the agent kind.** An agent used to be just a name + prompt body —
+  richer fields like tools/model were "left out rather than invented" (see the old
+  comment in `internal/targets/claudecode/agent.go`). But which tools an agent may
+  call and which model runs it are exactly where a vendor-agnostic model should earn
+  its keep, since those differ per vendor more than the skill-file shape already
+  solved. Done: a curated, closed `tools:`/`model:` vocabulary
+  (`internal/targets/agentcaps`), validated by `agentworks validate`, mapped to Claude
+  Code's real subagent fields and Microsoft 365's declarative-agent `capabilities`
+  array (see [AGENTS.md](AGENTS.md)). GitHub Copilot's mapping is deliberately
+  deferred, not overlooked — its custom-agent spec doesn't publicly confirm tools/
+  model fields exist yet.
+- ✅ **A lightweight eval/behavior-test mechanism.** `agentworks test` only validates
+  code correctness (it shells out to a `test:` command) — skills and agents are
+  prompts, not code, and "the LLM ignores the instructions" had no test at all. Done:
+  `agentworks eval` (see `internal/evalspec`, [AGENTS.md](AGENTS.md)) runs an
+  artifact's `evals/*.yaml` cases against a project-supplied `eval_runner` command,
+  checking deterministic assertions (`contains`/`matches`/length) on its output.
+  AgentWorks still never calls a model itself, matching the "vendor's own loop
+  executes, AgentWorks orchestrates" principle already used for workflow export.
+  Deliberately deferred, not overlooked: an LLM-graded rubric assertion (a response
+  graded by a second model call) and assertions on an agent's actual tool-call trace
+  rather than just its final text output — both need a runner protocol richer than
+  "prompt in, text out," which is a real design question to come back to.
+
 ## Tool development experience
 
 - **An MCP inspector / interactive run mode.** Testing a tool today means unit-testing
