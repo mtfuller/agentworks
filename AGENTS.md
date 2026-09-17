@@ -39,8 +39,8 @@ of truth for what "done" looks like for any given piece of functionality:
    resources, exported to ChatGPT, Claude, and others as drag-and-drop artifacts.
    *(`claude-code`, `github-copilot`, and `m365-copilot` all export a standalone agent
    now (a subagent-file plugin for the first two, a declarative agent for the third) --
-   `agentworks export agents/x --target claude-code`. `chatgpt` remains the one gap:
-   no researched mapping yet for a persona/agent concept there, only skills.)*
+   `agentworks export agents/x --target claude-code`. `chatgpt` is a deliberate, closed
+   gap, not an open one -- see "ChatGPT: why skills only" below.)*
 4. **Engineering leader** — multiple agents/tools/MCP servers composed into pipelines
    ("software factory" workflows), targeted at Claude Code and GitHub Copilot, exported
    as one or more plugins. *(Done, deliberately without an execution engine -- see
@@ -162,21 +162,52 @@ artifacts, a hook's `events`/`command` are set together, a tool with `auth` also
 and `github-copilot` each export *all five* artifact kinds now — skills via the shared
 `agentskills` writer, tools via the shared `mcpconfig` MCP-registration builder, agents
 as a subagent-file plugin, hooks as a lifecycle-event plugin, and workflows as a bundled
-plugin composing the others via `workflowsteps`. `chatgpt` exports skills only.
-`m365-copilot` exports skills and agents as a declarative-agent app package. Also
-implemented: the Bubble Tea browser + `new` wizard.
+plugin composing the others via `workflowsteps`. `chatgpt` exports skills only, by
+deliberate, researched decision (see "ChatGPT: why skills only" below), not because
+nobody's gotten to it. `m365-copilot` exports skills and agents as a declarative-agent
+app package. Also implemented: the Bubble Tea browser + `new` wizard.
 
 Deliberately deferred (do this later, not by accident while doing something else):
-exporting `hook`/`tool`/`workflow` on `chatgpt`/`m365-copilot`, or a standalone `agent`
-on `chatgpt` (the registry's capability matrix already says which vendor could take a
-kind in principle — the exporter is the gap, not the model, and there's no researched
-mapping yet for what an "agent" or "tool" even means on ChatGPT beyond skills); any
-workflow *execution* engine — a workflow export produces a real plugin the vendor's own
-agent loop runs, AgentWorks never executes a workflow itself, and that's permanent, not
-a gap; wiring a `test` action into the TUI (`n`/`e` — create/export — are wired now;
-running an artifact's `test:` command from inside the browser isn't yet); `m365-copilot`'s
-placeholder developer/privacy/terms URLs becoming real project-level config in
-`agentworks.yaml` instead of TODO strings a human has to find and edit.
+exporting `hook`/`tool`/`workflow` on `m365-copilot` (the registry's capability matrix
+already says which vendor could take a kind in principle — the exporter is the gap, not
+the model); any workflow *execution* engine — a workflow export produces a real plugin
+the vendor's own agent loop runs, AgentWorks never executes a workflow itself, and
+that's permanent, not a gap; wiring a `test` action into the TUI (`n`/`e` —
+create/export — are wired now; running an artifact's `test:` command from inside the
+browser isn't yet); `m365-copilot`'s placeholder developer/privacy/terms URLs becoming
+real project-level config in `agentworks.yaml` instead of TODO strings a human has to
+find and edit.
+
+`chatgpt` staying skill-only is different from the above: it's a *closed* investigation,
+not an open TODO — see the next section for why, so nobody re-opens it without first
+re-reading why it was closed.
+
+### ChatGPT: why skills only
+
+Researched (Sept 2026) whether `chatgpt` could export agents/tools/workflows the same
+way `claude-code`/`github-copilot` do. Conclusion: there's currently no stable,
+file-based target to export *to*, for reasons specific to each kind rather than "not
+researched yet":
+
+- **Agent.** Custom GPTs — the direct analog to a Claude Code subagent or an M365
+  declarative agent — are being actively retired as of this research (OpenAI announced
+  retirement on 2026-09-11; new GPT creation ends 2026-09-25; full retirement
+  2026-12-11). Their replacement, Workspace Agents, is a cloud-hosted, always-on,
+  enterprise-workspace product with no local file format at all — there's nothing an
+  `Exporter` could produce a droppable artifact *for*, even in principle.
+- **Tool.** ChatGPT's real external-tool mechanism, the Apps SDK, genuinely is
+  MCP-based (same protocol `internal/targets/mcpconfig` already targets) — but
+  registration is a hosted, publicly-reachable server URL configured through ChatGPT's
+  UI/Developer Mode, not a local stdio process launched from a generated config file the
+  way `.mcp.json` works. AgentWorks' `Exporter` interface
+  (`Export(a, outDir, opts) (string, error)`, producing a local file/directory) doesn't
+  fit "you need an already-deployed, running server, then register its URL by hand."
+- **Workflow.** No orchestration/pipeline concept exists beyond a single GPT's/App's own
+  instructions.
+
+If this changes — a stable, documented, file-based ChatGPT format emerges — re-open the
+investigation then; don't assume today's reasoning still holds without checking, this
+area was unusually volatile even within the week it was researched.
 
 ## Conventions
 

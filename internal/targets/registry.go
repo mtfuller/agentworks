@@ -37,7 +37,7 @@ var registry = []Target{
 		ID:       "chatgpt",
 		Name:     "ChatGPT",
 		Supports: []artifact.Kind{artifact.KindSkill},
-		Notes:    "Skill uploads only.",
+		Notes:    "Skill uploads only, by design -- see AGENTS.md, \"ChatGPT: why skills only.\"",
 	},
 	{
 		ID:       "github-copilot",
