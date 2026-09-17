@@ -72,3 +72,19 @@ func TestNewSkillCreatesSupportingFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestNewToolHasCommandAndAuthFields(t *testing.T) {
+	root := t.TempDir()
+	a, err := New(root, artifact.KindTool, "jira-fetch", Options{Description: "x"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	// Empty by default -- AgentWorks can't guess how to run the tool -- but
+	// present so exporters and authors both know the fields exist.
+	if got := a.ExtraString("command"); got != "" {
+		t.Errorf("command = %q, want empty default", got)
+	}
+	if _, ok := a.Extra["auth"]; !ok {
+		t.Error("expected an \"auth\" key in Extra by default")
+	}
+}

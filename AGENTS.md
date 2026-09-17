@@ -29,9 +29,12 @@ of truth for what "done" looks like for any given piece of functionality:
    chatgpt` and `--target m365-copilot` are both real.)*
 2. **Developer** — a tool that fetches/parses a Jira ticket (real API + auth, with a
    simulated API for tests), validated locally, then exported to both Claude Code and
-   GitHub Copilot. *(Tool scaffolding + local testing work; neither `claude-code` nor
-   `github-copilot` exports tools yet — both are skill-only exporters so far, so this
-   is still the main gap.)*
+   GitHub Copilot. *(Tool scaffolding, local testing, and export to both vendors (as an
+   MCP server registration — `command`/`auth` frontmatter fields → `.mcp.json` /
+   Agent Plugins' `mcp.json`, auth passed through as `${VAR}` references, never literal
+   secrets) all work. The remaining gap is `examples/starter-project/tools/jira-fetch`
+   itself: still empty placeholders, no real fetch/parse logic or a simulated-API test
+   suite — a good next scenario-2 pass.)*
 3. **AI researcher** — a domain-specific agent with its own guidance markdown and
    resources, exported to ChatGPT, Claude, and others as drag-and-drop artifacts.
    *(Agent scaffolding works; `m365-copilot` exports agents as a declarative agent, but
@@ -84,15 +87,27 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   wizard call — never generate an artifact's files by hand in either front end.
 - **`internal/targets`** — the static vendor registry (which artifact kinds each vendor
   can consume — this is what `agentworks targets` prints) and the `Exporter` interface.
-  `internal/targets/agentskills` writes the shared, spec-compliant
-  ([agentskills.io](https://agentskills.io/specification)) `SKILL.md` shape that
-  `claudecode`, `chatgpt`, and `githubcopilot` all build on — extend *that* package for
-  a skill-format change, not each vendor package individually. `m365copilot` is
-  genuinely different (a declarative agent + Teams app package, not a skill directory)
-  and doesn't use it. Vendor-specific exporters live in their own subpackage and
-  self-register via `init()` + `targets.Register`; `cmd/export.go` imports each
-  implemented one (blank import unless it also needs to reference the package directly,
-  like `m365copilot.TargetID` for the post-export placeholder-data warning).
+  Vendor-specific exporters live in their own subpackage and self-register via `init()`
+  + `targets.Register`; `cmd/export.go` imports each implemented one (blank import
+  unless it also needs to reference the package directly, like `m365copilot.TargetID`
+  for the post-export placeholder-data warning). Two format-specific packages are
+  shared across vendor packages rather than duplicated:
+  - `internal/targets/agentskills` writes the spec-compliant
+    ([agentskills.io](https://agentskills.io/specification)) `SKILL.md` shape that
+    `claudecode`, `chatgpt`, and `githubcopilot` all build on for skills — extend *that*
+    package for a skill-format change, not each vendor package individually.
+  - `internal/targets/mcpconfig` builds the `{"mcpServers": {...}}` entry that
+    `claudecode` and `githubcopilot` both build on for tools (a tool's `command`
+    frontmatter run via `sh -c`, its `auth` list passed through as unresolved `${VAR}`
+    references) — extend *that* package for an MCP-registration change.
+  - `internal/targets/filecopy` is lower-level still: copy-an-artifact's-files-excluding-
+    its-manifest and zip-a-directory, used by both of the above and directly by the
+    `claudecode`/`githubcopilot` tool export paths (which don't go through
+    `agentskills`, since a tool isn't a skill).
+
+  `m365copilot` is genuinely different from all of this (a declarative agent + Teams app
+  package, not a skill directory or an MCP registration) and doesn't use any of the
+  three shared packages.
 - **`internal/tui`** — the Bubble Tea project browser (`model.go`/`app.go`) and the
   `huh`-based interactive wizard (`wizard.go`) that both `cmd/new.go` (non-interactive
   runs skip it) and the browser's future "create artifact" action call.
@@ -108,19 +123,23 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 
 Implemented: the project/artifact model, scaffolding for all 5 kinds, project-wide
 discovery/validation/test-running, the vendor capability matrix, real exporters for all
-four registered targets (`claude-code`/`chatgpt`/`github-copilot`: skills only, via the
-shared `agentskills` writer; `m365-copilot`: skills and agents, as a declarative-agent
-app package), and the Bubble Tea browser + `new` wizard.
+four registered targets (`claude-code`/`github-copilot`: skills via the shared
+`agentskills` writer *and* tools via the shared `mcpconfig` MCP-registration builder;
+`chatgpt`: skills only; `m365-copilot`: skills and agents, as a declarative-agent app
+package), and the Bubble Tea browser + `new` wizard.
 
 Deliberately deferred (do this later, not by accident while doing something else):
-exporting `tool`/`hook`/`workflow` kinds anywhere (the registry's capability matrix
-already says which vendor could take them in principle — the exporter is the gap, not
-the model); `claude-code`/`chatgpt`/`github-copilot` exporting agents (only
-`m365-copilot` does today); an actual workflow *execution* engine (a workflow's
-`steps:` today is just documentation an exporter could read, not something AgentWorks
-runs); wiring export/test actions into the TUI itself (it's browse-only for now);
-`m365-copilot`'s placeholder developer/privacy/terms URLs becoming real project-level
-config in `agentworks.yaml` instead of TODO strings a human has to find and edit.
+exporting `hook`/`workflow` kinds anywhere, or `tool` on `chatgpt`/`m365-copilot` (the
+registry's capability matrix already says which vendor could take a kind in principle —
+the exporter is the gap, not the model); `claude-code`/`chatgpt`/`github-copilot`
+exporting agents (only `m365-copilot` does today); an actual workflow *execution*
+engine (a workflow's `steps:` today is just documentation an exporter could read, not
+something AgentWorks runs); wiring export/test actions into the TUI itself (it's
+browse-only for now); `m365-copilot`'s placeholder developer/privacy/terms URLs
+becoming real project-level config in `agentworks.yaml` instead of TODO strings a human
+has to find and edit; `examples/starter-project/tools/jira-fetch` still being empty
+placeholders rather than a real fetch/parse implementation with a simulated-API test
+suite (the rest of scenario 2, see above).
 
 ## Conventions
 

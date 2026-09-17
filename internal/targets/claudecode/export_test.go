@@ -33,8 +33,8 @@ func TestExportSkill(t *testing.T) {
 	a := newTestSkill(t)
 	outDir := t.TempDir()
 
-	exporter := skillExporter{}
-	dest, err := exporter.Export(a, outDir, targets.ExportOptions{})
+	e := exporter{}
+	dest, err := e.Export(a, outDir, targets.ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export() error = %v", err)
 	}
@@ -85,8 +85,8 @@ func TestExportSkillZip(t *testing.T) {
 	a := newTestSkill(t)
 	outDir := t.TempDir()
 
-	exporter := skillExporter{}
-	dest, err := exporter.Export(a, outDir, targets.ExportOptions{Zip: true})
+	e := exporter{}
+	dest, err := e.Export(a, outDir, targets.ExportOptions{Zip: true})
 	if err != nil {
 		t.Fatalf("Export() error = %v", err)
 	}
@@ -113,14 +113,85 @@ func TestExportSkillZip(t *testing.T) {
 	}
 }
 
-func TestExportRejectsNonSkill(t *testing.T) {
+func TestExportRejectsUnsupportedKind(t *testing.T) {
 	root := t.TempDir()
 	a, err := scaffold.New(root, artifact.KindAgent, "researcher", scaffold.Options{Description: "x"})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)
 	}
-	if _, err := (skillExporter{}).Export(a, t.TempDir(), targets.ExportOptions{}); err == nil {
+	if _, err := (exporter{}).Export(a, t.TempDir(), targets.ExportOptions{}); err == nil {
 		t.Fatal("Export() of an agent expected error, got nil")
+	}
+}
+
+func newTestTool(t *testing.T) *artifact.Artifact {
+	t.Helper()
+	root := t.TempDir()
+	a, err := scaffold.New(root, artifact.KindTool, "jira-fetch", scaffold.Options{
+		Description: "Fetch a Jira ticket.",
+		Targets:     []string{TargetID},
+	})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	a.Extra["command"] = "python3 src/main.py"
+	a.Extra["auth"] = []string{"JIRA_API_TOKEN"}
+	if err := a.Save(); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(a.Dir, "src", "main.py"), []byte("# jira-fetch\n"), 0o644); err != nil {
+		t.Fatalf("writing src/main.py: %v", err)
+	}
+	reloaded, err := artifact.Load(a.Dir, artifact.KindTool)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	return reloaded
+}
+
+func TestExportTool(t *testing.T) {
+	a := newTestTool(t)
+	outDir := t.TempDir()
+
+	dest, err := (exporter{}).Export(a, outDir, targets.ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+	if dest != filepath.Join(outDir, "jira-fetch") {
+		t.Errorf("Export() dest = %q, want %s/jira-fetch", dest, outDir)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dest, ".mcp.json"))
+	if err != nil {
+		t.Fatalf("reading .mcp.json: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, `"command": "sh"`) {
+		t.Errorf(".mcp.json missing sh command, got:\n%s", content)
+	}
+	if !strings.Contains(content, "python3 src/main.py") {
+		t.Errorf(".mcp.json missing tool command, got:\n%s", content)
+	}
+	if !strings.Contains(content, `"JIRA_API_TOKEN": "${JIRA_API_TOKEN}"`) {
+		t.Errorf(".mcp.json missing env var reference, got:\n%s", content)
+	}
+	if strings.Contains(content, "$schema") {
+		t.Errorf(".mcp.json should not have a $schema field (not part of Claude Code's own format), got:\n%s", content)
+	}
+
+	if _, err := os.Stat(filepath.Join(dest, "src", "main.py")); err != nil {
+		t.Errorf("expected src/main.py to be copied: %v", err)
+	}
+}
+
+func TestExportToolRequiresCommand(t *testing.T) {
+	root := t.TempDir()
+	a, err := scaffold.New(root, artifact.KindTool, "jira-fetch", scaffold.Options{Description: "x"})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	if _, err := (exporter{}).Export(a, t.TempDir(), targets.ExportOptions{}); err == nil {
+		t.Fatal("Export() with no command set expected error, got nil")
 	}
 }
 
