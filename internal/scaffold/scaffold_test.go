@@ -60,6 +60,35 @@ func TestNewRejectsInvalidName(t *testing.T) {
 	}
 }
 
+func TestNewNamespacedArtifact(t *testing.T) {
+	root := t.TempDir()
+	a, err := New(root, artifact.KindSkill, "team-a/csv-analyzer", Options{Description: "x"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if a.Name != "csv-analyzer" || a.Namespace != "team-a" {
+		t.Errorf("New() artifact = %+v, want name=csv-analyzer namespace=team-a", a.Frontmatter)
+	}
+	if a.QualifiedName() != "team-a/csv-analyzer" {
+		t.Errorf("QualifiedName() = %q, want team-a/csv-analyzer", a.QualifiedName())
+	}
+	if err := a.Validate(); err != nil {
+		t.Errorf("scaffolded namespaced artifact fails Validate(): %v", err)
+	}
+
+	manifestPath := filepath.Join(root, "skills", "team-a", "csv-analyzer", "skill.md")
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Errorf("expected manifest at %s: %v", manifestPath, err)
+	}
+}
+
+func TestNewRejectsTooManyNamespaceSegments(t *testing.T) {
+	root := t.TempDir()
+	if _, err := New(root, artifact.KindSkill, "a/b/c", Options{Description: "x"}); err == nil {
+		t.Fatal("New() with a/b/c expected error, got nil")
+	}
+}
+
 func TestNewSkillCreatesSupportingFiles(t *testing.T) {
 	root := t.TempDir()
 	a, err := New(root, artifact.KindSkill, "csv-analyzer", Options{Description: "x"})

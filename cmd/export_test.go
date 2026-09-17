@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/scaffold"
 	"github.com/mtfuller/agentworks/internal/targets"
@@ -12,6 +13,18 @@ import (
 	_ "github.com/mtfuller/agentworks/internal/targets/chatgpt"
 	_ "github.com/mtfuller/agentworks/internal/targets/claudecode"
 )
+
+// mustEmptyLockfile returns a fresh in-memory Lockfile for tests that
+// exercise export functions but aren't asserting on lockfile content
+// themselves.
+func mustEmptyLockfile(t *testing.T, root string) *lockfile.Lockfile {
+	t.Helper()
+	lf, err := lockfile.Load(root)
+	if err != nil {
+		t.Fatalf("lockfile.Load() error = %v", err)
+	}
+	return lf
+}
 
 func TestValidateExportFlags(t *testing.T) {
 	tests := []struct {
@@ -78,7 +91,8 @@ func TestRunBundleExportRejectsUnsupportedTarget(t *testing.T) {
 	exportBundle = "kit"
 	t.Cleanup(func() { exportBundle = origBundle })
 
-	if err := runBundleExport(exporter, []string{"a", "b"}); err == nil {
+	root := t.TempDir()
+	if err := runBundleExport(exporter, []string{"a", "b"}, root, mustEmptyLockfile(t, root)); err == nil {
 		t.Fatal("runBundleExport() against a non-bundling target expected error, got nil")
 	} else if !strings.Contains(err.Error(), "doesn't support bundling") {
 		t.Errorf("runBundleExport() error = %v, want a bundling-not-supported message", err)
@@ -94,7 +108,8 @@ func TestRunBundleExportRequiresName(t *testing.T) {
 	exportBundle = ""
 	t.Cleanup(func() { exportBundle = origBundle })
 
-	if err := runBundleExport(exporter, []string{"a", "b"}); err == nil {
+	root := t.TempDir()
+	if err := runBundleExport(exporter, []string{"a", "b"}, root, mustEmptyLockfile(t, root)); err == nil {
 		t.Fatal("runBundleExport() with no --bundle name expected error, got nil")
 	}
 }
@@ -136,7 +151,7 @@ func TestRunBulkExportSkipsUnsupportedKinds(t *testing.T) {
 
 	// chatgpt only supports skills, so the tool should be skipped, not
 	// fail the run.
-	if err := runBulkExport(exporter); err != nil {
+	if err := runBulkExport(exporter, root, mustEmptyLockfile(t, root)); err != nil {
 		t.Fatalf("runBulkExport() error = %v, want nil (skips aren't failures)", err)
 	}
 }
@@ -152,7 +167,7 @@ func TestRunBulkExportAllArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetExporter(claude-code) error = %v", err)
 	}
-	if err := runBulkExport(exporter); err != nil {
+	if err := runBulkExport(exporter, root, mustEmptyLockfile(t, root)); err != nil {
 		t.Fatalf("runBulkExport() error = %v", err)
 	}
 }

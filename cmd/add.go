@@ -8,12 +8,14 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/color"
 	"github.com/mtfuller/agentworks/internal/importer"
+	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/tui"
 )
 
 var (
 	addName   string
 	addDryRun bool
+	addYes    bool
 )
 
 var addCmd = &cobra.Command{
@@ -63,6 +65,14 @@ pane instead (the same one "agentworks tui"'s "a" key opens).`,
 			return nil
 		}
 
+		ok, err := securityGate(plan.Source.String(), plan.Artifacts, addYes)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("import aborted")
+		}
+
 		if err := plan.Apply(); err != nil {
 			return err
 		}
@@ -72,12 +82,32 @@ pane instead (the same one "agentworks tui"'s "a" key opens).`,
 		for _, u := range plan.Unsupported {
 			color.Warning("%s", u)
 		}
+
+		if err := recordImports(root, plan); err != nil {
+			color.Warning("imported successfully, but failed to update %s: %v", lockfile.FileName, err)
+		}
 		return nil
 	},
+}
+
+// recordImports pins what was actually written for every artifact in plan
+// into the project's agentworks.lock, so `agentworks update` has a content
+// hash of the raw fetched source to compare a future fetch against (see
+// internal/lockfile, internal/importer.Plan.RecordLockEntries).
+func recordImports(root string, plan *importer.Plan) error {
+	lf, err := lockfile.Load(root)
+	if err != nil {
+		return err
+	}
+	if err := plan.RecordLockEntries(root, lf); err != nil {
+		return err
+	}
+	return lf.Save(root)
 }
 
 func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.Flags().StringVar(&addName, "name", "", "override the derived artifact name (single-skill imports only)")
 	addCmd.Flags().BoolVar(&addDryRun, "dry-run", false, "show what would be imported without writing anything")
+	addCmd.Flags().BoolVar(&addYes, "yes", false, "skip the confirmation prompt when imported content declares a shell command (required in non-interactive use)")
 }

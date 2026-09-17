@@ -155,14 +155,22 @@ steps:
 	},
 }
 
-// New scaffolds a new artifact of the given kind and name under root
-// (a project's root directory), returning the artifact it created.
-func New(root string, kind artifact.Kind, name string, opts Options) (*artifact.Artifact, error) {
+// New scaffolds a new artifact of the given kind under root (a project's
+// root directory), returning the artifact it created. ref is either a bare
+// name ("csv-analyzer") or a namespace-qualified reference
+// ("team-a/csv-analyzer" -- see artifact.Frontmatter.Namespace), which
+// nests the scaffolded directory one level deeper accordingly.
+func New(root string, kind artifact.Kind, ref string, opts Options) (*artifact.Artifact, error) {
 	if !kind.Valid() {
 		return nil, fmt.Errorf("unknown artifact kind %q", kind)
 	}
 
-	dir := filepath.Join(root, kind.DirName(), name)
+	namespace, name, err := splitRef(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	dir := filepath.Join(root, kind.DirName(), ref)
 	if _, err := os.Stat(dir); err == nil {
 		return nil, fmt.Errorf("%s already exists", dir)
 	}
@@ -193,6 +201,7 @@ func New(root string, kind artifact.Kind, name string, opts Options) (*artifact.
 		Frontmatter: artifact.Frontmatter{
 			Kind:        kind,
 			Name:        name,
+			Namespace:   namespace,
 			Description: opts.Description,
 			Version:     version,
 			Targets:     opts.Targets,
@@ -229,6 +238,25 @@ func New(root string, kind artifact.Kind, name string, opts Options) (*artifact.
 		return nil, err
 	}
 	return a, nil
+}
+
+// splitRef splits a scaffold reference into its namespace and leaf name:
+// "team-a/csv-analyzer" -> ("team-a", "csv-analyzer"), "csv-analyzer" ->
+// ("", "csv-analyzer"). More than one "/" is rejected -- namespacing is a
+// single level deep, not an arbitrary path.
+func splitRef(ref string) (namespace, name string, err error) {
+	parts := strings.Split(ref, "/")
+	switch len(parts) {
+	case 1:
+		return "", parts[0], nil
+	case 2:
+		if parts[0] == "" || parts[1] == "" {
+			return "", "", fmt.Errorf("%q is not a valid namespace/name reference", ref)
+		}
+		return parts[0], parts[1], nil
+	default:
+		return "", "", fmt.Errorf("%q has too many \"/\" segments -- namespacing is one level deep (namespace/name)", ref)
+	}
 }
 
 func renderBody(tmpl, name, description string) (string, error) {

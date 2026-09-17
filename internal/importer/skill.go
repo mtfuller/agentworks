@@ -20,8 +20,10 @@ func planSkill(root string, src Source, contentDir string, opts Options) (*Plan,
 	a.Dir = filepath.Join(root, artifact.KindSkill.DirName(), a.Name)
 
 	return &Plan{
-		Source:    src,
-		Artifacts: []*artifact.Artifact{a},
-		srcDirs:   map[string]string{a.Dir: contentDir},
+		Source:      src,
+		Artifacts:   []*artifact.Artifact{a},
+		srcDirs:     map[string]string{a.Dir: contentDir},
+		HashSources: map[string]string{a.Dir: contentDir},
+		Subpaths:    map[string]string{a.Dir: ""},
 	}, nil
 }

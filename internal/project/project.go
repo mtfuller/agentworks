@@ -136,6 +136,12 @@ func FindRoot(start string) (string, error) {
 // it finds. kinds, if non-empty, restricts discovery to those kinds.
 // Artifacts that fail to load are returned in errs rather than aborting the
 // whole scan, so one bad file doesn't hide the rest of the project.
+//
+// Each entry directly under a kind directory (e.g. "skills/<entry>") is
+// either an unnamespaced artifact (holds "<kind>.md" itself) or a namespace
+// directory one level deep (e.g. "skills/team-a/<name>" -- see
+// artifact.Frontmatter.Namespace); Discover checks for the manifest at
+// both depths.
 func Discover(root string, kinds ...artifact.Kind) (artifacts []*artifact.Artifact, errs []error) {
 	if len(kinds) == 0 {
 		kinds = artifact.Kinds()
@@ -161,16 +167,53 @@ func Discover(root string, kinds ...artifact.Kind) (artifacts []*artifact.Artifa
 
 		for _, name := range names {
 			dir := filepath.Join(kindDir, name)
-			if _, err := os.Stat(filepath.Join(dir, k.FileName())); err != nil {
-				continue // not an artifact directory, just a stray subfolder
-			}
-			a, err := artifact.Load(dir, k)
-			if err != nil {
-				errs = append(errs, err)
+			if _, err := os.Stat(filepath.Join(dir, k.FileName())); err == nil {
+				a, err := artifact.Load(dir, k)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				artifacts = append(artifacts, a)
 				continue
 			}
-			artifacts = append(artifacts, a)
+
+			// Not an artifact directory itself -- check one level deeper
+			// for namespaced artifacts (skills/<namespace>/<name>).
+			nsEntries, err := os.ReadDir(dir)
+			if err != nil {
+				continue // a stray non-directory or unreadable subfolder
+			}
+			nsNames := make([]string, 0, len(nsEntries))
+			for _, e := range nsEntries {
+				if e.IsDir() {
+					nsNames = append(nsNames, e.Name())
+				}
+			}
+			sort.Strings(nsNames)
+
+			for _, nsName := range nsNames {
+				nsDir := filepath.Join(dir, nsName)
+				if _, err := os.Stat(filepath.Join(nsDir, k.FileName())); err != nil {
+					continue // not an artifact directory, just a stray subfolder
+				}
+				a, err := artifact.Load(nsDir, k)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				artifacts = append(artifacts, a)
+			}
 		}
 	}
 	return artifacts, errs
+}
+
+// ResolveArtifactDir turns a bare "name" or namespace-qualified
+// "namespace/name" reference (as accepted in a workflow's `steps:` list or
+// a CLI path argument) into the directory it should live in.
+// filepath.Join handles an embedded "/" in ref identically to a bare name,
+// so this is a thin, self-documenting wrapper rather than doing anything
+// clever with the two forms.
+func ResolveArtifactDir(root string, kind artifact.Kind, ref string) string {
+	return filepath.Join(root, kind.DirName(), ref)
 }

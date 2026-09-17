@@ -3,6 +3,7 @@ package project
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -199,5 +200,56 @@ func TestDiscover(t *testing.T) {
 	}
 	if none, errs := Discover(root, artifact.KindAgent); len(none) != 0 || len(errs) != 0 {
 		t.Fatalf("Discover(KindAgent) = %+v, errs=%v, want empty", none, errs)
+	}
+}
+
+func TestDiscoverFindsNamespacedArtifacts(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "proj", nil); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	unnamespaced := &artifact.Artifact{
+		Frontmatter: artifact.Frontmatter{Kind: artifact.KindSkill, Name: "demo", Description: "A demo."},
+		Dir:         filepath.Join(root, "skills", "demo"),
+	}
+	if err := unnamespaced.Save(); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	namespaced := &artifact.Artifact{
+		Frontmatter: artifact.Frontmatter{Kind: artifact.KindSkill, Name: "demo", Namespace: "team-a", Description: "Team A's demo."},
+		Dir:         filepath.Join(root, "skills", "team-a", "demo"),
+	}
+	if err := namespaced.Save(); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	found, errs := Discover(root, artifact.KindSkill)
+	if len(errs) != 0 {
+		t.Fatalf("Discover() errs = %v", errs)
+	}
+	if len(found) != 2 {
+		t.Fatalf("Discover() = %+v, want 2 artifacts (bare + namespaced)", found)
+	}
+
+	var gotQualified []string
+	for _, a := range found {
+		gotQualified = append(gotQualified, a.QualifiedName())
+	}
+	sort.Strings(gotQualified)
+	want := []string{"demo", "team-a/demo"}
+	if len(gotQualified) != len(want) || gotQualified[0] != want[0] || gotQualified[1] != want[1] {
+		t.Errorf("QualifiedName()s = %v, want %v", gotQualified, want)
+	}
+}
+
+func TestResolveArtifactDir(t *testing.T) {
+	root := "/proj"
+	if got, want := ResolveArtifactDir(root, artifact.KindSkill, "demo"), filepath.Join(root, "skills", "demo"); got != want {
+		t.Errorf("ResolveArtifactDir(bare) = %q, want %q", got, want)
+	}
+	if got, want := ResolveArtifactDir(root, artifact.KindSkill, "team-a/demo"), filepath.Join(root, "skills", "team-a", "demo"); got != want {
+		t.Errorf("ResolveArtifactDir(qualified) = %q, want %q", got, want)
 	}
 }

@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/color"
+	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/targets"
 	"github.com/mtfuller/agentworks/internal/targets/m365copilot"
@@ -57,14 +60,29 @@ exporter implemented yet.
 			return err
 		}
 
+		root, err := projectRoot()
+		if err != nil {
+			return err
+		}
+		lf, err := lockfile.Load(root)
+		if err != nil {
+			return err
+		}
+
+		var runErr error
 		switch {
 		case exportAll || exportKind != "":
-			return runBulkExport(exporter)
+			runErr = runBulkExport(exporter, root, lf)
 		case len(args) > 1 || exportBundle != "":
-			return runBundleExport(exporter, args)
+			runErr = runBundleExport(exporter, args, root, lf)
 		default:
-			return runSingleExport(exporter, args[0])
+			runErr = runSingleExport(exporter, args[0], root, lf)
 		}
+
+		if err := lf.Save(root); err != nil {
+			color.Warning("failed to update %s: %v", lockfile.FileName, err)
+		}
+		return runErr
 	},
 }
 
@@ -83,17 +101,29 @@ func validateExportFlags(args []string, all bool, kindFlag, bundle string) error
 	return nil
 }
 
-func runSingleExport(exporter targets.Exporter, path string) error {
+func runSingleExport(exporter targets.Exporter, path string, root string, lf *lockfile.Lockfile) error {
 	a, err := loadArtifactAtPath(path)
 	if err != nil {
 		return err
 	}
+	warnSecurityRisk(a)
+
+	artifactKey, err := rootRelKey(root, a.Dir)
+	if err != nil {
+		return err
+	}
+	warnIfHandEdited(lf, exportTarget, artifactKey)
+
 	out, err := exporter.Export(a, exportOut, targets.ExportOptions{Zip: exportZip})
 	if err != nil {
 		return err
 	}
 	color.Success("Exported %s (%s) to %s for %s", a.Name, a.Kind, out, exportTarget)
 	warnIfM365PlaceholderPublisher(a, out)
+
+	if err := recordExport(root, lf, exportTarget, artifactKey, []string{a.Dir}, out); err != nil {
+		color.Warning("exported successfully, but failed to record it in %s: %v", lockfile.FileName, err)
+	}
 	return nil
 }
 
@@ -101,11 +131,7 @@ func runSingleExport(exporter targets.Exporter, path string) error {
 // A kind the target can't consume is skipped with a warning rather than
 // aborting the whole run -- a project mixing skills and tools shouldn't
 // make `--all --target chatgpt` fail outright.
-func runBulkExport(exporter targets.Exporter) error {
-	root, err := projectRoot()
-	if err != nil {
-		return err
-	}
+func runBulkExport(exporter targets.Exporter, root string, lf *lockfile.Lockfile) error {
 	kinds, err := resolveBulkKinds(exportKind)
 	if err != nil {
 		return err
@@ -123,6 +149,16 @@ func runBulkExport(exporter targets.Exporter) error {
 			skipped++
 			continue
 		}
+		warnSecurityRisk(a)
+
+		artifactKey, err := rootRelKey(root, a.Dir)
+		if err != nil {
+			color.Error("%s (%s): %v", a.Name, a.Kind, err)
+			failed++
+			continue
+		}
+		warnIfHandEdited(lf, exportTarget, artifactKey)
+
 		out, err := exporter.Export(a, exportOut, targets.ExportOptions{Zip: exportZip})
 		if err != nil {
 			color.Error("%s (%s): %v", a.Name, a.Kind, err)
@@ -131,6 +167,9 @@ func runBulkExport(exporter targets.Exporter) error {
 		}
 		color.Success("Exported %s (%s) to %s", a.Name, a.Kind, out)
 		warnIfM365PlaceholderPublisher(a, out)
+		if err := recordExport(root, lf, exportTarget, artifactKey, []string{a.Dir}, out); err != nil {
+			color.Warning("exported successfully, but failed to record it in %s: %v", lockfile.FileName, err)
+		}
 		exported++
 	}
 
@@ -154,7 +193,7 @@ func resolveBulkKinds(kindFlag string) ([]artifact.Kind, error) {
 
 // runBundleExport packages several artifacts into one plugin via the
 // target's optional BundleExporter capability.
-func runBundleExport(exporter targets.Exporter, paths []string) error {
+func runBundleExport(exporter targets.Exporter, paths []string, root string, lf *lockfile.Lockfile) error {
 	bundler, ok := exporter.(targets.BundleExporter)
 	if !ok {
 		return fmt.Errorf("%s doesn't support bundling several artifacts into one plugin -- export them individually instead", exportTarget)
@@ -164,19 +203,29 @@ func runBundleExport(exporter targets.Exporter, paths []string) error {
 	}
 
 	members := make([]*artifact.Artifact, 0, len(paths))
+	memberDirs := make([]string, 0, len(paths))
 	for _, p := range paths {
 		a, err := loadArtifactAtPath(p)
 		if err != nil {
 			return err
 		}
+		warnSecurityRisk(a)
 		members = append(members, a)
+		memberDirs = append(memberDirs, a.Dir)
 	}
+
+	artifactKey := "bundle:" + exportBundle
+	warnIfHandEdited(lf, exportTarget, artifactKey)
 
 	out, err := bundler.ExportBundle(exportBundle, bundleDescription(members), members, exportOut, targets.ExportOptions{Zip: exportZip})
 	if err != nil {
 		return err
 	}
 	color.Success("Exported bundle %s (%d artifacts) to %s for %s", exportBundle, len(members), out, exportTarget)
+
+	if err := recordExport(root, lf, exportTarget, artifactKey, memberDirs, out); err != nil {
+		color.Warning("exported successfully, but failed to record it in %s: %v", lockfile.FileName, err)
+	}
 	return nil
 }
 
@@ -195,6 +244,91 @@ func warnIfM365PlaceholderPublisher(a *artifact.Artifact, out string) {
 	if exportTarget == m365copilot.TargetID && m365copilot.UsesPlaceholderPublisher(a) {
 		color.Warning("manifest.json inside %s has placeholder developer/privacy/terms URLs -- set a `publisher:` block in agentworks.yaml, or edit them directly before submitting to AppSource", out)
 	}
+}
+
+// warnSecurityRisk surfaces a's LintSecurity warnings (a hook/tool command
+// that will run arbitrary shell code) at export time -- a visibility fix,
+// not a gate: unlike `agentworks add` writing new content from an
+// untrusted remote source, exporting is always regenerable, so this never
+// blocks the export.
+func warnSecurityRisk(a *artifact.Artifact) {
+	for _, w := range a.LintSecurity() {
+		color.Warning("%s: %s", w.Dir, w.Message)
+	}
+}
+
+// rootRelKey turns an artifact directory (as loadArtifactAtPath/
+// project.Discover hand it back, which may be relative to the working
+// directory rather than root) into the project-root-relative form used as
+// a lockfile key, regardless of the relationship between the working
+// directory and root.
+func rootRelKey(root, dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	return lockfile.RelKey(root, abs)
+}
+
+// warnIfHandEdited compares an export's previously recorded output hash
+// against what's actually on disk right now, before this run's exporter
+// overwrites it (every exporter clears its output directory as its first
+// step, so this has to happen before calling Export) -- a mismatch means
+// dist was hand-edited since the last export and this run will discard
+// that edit.
+func warnIfHandEdited(lf *lockfile.Lockfile, target, artifactKey string) {
+	entry, ok := lf.Exports[lockfile.ExportKey(target, artifactKey)]
+	if !ok {
+		return
+	}
+	currentHash, err := lockfile.HashDir(entry.Output)
+	if err != nil {
+		return // nothing there yet (e.g. moved/removed by hand) -- exporter will just create it
+	}
+	if currentHash == entry.OutputSHA256 {
+		return
+	}
+	color.Warning("%s was hand-edited since the last export -- this run will overwrite and discard those changes", entry.Output)
+}
+
+// recordExport pins what an export just wrote: a combined hash of its
+// source artifact dir(s) and a hash of the output it produced, so a future
+// export can tell "source changed, needs re-export" (agentworks status)
+// apart from "output was hand-edited" (warnIfHandEdited). sourceDirs are
+// stored root-relative (like Imports' keys), so `agentworks status`'s path
+// filter and display are stable regardless of the working directory an
+// export ran from.
+func recordExport(root string, lf *lockfile.Lockfile, target, artifactKey string, sourceDirs []string, out string) error {
+	relDirs := make([]string, len(sourceDirs))
+	for i, d := range sourceDirs {
+		rel, err := rootRelKey(root, d)
+		if err != nil {
+			return err
+		}
+		relDirs[i] = rel
+	}
+
+	sourceHash, err := hashArtifactDirs(sourceDirs)
+	if err != nil {
+		return err
+	}
+	outAbs, err := filepath.Abs(out)
+	if err != nil {
+		return err
+	}
+	outputHash, err := lockfile.HashDir(outAbs)
+	if err != nil {
+		return err
+	}
+	lf.SetExport(lockfile.ExportKey(target, artifactKey), lockfile.ExportEntry{
+		Target:       target,
+		Artifact:     strings.Join(relDirs, "+"),
+		Output:       outAbs,
+		SourceSHA256: sourceHash,
+		OutputSHA256: outputHash,
+		Exported:     time.Now().UTC().Format("2006-01-02"),
+	})
+	return nil
 }
 
 func init() {

@@ -117,6 +117,17 @@ A skill or agent can also have an `evals/` directory (a starter one is scaffolde
 automatically) of `<kind>.md`-adjacent YAML case files for `agentworks eval` -- see
 that command below.
 
+An artifact can optionally be namespace-scoped -- `agentworks new skill
+team-a/csv-analyzer` sets `namespace: team-a` in its frontmatter and nests it at
+`skills/team-a/csv-analyzer/skill.md` instead of `skills/csv-analyzer/skill.md` -- so
+two teams (or two projects merged into one registry) can each have their own
+`csv-analyzer` without colliding. Reference it the same qualified way everywhere else
+an artifact is named: a workflow's `steps:`, `agentworks validate`/`export`'s path
+argument, `--bundle` members. An unnamespaced artifact is unaffected either way.
+
+`agentworks add`/`export` write an `agentworks.lock` at the project root -- see
+"Drift and supply-chain safety" below.
+
 ## Commands
 
 | Command | What it does |
@@ -125,17 +136,44 @@ that command below.
 | `agentworks new <kind> [name]` | Scaffold a new agent/skill/tool/hook/workflow. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. Pass `--from-template <id>` to start from a curated built-in template instead of the generic blank scaffold (see `agentworks templates`) — its own description covers you if you don't pass `--description`. |
 | `agentworks templates [kind]` | Table of the built-in starter templates `--from-template` can scaffold from (two per kind, three for agent, four for skill: e.g. a tool's `api-wrapper`/`cli-wrapper`, a workflow's `research-then-act`/`fetch-then-review`, a skill's `pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's PowerPoint/Excel skills). Pass a kind to filter. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |
-| `agentworks validate [path]` | Parse and validate one artifact or the whole project. Beyond the generic checks (name/description/kind), also catches export-readiness gaps per kind: a workflow's `steps:` must resolve to real artifacts, a hook's `events`/`command` must be set together, and a tool declaring `auth` must also declare `command`. Also lints description quality — too long (over the [Agent Skills spec](https://agentskills.io/specification)'s 1024-character limit), too short/vague, redundant with the name, or overlapping heavily with another same-kind artifact's description (checked project-wide) — printed as warnings that don't fail the command unless `--strict` is passed. |
+| `agentworks validate [path]` | Parse and validate one artifact or the whole project. Beyond the generic checks (name/description/kind), also catches export-readiness gaps per kind: a workflow's `steps:` must resolve to real artifacts, a hook's `events`/`command` must be set together, and a tool declaring `auth` must also declare `command`. Also lints description quality — too long (over the [Agent Skills spec](https://agentskills.io/specification)'s 1024-character limit), too short/vague, redundant with the name, or overlapping heavily with another same-kind artifact's description (checked project-wide) — and flags a hook/tool `command` that will run arbitrary shell code (see "Drift and supply-chain safety") — all printed as warnings that don't fail the command unless `--strict` is passed. |
 | `agentworks test [path]` | Run the `test:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it). |
 | `agentworks eval [path]` | Behavior-test a skill/agent: for each case under its `evals/` directory, pipe the case's `prompt` to the artifact's `eval_runner` command (or the project's `agentworks.yaml` `eval.default_runner` if it doesn't set its own) and check the runner's stdout against the case's `assert` rules (`contains`/`not_contains`/`matches`/`not_matches`/`max_length`/`min_length`). AgentWorks never calls a model itself here — `eval_runner` is your own shell command (a script calling whatever model/API you want, `claude -p`, or anything else reading a prompt on stdin and printing a response on stdout), the same "orchestrate, don't execute" split `agentworks test` and workflow export already follow. With no path, runs every artifact with an `evals/` directory; artifacts without one, or without a runner configured, are skipped rather than failed. Pass `--case <name>` to re-run a single case. |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
 | `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format. `claude-code` and `github-copilot` have a real exporter for all five kinds: skills (the shared [Agent Skills](https://agentskills.io/specification) format, also used by `chatgpt`), tools and workflow tool-steps as an MCP server registration (`.mcp.json` / Agent Plugins' `mcp.json`, `auth` env vars passed through as `${VAR}` references, never literal secrets), agents as a subagent file (`agents/<name>.md` / `com.github.copilot/agents/<name>.agent.md`), hooks as a lifecycle-event handler (`hooks/hooks.json` / `com.github.copilot/hooks/hooks.json`), and workflows as a bundled plugin composing all of the above plus a generated orchestrator command (the vendor's own agent loop runs it; AgentWorks doesn't execute anything itself). `m365-copilot` exports skills and agents as a declarative agent in a Microsoft 365 app package zip. Its `manifest.json` developer/privacy/terms fields come from an optional `publisher:` block in `agentworks.yaml` (`name`/`website`/`privacy_url`/`terms_url`/`accent_color`) when a project sets one; otherwise they're clearly-labeled placeholders, and the CLI warns you after export so it's not a silent gap. `agentworks targets` shows the full matrix. Pass `--all` (every artifact in the project) or `--kind <kind>` (every artifact of one kind) instead of a path to export the whole project in one call, each artifact to its own output; a kind the target can't consume is skipped with a warning rather than failing the run. Pass several paths (or one path with `--bundle <name>`) to package multiple artifacts into a single plugin instead of one per artifact -- only `claude-code`/`github-copilot` support this, since it's their native format that's actually meant to bundle several components together; a tool member's own `src/`-relative command is namespaced under `tools/<name>/` so multiple tools' files don't collide. |
-| `agentworks add <url>` | Import a published skill or Claude Code plugin into this project — the reverse of `export`. Accepts an `owner/repo` GitHub shorthand, a full `github.com` repo/tree/blob URL, a `raw.githubusercontent.com` file URL, or a direct `.zip`/`.tar.gz` archive URL (including agentskills.codes's download links). A bare Agent Skill (`SKILL.md` at its root) becomes one skill artifact, supporting files included. A Claude Code plugin (`.claude-plugin/plugin.json` at its root) decomposes into one artifact per skill/agent it contains; tools and hooks inside a fetched plugin aren't supported yet and are reported, not silently dropped. A name that doesn't fit AgentWorks' slug rules is converted automatically, with the original preserved in a `source:` provenance block alongside where it came from. `--name` overrides the derived name (single-skill imports only); `--dry-run` shows what would be imported without writing anything. With no URL and no argument, it launches the marketplace search TUI in an interactive terminal. |
+| `agentworks add <url>` | Import a published skill or Claude Code plugin into this project — the reverse of `export`. Accepts an `owner/repo` GitHub shorthand, a full `github.com` repo/tree/blob URL, a `raw.githubusercontent.com` file URL, or a direct `.zip`/`.tar.gz` archive URL (including agentskills.codes's download links). A bare Agent Skill (`SKILL.md` at its root) becomes one skill artifact, supporting files included. A Claude Code plugin (`.claude-plugin/plugin.json` at its root) decomposes into one artifact per skill/agent it contains; tools and hooks inside a fetched plugin aren't supported yet and are reported, not silently dropped. A name that doesn't fit AgentWorks' slug rules is converted automatically, with the original preserved in a `source:` provenance block alongside where it came from. `--name` overrides the derived name (single-skill imports only); `--dry-run` shows what would be imported without writing anything. If any imported content declares a shell `command` (see "Drift and supply-chain safety"), it's printed and you're asked to confirm — `--yes` skips that prompt for scripted use. Every import is pinned in `agentworks.lock`. With no URL and no argument, it launches the marketplace search TUI in an interactive terminal. |
+| `agentworks update [path...]` | Check artifacts imported with `add` for upstream changes: re-fetches each locked source and compares its content hash against what was pinned at import time. Report-only by default; `--apply` overwrites a changed artifact with the fresh content (refusing rather than silently renaming/moving it if upstream itself renamed the artifact) and updates the pin, subject to the same shell-command confirmation gate as `add` (`--yes` to skip it). With no path, checks every import in `agentworks.lock`. |
+| `agentworks status [path]` | Fully offline check of `dist/` output against `agentworks.lock`'s export records: `in sync`, `stale` (source artifact changed, re-export), `modified` (dist was hand-edited since the last export — re-exporting discards it), or `missing`. |
 | `agentworks tui` | Full-screen Bubble Tea browser: drill from kind → artifact → its rendered frontmatter and body. Press `n` to scaffold a new artifact (the same wizard `agentworks new` uses), `e` to export the current one to a vendor target with a zip toggle, `t` to run its declared `test:` command, `a` to search and import from agentskills.codes plus the Claude Code and GitHub Copilot marketplaces, or `b` to browse/search the built-in starter templates and create straight from one — all run right there, no dropping back to the CLI. |
 | `agentworks version` | Print version/commit/build-date info. |
 
 Global flags: `-p, --project` (path inside the project to operate on, default `.`,
 resolved upward like `git` finds a repo root), `-v, --verbose`, `-l, --log-level`.
+
+## Drift and supply-chain safety
+
+`agentworks add` and `agentworks export` both write to a single `agentworks.lock` at
+the project root:
+
+- **Imports** (`agentworks add`) are pinned by a content hash of the raw fetched
+  source, plus where it came from (repo/ref/path). `agentworks update` re-fetches
+  that same source later and reports (or, with `--apply`, applies) any drift — the
+  "did an imported skill change upstream without me noticing" gap.
+- **Exports** (`agentworks export`) are pinned by a hash of both the source
+  artifact(s) and the exported output. `agentworks status` reads this back
+  fully offline to tell a hand-edited `dist/` (edits export would silently discard)
+  apart from a merely stale one (the source changed since the last export). `export`
+  itself also warns before overwriting a hand-edited output.
+
+Separately, `agentworks validate`, `agentworks add`, and `agentworks export` all scan
+a hook/tool's `command` field — arbitrary shell that runs with your own permissions
+the moment it's triggered/invoked — for both the fact that it exists and a small
+denylist of shapes that are almost always hostile (piping a download into a shell,
+a base64-decoded payload, a raw `/dev/tcp` reverse shell, `sudo`, setting a setuid
+bit). `validate` and `export` only warn; `add` (and `update --apply`) require an
+explicit `y`/`--yes` before writing anything that triggers a warning. This is a scan
+and a confirmation gate, not a sandbox — it catches sloppy or obviously hostile
+commands, not a determined obfuscator.
 
 ## Development
 

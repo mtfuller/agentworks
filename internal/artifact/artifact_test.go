@@ -164,6 +164,30 @@ func TestValidate(t *testing.T) {
 			a:       Artifact{Frontmatter: Frontmatter{Kind: KindSkill, Name: "demo", Description: "x"}, Dir: "skills/other"},
 			wantErr: true,
 		},
+		{
+			name: "namespaced, matching parent dir",
+			a: Artifact{
+				Frontmatter: Frontmatter{Kind: KindSkill, Name: "demo", Namespace: "team-a", Description: "x"},
+				Dir:         "skills/team-a/demo",
+			},
+			wantErr: false,
+		},
+		{
+			name: "namespaced, mismatched parent dir",
+			a: Artifact{
+				Frontmatter: Frontmatter{Kind: KindSkill, Name: "demo", Namespace: "team-a", Description: "x"},
+				Dir:         "skills/team-b/demo",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid namespace slug",
+			a: Artifact{
+				Frontmatter: Frontmatter{Kind: KindSkill, Name: "demo", Namespace: "Team A", Description: "x"},
+				Dir:         "skills/Team A/demo",
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -173,6 +197,18 @@ func TestValidate(t *testing.T) {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestQualifiedName(t *testing.T) {
+	unnamespaced := Artifact{Frontmatter: Frontmatter{Name: "demo"}}
+	if got := unnamespaced.QualifiedName(); got != "demo" {
+		t.Errorf("QualifiedName() = %q, want %q", got, "demo")
+	}
+
+	namespaced := Artifact{Frontmatter: Frontmatter{Name: "demo", Namespace: "team-a"}}
+	if got := namespaced.QualifiedName(); got != "team-a/demo" {
+		t.Errorf("QualifiedName() = %q, want %q", got, "team-a/demo")
 	}
 }
 

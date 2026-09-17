@@ -28,6 +28,10 @@ var newCmd = &cobra.Command{
 
 Kind is one of: agent, skill, tool, hook, workflow.
 
+Name may be namespace-qualified ("team-a/csv-analyzer") to scope it under a
+team/org prefix instead of the flat top-level namespace -- it lands at
+<kind>s/team-a/csv-analyzer/<kind>.md instead of <kind>s/csv-analyzer/<kind>.md.
+
 Pass --description (and kind/name as arguments) for a non-interactive run
 suitable for scripts. Leave any of kind, name, or --description out in an
 interactive terminal and a short wizard fills in the rest.`),

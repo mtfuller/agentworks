@@ -7,7 +7,6 @@ package workflowsteps
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/project"
@@ -47,7 +46,7 @@ func Resolve(a *artifact.Artifact) ([]Step, error) {
 			return nil, fmt.Errorf("%s: step %d: %w", a.Dir, i, err)
 		}
 
-		dir := filepath.Join(root, kind.DirName(), name)
+		dir := project.ResolveArtifactDir(root, kind, name)
 		loaded, err := artifact.Load(dir, kind)
 		if err != nil {
 			return nil, fmt.Errorf("%s: step %d references %s %q, but %w", a.Dir, i, kind, name, err)

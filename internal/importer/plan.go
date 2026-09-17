@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/targets/agentskills"
 	"github.com/mtfuller/agentworks/internal/targets/claudecode"
@@ -30,6 +31,20 @@ type Plan struct {
 	PluginName  string // "" for a bare-skill import
 	Artifacts   []*artifact.Artifact
 	Unsupported []string // e.g. "hooks/hooks.json (hook import not supported yet)"
+
+	// HashSources maps each artifact's (plan-computed) Dir to the raw
+	// fetched location its content came from -- a directory for a skill,
+	// a single file for an agent. Callers (see cmd/add.go, cmd/update.go)
+	// content-hash this to pin exactly what was imported in
+	// internal/lockfile, independent of AgentWorks' own
+	// finalizeArtifact-applied renaming/description fallback.
+	HashSources map[string]string
+	// Subpaths maps each artifact's Dir to its path relative to this
+	// Plan's Source root (e.g. "skills/foo", "agents/bar.md", or "" for a
+	// bare single-skill import where the artifact IS the source root).
+	// Recorded in the lockfile so `agentworks update` can find the same
+	// spot again after a fresh Fetch of the same Source.
+	Subpaths map[string]string
 
 	tempDir string
 	srcDirs map[string]string // artifact.Dir -> fetched dir to copy supporting files from
@@ -86,6 +101,41 @@ func (p *Plan) Apply() error {
 	return nil
 }
 
+// RecordLockEntries pins what Apply actually wrote for every artifact in
+// the plan into lf (an already-loaded internal/lockfile.Lockfile) -- a
+// content hash of the plan's raw HashSources for each artifact, plus where
+// it came from, so `agentworks update` has something to compare a future
+// fetch against. Callers (cmd/add.go, the TUI marketplace import) still
+// own lf.Save themselves, so a batch of several imports in a row only
+// writes agentworks.lock once.
+func (p *Plan) RecordLockEntries(root string, lf *lockfile.Lockfile) error {
+	imported := time.Now().UTC().Format("2006-01-02")
+	for _, a := range p.Artifacts {
+		hash, err := lockfile.HashDir(p.HashSources[a.Dir])
+		if err != nil {
+			return err
+		}
+		key, err := lockfile.RelKey(root, a.Dir)
+		if err != nil {
+			return err
+		}
+		lf.SetImport(key, lockfile.ImportEntry{
+			Kind: string(a.Kind),
+			Source: lockfile.SourceRef{
+				Type: string(p.Source.Kind),
+				Repo: p.Source.Repo,
+				Ref:  p.Source.Ref,
+				Path: p.Source.Path,
+				URL:  p.Source.URL,
+			},
+			SourceSubpath: p.Subpaths[a.Dir],
+			ContentSHA256: hash,
+			Imported:      imported,
+		})
+	}
+	return nil
+}
+
 // Close removes the plan's fetched temp directory. Safe to call on a Plan
 // with no temp dir (e.g. one built directly in a test).
 func (p *Plan) Close() error {
@@ -93,6 +143,40 @@ func (p *Plan) Close() error {
 		return nil
 	}
 	return os.RemoveAll(p.tempDir)
+}
+
+// Overwrite writes exactly one artifact from the plan to dir, replacing
+// whatever is already there. Unlike Apply, it has no collision check
+// (replacing existing content is the point) and only ever touches dir --
+// used by `agentworks update --apply` to refresh a single already-imported
+// artifact without re-importing every sibling artifact a multi-artifact
+// plugin source might also contain, which Apply's all-or-nothing collision
+// check would otherwise reject wholesale (those siblings already exist on
+// disk too, from the original import).
+//
+// a.Dir is a plan-computed directory (from Artifacts/HashSources/Subpaths)
+// that may differ from dir (an update keeps an artifact at its existing
+// local directory even if a fresh fetch would slugify it differently); the
+// copy-source lookup keys off a's original Dir, so pass a exactly as it
+// came from p.Artifacts.
+func (p *Plan) Overwrite(a *artifact.Artifact, dir string) error {
+	orig := a.Dir
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("clearing %s: %w", dir, err)
+	}
+	a.Dir = dir
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if err := a.Save(); err != nil {
+		return err
+	}
+	if src, ok := p.srcDirs[orig]; ok {
+		if err := filecopy.CopyDirExcept(src, dir, "SKILL.md", a.Kind.FileName()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // detect decides what a fetched directory actually is and dispatches to

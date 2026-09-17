@@ -24,12 +24,18 @@ var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$`)
 // (e.g. a tool's "entrypoint", a hook's "events") round-trip through Extra
 // so the parser doesn't need a separate struct per kind.
 type Frontmatter struct {
-	Kind        Kind           `yaml:"kind"`
-	Name        string         `yaml:"name"`
-	Description string         `yaml:"description"`
-	Version     string         `yaml:"version,omitempty"`
-	Targets     []string       `yaml:"targets,omitempty"`
-	Extra       map[string]any `yaml:",inline"`
+	Kind        Kind     `yaml:"kind"`
+	Name        string   `yaml:"name"`
+	Description string   `yaml:"description"`
+	Version     string   `yaml:"version,omitempty"`
+	Targets     []string `yaml:"targets,omitempty"`
+	// Namespace optionally scopes an artifact under a team/org prefix (e.g.
+	// "team-a"), so two projects (or two teams within one registry) can
+	// each have their own "csv-analyzer" without colliding. When set, the
+	// artifact lives at "<kind>s/<namespace>/<name>/<kind>.md" instead of
+	// "<kind>s/<name>/<kind>.md" -- see Validate and QualifiedName.
+	Namespace string         `yaml:"namespace,omitempty"`
+	Extra     map[string]any `yaml:",inline"`
 }
 
 // ExtraString returns Extra[key] as a string, or "" if unset/not a string.
@@ -69,6 +75,19 @@ func (a *Artifact) File() string {
 	return filepath.Join(a.Dir, a.Kind.FileName())
 }
 
+// QualifiedName is the artifact's full reference string: "namespace/name"
+// when Namespace is set, otherwise just Name. This is the form accepted
+// back wherever an artifact is referenced by string -- a workflow's
+// `steps:` entries, a CLI path argument, a bundle member -- since
+// filepath.Join(root, kind.DirName(), qualifiedName) resolves to the right
+// directory either way.
+func (a *Artifact) QualifiedName() string {
+	if a.Namespace == "" {
+		return a.Name
+	}
+	return a.Namespace + "/" + a.Name
+}
+
 // Validate checks that an artifact's required fields are present and
 // well-formed, independent of any vendor target.
 func (a *Artifact) Validate() error {
@@ -85,9 +104,17 @@ func (a *Artifact) Validate() error {
 	if a.Description == "" {
 		errs = append(errs, "description is required")
 	}
+	if a.Namespace != "" && !namePattern.MatchString(a.Namespace) {
+		errs = append(errs, fmt.Sprintf("namespace %q must be lowercase letters, digits, and hyphens", a.Namespace))
+	}
 	if a.Dir != "" {
 		if base := filepath.Base(a.Dir); base != a.Name && a.Name != "" {
 			errs = append(errs, fmt.Sprintf("name %q does not match its directory %q", a.Name, base))
+		}
+		if a.Namespace != "" {
+			if parent := filepath.Base(filepath.Dir(a.Dir)); parent != a.Namespace {
+				errs = append(errs, fmt.Sprintf("namespace %q does not match its parent directory %q", a.Namespace, parent))
+			}
 		}
 	}
 

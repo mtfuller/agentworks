@@ -41,26 +41,27 @@ func (exporter) ExportBundle(name, description string, artifacts []*artifact.Art
 	for _, m := range artifacts {
 		switch m.Kind {
 		case artifact.KindSkill:
-			if err := agentskills.Write(m, filepath.Join(pluginDir, "skills", m.Name)); err != nil {
-				return "", fmt.Errorf("bundling skill %q: %w", m.Name, err)
+			if err := agentskills.Write(m, filepath.Join(pluginDir, "skills", m.QualifiedName())); err != nil {
+				return "", fmt.Errorf("bundling skill %q: %w", m.QualifiedName(), err)
 			}
 		case artifact.KindAgent:
-			path := filepath.Join(copilotDir, "agents", m.Name+".agent.md")
+			path := filepath.Join(copilotDir, "agents", m.QualifiedName()+".agent.md")
 			if err := writeCopilotAgentFile(path, m); err != nil {
-				return "", fmt.Errorf("bundling agent %q: %w", m.Name, err)
+				return "", fmt.Errorf("bundling agent %q: %w", m.QualifiedName(), err)
 			}
 		case artifact.KindTool:
-			// Namespaced under tools/<name>/, not the plugin root: two
-			// tools' own src/ dirs would otherwise collide.
-			toolDir := filepath.Join("tools", m.Name)
+			// Namespaced under tools/<qualified-name>/, not the plugin
+			// root: two tools' own src/ dirs would otherwise collide --
+			// including two same-named tools from different namespaces.
+			toolDir := filepath.Join("tools", m.QualifiedName())
 			if err := filecopy.CopyArtifactFiles(m, filepath.Join(pluginDir, toolDir)); err != nil {
-				return "", fmt.Errorf("bundling tool %q: %w", m.Name, err)
+				return "", fmt.Errorf("bundling tool %q: %w", m.QualifiedName(), err)
 			}
 			server, err := mcpconfig.ServerForDir(m, toolDir)
 			if err != nil {
-				return "", fmt.Errorf("bundling tool %q: %w", m.Name, err)
+				return "", fmt.Errorf("bundling tool %q: %w", m.QualifiedName(), err)
 			}
-			mcpServers[m.Name] = server
+			mcpServers[m.QualifiedName()] = server
 		case artifact.KindHook:
 			hooks = append(hooks, m)
 		}

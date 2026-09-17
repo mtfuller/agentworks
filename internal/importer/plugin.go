@@ -27,7 +27,13 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		return nil, err
 	}
 
-	plan := &Plan{Source: src, PluginName: pluginName, srcDirs: map[string]string{}}
+	plan := &Plan{
+		Source:      src,
+		PluginName:  pluginName,
+		srcDirs:     map[string]string{},
+		HashSources: map[string]string{},
+		Subpaths:    map[string]string{},
+	}
 
 	skillDirs, err := filepath.Glob(filepath.Join(contentDir, "skills", "*"))
 	if err != nil {
@@ -47,6 +53,8 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		a.Dir = filepath.Join(root, artifact.KindSkill.DirName(), a.Name)
 		plan.Artifacts = append(plan.Artifacts, a)
 		plan.srcDirs[a.Dir] = dir
+		plan.HashSources[a.Dir] = dir
+		plan.Subpaths[a.Dir] = subpathOf(contentDir, dir)
 	}
 
 	agentFiles, err := filepath.Glob(filepath.Join(contentDir, "agents", "*.md"))
@@ -63,6 +71,8 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		}
 		a.Dir = filepath.Join(root, artifact.KindAgent.DirName(), a.Name)
 		plan.Artifacts = append(plan.Artifacts, a)
+		plan.HashSources[a.Dir] = path
+		plan.Subpaths[a.Dir] = subpathOf(contentDir, path)
 	}
 
 	if _, err := os.Stat(filepath.Join(contentDir, "hooks", "hooks.json")); err == nil {
@@ -76,4 +86,16 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		return nil, fmt.Errorf("%s: plugin has no importable skills or agents", src)
 	}
 	return plan, nil
+}
+
+// subpathOf returns loc's path relative to contentDir, slash-normalized,
+// falling back to "" (rather than propagating a filepath.Rel error that
+// can't actually happen here -- loc always comes from a Glob rooted at
+// contentDir) so a Plan's Subpaths always has a usable value.
+func subpathOf(contentDir, loc string) string {
+	rel, err := filepath.Rel(contentDir, loc)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }

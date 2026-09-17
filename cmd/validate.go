@@ -69,6 +69,10 @@ set.`,
 				color.Warning("%s: %s", w.Dir, w.Message)
 				warned++
 			}
+			for _, w := range a.LintSecurity() {
+				color.Warning("%s: %s", w.Dir, w.Message)
+				warned++
+			}
 			color.Success("%s (%s)", a.Name, a.Kind)
 		}
 

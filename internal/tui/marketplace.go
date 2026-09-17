@@ -3,11 +3,13 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/mtfuller/agentworks/internal/importer"
+	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/marketplace"
 )
 
@@ -46,6 +48,13 @@ type marketplaceResultsMsg struct {
 type marketplaceImportedMsg struct {
 	plan *importer.Plan
 	err  error
+	// securityWarnings are LintSecurity hits on the imported artifacts
+	// (see internal/artifact.LintSecurity) -- surfaced after the fact
+	// rather than as a blocking confirmation dialog, unlike `agentworks
+	// add`'s CLI gate: this bubbletea flow has no synchronous prompt to
+	// hook one into, and the marketplace is a curated, lighter-weight
+	// entry point already.
+	securityWarnings []string
 }
 
 // startMarketplace opens the search pane and kicks off an async fetch --
@@ -99,7 +108,21 @@ func (m Model) importSelected() (tea.Model, tea.Cmd) {
 		if err := plan.Apply(); err != nil {
 			return marketplaceImportedMsg{err: err}
 		}
-		return marketplaceImportedMsg{plan: plan}
+
+		var warnings []string
+		for _, a := range plan.Artifacts {
+			for _, w := range a.LintSecurity() {
+				warnings = append(warnings, w.Message)
+			}
+		}
+
+		if lf, err := lockfile.Load(root); err == nil {
+			if err := plan.RecordLockEntries(root, lf); err == nil {
+				_ = lf.Save(root)
+			}
+		}
+
+		return marketplaceImportedMsg{plan: plan, securityWarnings: warnings}
 	}
 }
 
@@ -121,6 +144,9 @@ func (m Model) handleMarketplaceImported(msg marketplaceImportedMsg) (tea.Model,
 	m.statusMsg = fmt.Sprintf("Imported %d artifact(s)", len(msg.plan.Artifacts))
 	for _, u := range msg.plan.Unsupported {
 		m.statusMsg += "; " + u
+	}
+	if len(msg.securityWarnings) > 0 {
+		m.statusMsg += fmt.Sprintf("; ⚠ %s", strings.Join(msg.securityWarnings, "; "))
 	}
 	return m.refreshAfterCreate(kind)
 }

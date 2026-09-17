@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/project"
 )
 
@@ -320,6 +321,146 @@ func TestApplyRespectsNameOverride(t *testing.T) {
 	}
 	if plan.Artifacts[0].Name != "custom-name" {
 		t.Errorf("Name = %q, want custom-name", plan.Artifacts[0].Name)
+	}
+}
+
+func TestPlanTracksHashSourcesAndSubpaths(t *testing.T) {
+	root := newTestProject(t)
+	fixture := t.TempDir()
+	writeSkillFixture(t, fixture, "csv-analyzer", "Analyze a CSV.")
+
+	src := Source{Kind: SourceGitHub, Repo: "owner/csv-analyzer"}
+	plan, err := detect(root, src, fixture, Options{})
+	if err != nil {
+		t.Fatalf("detect() error = %v", err)
+	}
+	a := plan.Artifacts[0]
+	if plan.HashSources[a.Dir] != fixture {
+		t.Errorf("HashSources[%s] = %q, want %q (the whole fetched root for a bare skill)", a.Dir, plan.HashSources[a.Dir], fixture)
+	}
+	if plan.Subpaths[a.Dir] != "" {
+		t.Errorf("Subpaths[%s] = %q, want \"\" for a bare skill import", a.Dir, plan.Subpaths[a.Dir])
+	}
+}
+
+func TestPlanPluginTracksHashSourcesAndSubpathsPerArtifact(t *testing.T) {
+	root := newTestProject(t)
+	fixture := writePluginFixture(t)
+
+	src := Source{Kind: SourceGitHub, Repo: "owner/demo-kit"}
+	plan, err := detect(root, src, fixture, Options{})
+	if err != nil {
+		t.Fatalf("detect() error = %v", err)
+	}
+
+	for _, a := range plan.Artifacts {
+		hashSrc, ok := plan.HashSources[a.Dir]
+		if !ok || hashSrc == "" {
+			t.Errorf("HashSources[%s] missing", a.Dir)
+		}
+		subpath, ok := plan.Subpaths[a.Dir]
+		if !ok {
+			t.Errorf("Subpaths[%s] missing", a.Dir)
+			continue
+		}
+		switch a.Kind {
+		case artifact.KindSkill:
+			if !strings.HasPrefix(subpath, "skills/") {
+				t.Errorf("Subpaths[%s] = %q, want it to start with skills/", a.Dir, subpath)
+			}
+		case artifact.KindAgent:
+			if subpath != "agents/a1.md" {
+				t.Errorf("Subpaths[%s] = %q, want agents/a1.md", a.Dir, subpath)
+			}
+		}
+	}
+}
+
+func TestPlanRecordLockEntries(t *testing.T) {
+	root := newTestProject(t)
+	fixture := t.TempDir()
+	writeSkillFixture(t, fixture, "csv-analyzer", "Analyze a CSV.")
+
+	src := Source{Kind: SourceGitHub, Repo: "owner/csv-analyzer", Ref: "main"}
+	plan, err := detect(root, src, fixture, Options{})
+	if err != nil {
+		t.Fatalf("detect() error = %v", err)
+	}
+	if err := plan.Apply(); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	lf, err := lockfile.Load(root)
+	if err != nil {
+		t.Fatalf("lockfile.Load() error = %v", err)
+	}
+	if err := plan.RecordLockEntries(root, lf); err != nil {
+		t.Fatalf("RecordLockEntries() error = %v", err)
+	}
+
+	entry, ok := lf.Imports["skills/csv-analyzer"]
+	if !ok {
+		t.Fatalf("Imports missing skills/csv-analyzer: %+v", lf.Imports)
+	}
+	if entry.Source.Repo != "owner/csv-analyzer" || entry.Source.Ref != "main" {
+		t.Errorf("entry.Source = %+v, want repo=owner/csv-analyzer ref=main", entry.Source)
+	}
+	if entry.ContentSHA256 == "" {
+		t.Error("entry.ContentSHA256 should be set")
+	}
+
+	// The hash should be reproducible from the same fetched content, so a
+	// no-op "update" against unchanged content would report no drift.
+	wantHash, err := lockfile.HashDir(fixture)
+	if err != nil {
+		t.Fatalf("HashDir() error = %v", err)
+	}
+	if entry.ContentSHA256 != wantHash {
+		t.Errorf("entry.ContentSHA256 = %q, want %q (hash of the raw fetched content, not the finalized artifact)", entry.ContentSHA256, wantHash)
+	}
+}
+
+func TestPlanOverwriteKeepsExistingDirAndRefreshesContent(t *testing.T) {
+	root := newTestProject(t)
+	fixture := t.TempDir()
+	writeSkillFixture(t, fixture, "csv-analyzer", "Analyze a CSV.")
+
+	src := Source{Kind: SourceGitHub, Repo: "owner/csv-analyzer"}
+	plan, err := detect(root, src, fixture, Options{})
+	if err != nil {
+		t.Fatalf("detect() error = %v", err)
+	}
+	a := plan.Artifacts[0]
+
+	// existingDir simulates a local artifact whose directory doesn't
+	// exactly match what a fresh detect() would compute (e.g. --name was
+	// used at the original import time) -- Overwrite must still find the
+	// right copy source via a's *original* Dir, not the explicit dir.
+	existingDir := filepath.Join(root, "skills", "my-custom-name")
+	if err := os.MkdirAll(existingDir, 0o755); err != nil {
+		t.Fatalf("mkdir existingDir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(existingDir, "skill.md"), []byte("stale content"), 0o644); err != nil {
+		t.Fatalf("seeding stale content: %v", err)
+	}
+	a.Name = "my-custom-name" // Validate() requires Name to match dir basename
+
+	if err := plan.Overwrite(a, existingDir); err != nil {
+		t.Fatalf("Overwrite() error = %v", err)
+	}
+
+	manifest, err := os.ReadFile(filepath.Join(existingDir, "skill.md"))
+	if err != nil {
+		t.Fatalf("skill.md missing after Overwrite: %v", err)
+	}
+	if strings.Contains(string(manifest), "stale content") {
+		t.Error("Overwrite() left the old stale content in place")
+	}
+	if !strings.Contains(string(manifest), "kind: skill") {
+		t.Errorf("skill.md content = %q, want freshly-rendered frontmatter", manifest)
+	}
+	if _, err := os.Stat(filepath.Join(existingDir, "scripts", "main.py")); err != nil {
+		t.Errorf("scripts/main.py not copied by Overwrite: %v", err)
 	}
 }
 
