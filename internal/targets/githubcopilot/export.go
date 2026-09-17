@@ -56,8 +56,10 @@ func (exporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportO
 		return exportSkill(a, outDir, opts)
 	case artifact.KindTool:
 		return exportTool(a, outDir, opts)
+	case artifact.KindWorkflow:
+		return exportWorkflow(a, outDir, opts)
 	default:
-		return "", fmt.Errorf("github-copilot export doesn't support %s yet (skills and tools only)", a.Kind)
+		return "", fmt.Errorf("github-copilot export doesn't support %s yet (skills, tools, and workflows only)", a.Kind)
 	}
 }
 
@@ -102,13 +104,8 @@ func exportTool(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 	}
 
 	file := mcpconfig.File{Schema: mcpSchema, MCPServers: map[string]mcpconfig.Server{a.Name: server}}
-	data, err := json.MarshalIndent(file, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("encoding mcp.json: %w", err)
-	}
-	path := filepath.Join(pluginDir, "mcp.json")
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
-		return "", fmt.Errorf("writing %s: %w", path, err)
+	if err := writeMCPFile(filepath.Join(pluginDir, "mcp.json"), file); err != nil {
+		return "", err
 	}
 
 	if opts.Zip {

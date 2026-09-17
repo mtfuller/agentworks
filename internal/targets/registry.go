@@ -31,7 +31,7 @@ var registry = []Target{
 		ID:       "claude-code",
 		Name:     "Claude Code",
 		Supports: artifact.Kinds(),
-		Notes:    "Skill (Agent Skills format) and tool (MCP server) export are implemented; agents/hooks/workflows are modeled but not yet exportable.",
+		Notes:    "Skill (Agent Skills format), tool (MCP server), and workflow (a bundled plugin: subagents + MCP servers + an orchestrator command) export are implemented; standalone agents and hooks are modeled but not yet exportable.",
 	},
 	{
 		ID:       "chatgpt",
@@ -42,8 +42,8 @@ var registry = []Target{
 	{
 		ID:       "github-copilot",
 		Name:     "GitHub Copilot",
-		Supports: []artifact.Kind{artifact.KindAgent, artifact.KindSkill, artifact.KindTool},
-		Notes:    "Skill and tool (MCP server, via Agent Plugins' mcp.json) export are implemented; agents aren't yet, and there's no native hook or multi-step workflow concept.",
+		Supports: []artifact.Kind{artifact.KindAgent, artifact.KindSkill, artifact.KindTool, artifact.KindWorkflow},
+		Notes:    "Skill, tool (MCP server, via Agent Plugins' mcp.json), and workflow (a bundled plugin) export are implemented; standalone agents aren't yet, and there's no native hook concept.",
 	},
 	{
 		ID:       "m365-copilot",

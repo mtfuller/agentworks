@@ -106,10 +106,10 @@ artifacts by name).
 | `agentworks init [path]` | Scaffold a new project (`agentworks.yaml` + the 5 kind directories). |
 | `agentworks new <kind> [name]` | Scaffold a new agent/skill/tool/hook/workflow. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |
-| `agentworks validate [path]` | Parse and validate one artifact or the whole project. |
+| `agentworks validate [path]` | Parse and validate one artifact or the whole project (for a workflow, this also checks that every `steps:` entry resolves to a real agent/tool in the project). |
 | `agentworks test [path]` | Run the `test:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it). |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
-| `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format: skills export to `claude-code`, `chatgpt`, and `github-copilot` (all three build on the shared [Agent Skills](https://agentskills.io/specification) format) and to `m365-copilot` (as a declarative agent in a Microsoft 365 app package zip, with placeholder publisher info you'll need to edit before submitting to AppSource); tools export to `claude-code` and `github-copilot` as an MCP server registration (`.mcp.json` / Agent Plugins' `mcp.json`), with declared `auth` env vars passed through as `${VAR}` references, never literal secrets. `agentworks targets` shows the full matrix. |
+| `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format: skills export to `claude-code`, `chatgpt`, and `github-copilot` (all three build on the shared [Agent Skills](https://agentskills.io/specification) format) and to `m365-copilot` (as a declarative agent in a Microsoft 365 app package zip, with placeholder publisher info you'll need to edit before submitting to AppSource); tools export to `claude-code` and `github-copilot` as an MCP server registration (`.mcp.json` / Agent Plugins' `mcp.json`), with declared `auth` env vars passed through as `${VAR}` references, never literal secrets; workflows export to `claude-code` and `github-copilot` as a bundled plugin -- each referenced agent step becomes a subagent file, each tool step an MCP server entry, plus a generated orchestrator command that walks through the steps in order (the vendor's own agent loop runs it; AgentWorks doesn't execute anything itself). `agentworks targets` shows the full matrix. |
 | `agentworks tui` | Full-screen Bubble Tea browser: drill from kind → artifact → its rendered frontmatter and body. |
 | `agentworks version` | Print version/commit/build-date info. |
 
@@ -145,11 +145,12 @@ task install             # to GOPATH/bin
 │   ├── scaffold/                # `new` boilerplate generation, one starter per kind
 │   ├── targets/                 # vendor registry (capability matrix) + Exporter interface
 │   │   ├── agentskills/         # shared Agent Skills (agentskills.io) SKILL.md writer
-│   │   ├── mcpconfig/           # shared MCP server-entry builder (for tool export)
+│   │   ├── mcpconfig/           # shared MCP server-entry builder (for tool/workflow export)
 │   │   ├── filecopy/            # shared copy-artifact-files / zip-a-directory helpers
-│   │   ├── claudecode/          # "claude-code": skills (wraps agentskills), tools (.mcp.json)
+│   │   ├── workflowsteps/       # shared `steps:` parser -- resolves agent/tool references
+│   │   ├── claudecode/          # "claude-code": skills, tools, and workflows (bundled plugins)
 │   │   ├── chatgpt/             # the "chatgpt" skill exporter (wraps agentskills)
-│   │   ├── githubcopilot/       # "github-copilot": skills + tools, both as an Agent Plugin
+│   │   ├── githubcopilot/       # "github-copilot": skills, tools, and workflows (Agent Plugins)
 │   │   └── m365copilot/         # the "m365-copilot" declarative agent + app package exporter
 │   ├── tui/                     # Bubble Tea project browser + the `new` wizard (huh)
 │   ├── color/ logger/ spinner/ version/   # CLI-support packages from the starter template

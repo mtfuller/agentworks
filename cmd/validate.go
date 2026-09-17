@@ -8,6 +8,7 @@ import (
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/color"
 	"github.com/mtfuller/agentworks/internal/project"
+	"github.com/mtfuller/agentworks/internal/targets/workflowsteps"
 )
 
 var validateCmd = &cobra.Command{
@@ -44,6 +45,13 @@ var validateCmd = &cobra.Command{
 				color.Error("%v", err)
 				failed++
 				continue
+			}
+			if a.Kind == artifact.KindWorkflow {
+				if _, err := workflowsteps.Resolve(a); err != nil {
+					color.Error("%v", err)
+					failed++
+					continue
+				}
 			}
 			color.Success("%s (%s)", a.Name, a.Kind)
 		}

@@ -10,7 +10,6 @@
 package claudecode
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,8 +37,10 @@ func (exporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportO
 		return exportSkill(a, outDir, opts)
 	case artifact.KindTool:
 		return exportTool(a, outDir, opts)
+	case artifact.KindWorkflow:
+		return exportWorkflow(a, outDir, opts)
 	default:
-		return "", fmt.Errorf("claude-code export doesn't support %s yet (skills and tools only)", a.Kind)
+		return "", fmt.Errorf("claude-code export doesn't support %s yet (skills, tools, and workflows only)", a.Kind)
 	}
 }
 
@@ -71,13 +72,8 @@ func exportTool(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 	// No $schema: this mirrors Claude Code's own .mcp.json examples, which
 	// don't include one.
 	file := mcpconfig.File{MCPServers: map[string]mcpconfig.Server{a.Name: server}}
-	data, err := json.MarshalIndent(file, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("encoding .mcp.json: %w", err)
-	}
-	path := filepath.Join(destDir, ".mcp.json")
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
-		return "", fmt.Errorf("writing %s: %w", path, err)
+	if err := writeMCPFile(filepath.Join(destDir, ".mcp.json"), file); err != nil {
+		return "", err
 	}
 
 	if opts.Zip {
