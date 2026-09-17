@@ -30,10 +30,9 @@ type copilotHookEntry struct {
 // com.github.copilot/hooks/hooks.json, one entry per declared event, each
 // running the hook's declared command via bash.
 func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
-	events := a.ExtraStringSlice("events")
-	command := a.ExtraString("command")
-	if len(events) == 0 || command == "" {
-		return "", fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", a.Dir)
+	doc, err := buildCopilotHooksDoc([]*artifact.Artifact{a})
+	if err != nil {
+		return "", err
 	}
 
 	pluginDir := filepath.Join(outDir, a.Name)
@@ -43,25 +42,47 @@ func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 	if err := writePluginManifest(pluginDir, a); err != nil {
 		return "", err
 	}
-
-	doc := copilotHooksDoc{Version: 1, Hooks: make(map[string][]copilotHookEntry, len(events))}
-	for _, event := range events {
-		doc.Hooks[event] = []copilotHookEntry{{Type: "command", Bash: command}}
-	}
-	data, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("encoding hooks.json: %w", err)
-	}
-	path := filepath.Join(pluginDir, "com.github.copilot", "hooks", "hooks.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
-		return "", fmt.Errorf("writing %s: %w", path, err)
+	if err := writeCopilotHooksDoc(pluginDir, doc); err != nil {
+		return "", err
 	}
 
 	if opts.Zip {
 		return filecopy.ZipDir(pluginDir)
 	}
 	return pluginDir, nil
+}
+
+// buildCopilotHooksDoc accumulates one or more hook artifacts into a single
+// hooks.json document, appending an additional entry (not overwriting) when
+// more than one hook targets the same event -- so bundling several hooks
+// together doesn't silently drop all but the last one that happens to share
+// an event name.
+func buildCopilotHooksDoc(hooks []*artifact.Artifact) (copilotHooksDoc, error) {
+	doc := copilotHooksDoc{Version: 1, Hooks: map[string][]copilotHookEntry{}}
+	for _, h := range hooks {
+		events := h.ExtraStringSlice("events")
+		command := h.ExtraString("command")
+		if len(events) == 0 || command == "" {
+			return copilotHooksDoc{}, fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", h.Dir)
+		}
+		for _, event := range events {
+			doc.Hooks[event] = append(doc.Hooks[event], copilotHookEntry{Type: "command", Bash: command})
+		}
+	}
+	return doc, nil
+}
+
+func writeCopilotHooksDoc(pluginDir string, doc copilotHooksDoc) error {
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding hooks.json: %w", err)
+	}
+	path := filepath.Join(pluginDir, "com.github.copilot", "hooks", "hooks.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
 }

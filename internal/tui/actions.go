@@ -166,6 +166,7 @@ func (m Model) commitCreate() (tea.Model, tea.Cmd) {
 	a, err := scaffold.New(m.root, kind, answers.Name, scaffold.Options{
 		Description: answers.Description,
 		Targets:     targetList,
+		Template:    answers.Template,
 	})
 	if err != nil {
 		m.statusMsg = err.Error()

@@ -18,6 +18,9 @@ type Options struct {
 	Description string
 	Version     string   // defaults to "0.1.0" if empty
 	Targets     []string // defaults to none
+	// Template, if set, scaffolds from a built-in Template instead of the
+	// kind's generic default (see templates.go / GetTemplate).
+	Template string
 }
 
 // extraFile is a supporting file created alongside <kind>.md.
@@ -153,6 +156,13 @@ func New(root string, kind artifact.Kind, name string, opts Options) (*artifact.
 	spec, ok := specs[kind]
 	if !ok {
 		return nil, fmt.Errorf("no scaffold defined for kind %q", kind)
+	}
+	if opts.Template != "" {
+		t, ok := GetTemplate(kind, opts.Template)
+		if !ok {
+			return nil, fmt.Errorf("no %q template for kind %s (see 'agentworks templates')", opts.Template, kind)
+		}
+		spec = t.spec
 	}
 
 	version := opts.Version

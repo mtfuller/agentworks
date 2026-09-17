@@ -18,6 +18,11 @@ type NewArtifactAnswers struct {
 	Name        string
 	Description string
 	Targets     []string
+	// Template, if set, scaffolds from a built-in starter template (see
+	// internal/scaffold.GetTemplate) instead of the kind's generic default.
+	// Not its own form field -- it's chosen before the form opens (a CLI
+	// flag, or the TUI's template-browse pane) and just rides along.
+	Template string
 }
 
 // RunNewArtifactWizard prompts interactively (via huh) for whatever fields

@@ -1,0 +1,226 @@
+package importer
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// buildZipBytes returns an in-memory zip archive containing the given
+// entries (path -> content), with no single top-level wrapping directory.
+func buildZipBytes(t *testing.T, entries map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range entries {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("zw.Create(%q) error = %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("writing %q error = %v", name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zw.Close() error = %v", err)
+	}
+	return buf.Bytes()
+}
+
+// buildTarGzBytes returns an in-memory gzip-compressed tar archive, with
+// every entry namespaced under a single "root/" directory -- mirroring how
+// GitHub's codeload tarballs always wrap content in "<repo>-<ref>/".
+func buildTarGzBytes(t *testing.T, root string, entries map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for name, content := range entries {
+		full := root + "/" + name
+		if err := tw.WriteHeader(&tar.Header{Name: full, Mode: 0o644, Size: int64(len(content)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatalf("WriteHeader(%q) error = %v", full, err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatalf("writing %q error = %v", full, err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("tw.Close() error = %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gz.Close() error = %v", err)
+	}
+	return buf.Bytes()
+}
+
+// withTestServer swaps httpClient and codeloadBase to point at ts for the
+// duration of the test, restoring both afterward. Redirecting codeloadBase
+// unconditionally is harmless for archive-source tests (which fetch
+// src.URL directly and never consult it) and is what lets github-source
+// tests reach the fake server at all, since a Source only carries a repo
+// and ref, not a full URL.
+func withTestServer(t *testing.T, ts *httptest.Server) {
+	t.Helper()
+	origClient, origBase := httpClient, codeloadBase
+	httpClient = ts.Client()
+	codeloadBase = ts.URL
+	t.Cleanup(func() {
+		httpClient = origClient
+		codeloadBase = origBase
+	})
+}
+
+func TestFetchArchiveZip(t *testing.T) {
+	body := buildZipBytes(t, map[string]string{"SKILL.md": "---\nname: x\n---\n"})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+	}))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	dir, err := Fetch(context.Background(), Source{Kind: SourceArchive, URL: ts.URL + "/skill.zip"}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Errorf("SKILL.md not extracted: %v", err)
+	}
+}
+
+func TestFetchSniffsTarGzWithNoExtension(t *testing.T) {
+	body := buildTarGzBytes(t, "repo-main", map[string]string{"SKILL.md": "---\nname: x\n---\n"})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// No extension and no Content-Type hint -- Fetch must sniff magic bytes.
+		w.Write(body)
+	}))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	dir, err := Fetch(context.Background(), Source{Kind: SourceArchive, URL: ts.URL + "/api/skills/download/42"}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Errorf("SKILL.md not extracted: %v", err)
+	}
+}
+
+func TestFetchStripsSingleRootDir(t *testing.T) {
+	body := buildTarGzBytes(t, "repo-main", map[string]string{
+		"SKILL.md":        "---\nname: x\n---\n",
+		"scripts/main.py": "print(1)",
+	})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	dir, err := Fetch(context.Background(), Source{Kind: SourceGitHub, Repo: "owner/repo", Ref: "main"}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	// dir should be .../content/repo-main, not .../content itself.
+	if filepath.Base(dir) != "repo-main" {
+		t.Errorf("Fetch() dir = %q, want it to end in repo-main (single root stripped)", dir)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Errorf("SKILL.md not found after stripping root: %v", err)
+	}
+}
+
+func TestFetchDescendsIntoPath(t *testing.T) {
+	body := buildTarGzBytes(t, "repo-main", map[string]string{
+		"skills/pdf/SKILL.md": "---\nname: pdf\n---\n",
+		"README.md":           "not the skill",
+	})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	dir, err := Fetch(context.Background(), Source{Kind: SourceGitHub, Repo: "owner/repo", Ref: "main", Path: "skills/pdf"}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Errorf("SKILL.md not found at the descended path: %v", err)
+	}
+}
+
+func TestFetchPathNotFound(t *testing.T) {
+	body := buildTarGzBytes(t, "repo-main", map[string]string{"SKILL.md": "x"})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	_, err := Fetch(context.Background(), Source{Kind: SourceGitHub, Repo: "owner/repo", Ref: "main", Path: "does/not/exist"}, t.TempDir())
+	if err == nil {
+		t.Fatal("Fetch() with a nonexistent path expected error, got nil")
+	}
+}
+
+func TestFetchNon200ReportsStatus(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("<html>oops</html>"))
+	}))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	_, err := Fetch(context.Background(), Source{Kind: SourceArchive, URL: ts.URL + "/skill.zip"}, t.TempDir())
+	if err == nil {
+		t.Fatal("Fetch() against a 500 response expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error = %v, want it to name the HTTP status rather than fail later as an archive-parsing error", err)
+	}
+	if strings.Contains(err.Error(), "gzip:") || strings.Contains(err.Error(), "not a recognized") {
+		t.Errorf("error = %v, want a clear HTTP-status error, not an archive-parsing error", err)
+	}
+}
+
+func TestFetchGitHubFallsBackToMaster(t *testing.T) {
+	body := buildTarGzBytes(t, "repo-master", map[string]string{"SKILL.md": "x"})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tar.gz/main") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write(body)
+	}))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	dir, err := Fetch(context.Background(), Source{Kind: SourceGitHub, Repo: "owner/repo"}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Fetch() error = %v, want it to fall back to master", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Errorf("SKILL.md not found after master fallback: %v", err)
+	}
+}
+
+func TestFetchRespectsContextCancellation(t *testing.T) {
+	block := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block
+	}))
+	defer ts.Close()
+	defer close(block)
+	withTestServer(t, ts)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := Fetch(ctx, Source{Kind: SourceArchive, URL: ts.URL + "/skill.zip"}, t.TempDir())
+	if err == nil {
+		t.Fatal("Fetch() with a cancelled context expected error, got nil")
+	}
+}

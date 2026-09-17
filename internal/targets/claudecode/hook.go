@@ -33,10 +33,9 @@ type claudeHookAction struct {
 // plus hooks/hooks.json, one matcher entry per declared event, each
 // running the hook's declared command.
 func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
-	events := a.ExtraStringSlice("events")
-	command := a.ExtraString("command")
-	if len(events) == 0 || command == "" {
-		return "", fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", a.Dir)
+	doc, err := buildHooksDoc([]*artifact.Artifact{a})
+	if err != nil {
+		return "", err
 	}
 
 	pluginDir := filepath.Join(outDir, a.Name)
@@ -46,27 +45,49 @@ func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 	if err := writeClaudePluginManifest(pluginDir, a); err != nil {
 		return "", err
 	}
-
-	doc := claudeHooksDoc{Hooks: make(map[string][]claudeHookMatcher, len(events))}
-	for _, event := range events {
-		doc.Hooks[event] = []claudeHookMatcher{
-			{Hooks: []claudeHookAction{{Type: "command", Command: command}}},
-		}
-	}
-	data, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("encoding hooks.json: %w", err)
-	}
-	path := filepath.Join(pluginDir, "hooks", "hooks.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
-		return "", fmt.Errorf("writing %s: %w", path, err)
+	if err := writeHooksDoc(pluginDir, doc); err != nil {
+		return "", err
 	}
 
 	if opts.Zip {
 		return filecopy.ZipDir(pluginDir)
 	}
 	return pluginDir, nil
+}
+
+// buildHooksDoc accumulates one or more hook artifacts into a single
+// hooks.json document, appending an additional matcher entry (not
+// overwriting) when more than one hook targets the same event -- so
+// bundling several hooks together doesn't silently drop all but the last
+// one that happens to share an event name.
+func buildHooksDoc(hooks []*artifact.Artifact) (claudeHooksDoc, error) {
+	doc := claudeHooksDoc{Hooks: map[string][]claudeHookMatcher{}}
+	for _, h := range hooks {
+		events := h.ExtraStringSlice("events")
+		command := h.ExtraString("command")
+		if len(events) == 0 || command == "" {
+			return claudeHooksDoc{}, fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", h.Dir)
+		}
+		for _, event := range events {
+			doc.Hooks[event] = append(doc.Hooks[event], claudeHookMatcher{
+				Hooks: []claudeHookAction{{Type: "command", Command: command}},
+			})
+		}
+	}
+	return doc, nil
+}
+
+func writeHooksDoc(pluginDir string, doc claudeHooksDoc) error {
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding hooks.json: %w", err)
+	}
+	path := filepath.Join(pluginDir, "hooks", "hooks.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
 }

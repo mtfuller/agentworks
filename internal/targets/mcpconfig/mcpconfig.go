@@ -9,6 +9,7 @@ package mcpconfig
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 )
@@ -57,4 +58,31 @@ func ServerFor(a *artifact.Artifact) (Server, error) {
 		Args:    []string{"-c", command},
 		Env:     env,
 	}, nil
+}
+
+// ServerForDir is ServerFor, but for a tool bundled alongside others under a
+// shared plugin root (see claudecode/githubcopilot's ExportBundle): the
+// tool's own files can't all sit at the plugin root the way they do when
+// it's exported standalone (two tools' own src/ dirs would collide), so
+// they're namespaced under dir instead, and the command is wrapped to cd
+// into dir first so the tool's own relative paths still resolve exactly as
+// the artifact's author wrote them.
+func ServerForDir(a *artifact.Artifact, dir string) (Server, error) {
+	s, err := ServerFor(a)
+	if err != nil {
+		return Server{}, err
+	}
+	if dir != "" && dir != "." {
+		command := a.ExtraString("command")
+		s.Args = []string{"-c", fmt.Sprintf("cd %s && %s", shellQuote(dir), command)}
+	}
+	return s, nil
+}
+
+// shellQuote wraps s in single quotes for safe use as one sh word,
+// escaping any embedded single quotes. Artifact/bundle names are already
+// restricted to lowercase letters, digits, and hyphens, so in practice
+// there's nothing to escape -- this is defensive, not load-bearing.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

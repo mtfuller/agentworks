@@ -196,6 +196,71 @@ warning only fires when `m365copilot.UsesPlaceholderPublisher` says a required f
 (name, privacy URL, or terms URL — accent color is cosmetic, not warned about) is still
 a placeholder, so a project that's configured it stops seeing the nag.
 
+Also done as of this pass: the two items from [BRAINSTORM.md](BRAINSTORM.md)'s
+Distribution section. `agentworks export` now handles more than one artifact per call —
+`--all`/`--kind` export every matching artifact in the project individually (skipping,
+with a warning, any kind the target can't consume, rather than failing the whole run —
+see `cmd/export.go`'s `runBulkExport`); passing several paths, or one path with
+`--bundle <name>`, packages them into a single plugin instead (`targets.BundleExporter`,
+an optional capability only `claude-code`/`github-copilot` implement, since theirs are
+the two plugin formats actually meant to bundle several components together — see
+`cmd/export.go`'s `runBundleExport` and each target's `bundle.go`). A bundle's tool
+members are namespaced under `tools/<name>/` in the merged output (their own `command`
+wrapped with `cd tools/<name> && ...` via `mcpconfig.ServerForDir`) so more than one
+tool's `src/` doesn't collide; hook members merge into one `hooks.json`, appending
+matchers per event rather than overwriting when two hooks share an event. A workflow
+can't be a bundle member — it already has its own bundling-shaped export (ordered steps
++ orchestrator command), so nesting one inside a bundle is a clear error instead.
+
+Also done as of this pass: BRAINSTORM.md's Ecosystem item, "a skill/tool registry —
+pull, not just push." `agentworks add <url>` (`internal/importer`) is the reverse of
+`export` — it fetches a skill or Claude Code plugin (GitHub repo/tarball or a direct
+archive URL, no local `git` binary or `api.github.com` rate limits involved — see
+`fetch.go`'s use of `codeload.github.com`) and decomposes it back into local artifacts.
+A bare Agent Skill maps 1:1 (`agentskills.Read`, the mirror of `agentskills.Write`); a
+Claude Code plugin decomposes its `skills/*/SKILL.md` and `agents/*.md` the same way
+(`claudecode.ReadAgentFile` mirrors `writeClaudeAgentFile`). Everything is resolved into
+an `importer.Plan` before anything is written (`Prepare`/`Apply`), so a collision on
+artifact 4 of 5 never leaves the first 3 written with no way back. `internal/marketplace`
+searches agentskills.codes's real public API plus the well-known Claude Code
+(`anthropics/claude-plugins-official`) and GitHub Copilot (`github/awesome-copilot`)
+`marketplace.json` catalogs, surfaced through `agentworks tui`'s `a` key (or
+`agentworks add` with no argument, in an interactive terminal).
+
+Deliberately deferred here, for the same "genuinely not feasible yet, not overlooked"
+reason as the chatgpt case below: importing **tools** (`.mcp.json`) and **hooks**
+(`hooks/hooks.json`) *from inside a fetched plugin*. Collapsing a merged hooks.json or
+mcp.json back into "the original N artifacts" is inherently lossy/ambiguous — the same
+many-to-one problem `internal/targets/claudecode/bundle.go`'s export side has, in
+reverse — unlike skills and agents, which are a clean one-file-per-artifact mapping.
+Reported per plugin as "not supported yet" (`Plan.Unsupported`), not silently dropped
+and not a hard failure. Also deferred: decomposing GitHub Copilot's own plugin layout
+(`com.github.copilot/`) — skills already reach both vendors via the shared SKILL.md
+path, so this isn't a large gap; and non-GitHub git hosts (gitlab, bitbucket), npm- and
+command-sourced marketplace entries, and a `--force`/overwrite flag for re-importing
+over an existing artifact (a name collision is a hard error, matching `scaffold.New`'s
+existing behavior).
+
+Also done as of this pass: BRAINSTORM.md's "Starter templates" item. A `Template`
+(`internal/scaffold/templates.go`) is just a named, curated `kindSpec` — the exact same
+shape `specs` already uses for each kind's generic default — selected instead of it via
+`scaffold.Options.Template`, so `scaffold.New` stays the one code path `agentworks new`
+and the TUI both go through. Ten built-in templates ship (two per kind, e.g. a tool's
+`api-wrapper`/`cli-wrapper`), discoverable via `agentworks templates [kind]` (a static
+table, no interactivity — mirrors `agentworks targets`) and `agentworks new
+--from-template <id>`, or interactively via `agentworks tui`'s `b` key, which opens a
+browse/search pane (`internal/tui/templates.go`) and, on enter, pre-fills the *same*
+create form manual creation uses (`newArtifactForm`/`commitCreate`) rather than a
+separate form path. Unlike the marketplace pane, template data is local and static, so
+there's no fetch, no async `tea.Cmd`, and no spinner — the list is simply populated once
+in `Model.New()`. The two workflow templates deliberately leave `steps:` empty rather
+than prefilling placeholder agent/tool names that don't exist yet in a fresh project —
+matching the plain default workflow scaffold's own approach of documenting the pattern
+in prose instead of live frontmatter, so a template-scaffolded workflow never fails
+`agentworks validate` out of the box. Deliberately deferred: project-defined custom
+templates (a `templates/` directory the project itself contributes) — built-in only for
+now, confirmed with the user rather than assumed.
+
 `chatgpt` staying skill-only is different from the above: it's a *closed* investigation,
 not an open TODO — see the next section for why, so nobody re-opens it without first
 re-reading why it was closed.

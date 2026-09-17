@@ -1,8 +1,10 @@
 // Package filecopy holds the file operations every export target needs
 // regardless of vendor format: copying an artifact's supporting files into
 // an export directory (skipping its AgentWorks <kind>.md manifest, which
-// each exporter translates into its own vendor file), and zipping a
-// directory for upload.
+// each exporter translates into its own vendor file), zipping a directory
+// for upload, and -- for the reverse direction -- extracting a fetched
+// zip/tar.gz archive (see extract.go) so an importer has something to copy
+// files back out of.
 package filecopy
 
 import (
@@ -20,17 +22,30 @@ import (
 // callers write that manifest's vendor-format translation separately.
 // destDir is created if it doesn't exist.
 func CopyArtifactFiles(a *artifact.Artifact, destDir string) error {
-	skip := a.Kind.FileName()
-	return filepath.WalkDir(a.Dir, func(path string, d os.DirEntry, err error) error {
+	return CopyDirExcept(a.Dir, destDir, a.Kind.FileName())
+}
+
+// CopyDirExcept copies everything in srcDir into destDir, skipping any
+// entry whose path relative to srcDir exactly matches one of exclude (e.g.
+// a vendor manifest file being replaced by a different format, or a format
+// marker like "SKILL.md" that an importer is translating rather than
+// copying verbatim). destDir is created if it doesn't exist.
+func CopyDirExcept(srcDir, destDir string, exclude ...string) error {
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(a.Dir, path)
+		rel, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
 		}
-		if rel == "." || rel == skip {
+		if rel == "." {
 			return nil
+		}
+		for _, skip := range exclude {
+			if rel == skip {
+				return nil
+			}
 		}
 
 		target := filepath.Join(destDir, rel)

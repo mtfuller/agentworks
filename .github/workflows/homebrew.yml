@@ -1,0 +1,32 @@
+name: Update Homebrew tap
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    # Skip pre-releases — only ship stable tags to the tap.
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bump agentworks formula in mtfuller/homebrew-tap
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: agentworks
+          formula-path: Formula/agentworks.rb
+          homebrew-tap: mtfuller/homebrew-tap
+          tag-name: ${{ github.event.release.tag_name }}
+          # No download-url override: the formula builds from source, so this
+          # defaults to GitHub's auto-generated source archive for the tag
+          # (.../archive/refs/tags/<tag>.tar.gz) -- the same one/sha256 pair
+          # covers both macOS architectures, unlike a prebuilt-binary URL.
+          commit-message: |
+            agentworks {{version}}
+
+            Automated bump on release ${{ github.event.release.tag_name }}.
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

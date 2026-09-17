@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	newDescription string
-	newVersion     string
-	newTargetsFlag []string
+	newDescription  string
+	newVersion      string
+	newTargetsFlag  []string
+	newFromTemplate string
 )
 
 var newCmd = &cobra.Command{
@@ -47,7 +48,7 @@ interactive terminal and a short wizard fills in the rest.`),
 		description := newDescription
 		targetList := newTargetsFlag
 
-		if kindStr == "" || name == "" || description == "" {
+		if needsInteractiveWizard(kindStr, name, description, newFromTemplate) {
 			if !isInteractive() {
 				return fmt.Errorf("kind, name, and --description are required (or run this command interactively)")
 			}
@@ -56,6 +57,7 @@ interactive terminal and a short wizard fills in the rest.`),
 				Name:        name,
 				Description: description,
 				Targets:     targetList,
+				Template:    newFromTemplate,
 			})
 			if err != nil {
 				return fmt.Errorf("cancelled: %w", err)
@@ -68,6 +70,8 @@ interactive terminal and a short wizard fills in the rest.`),
 			return err
 		}
 
+		description = resolveDescription(description, kind, newFromTemplate)
+
 		if len(targetList) == 0 {
 			if m, err := project.Load(root); err == nil {
 				targetList = m.Targets
@@ -78,6 +82,7 @@ interactive terminal and a short wizard fills in the rest.`),
 			Description: description,
 			Version:     newVersion,
 			Targets:     targetList,
+			Template:    newFromTemplate,
 		})
 		if err != nil {
 			return err
@@ -95,9 +100,32 @@ func isInteractive() bool {
 	return isatty.IsTerminal(os.Stdin.Fd())
 }
 
+// needsInteractiveWizard decides whether enough was given non-interactively
+// to skip the wizard. A template supplies its own description, so its
+// absence alone shouldn't force an interactive prompt when kind/name/
+// template were all given.
+func needsInteractiveWizard(kindStr, name, description, fromTemplate string) bool {
+	return kindStr == "" || name == "" || (description == "" && fromTemplate == "")
+}
+
+// resolveDescription defaults description from a template's own
+// Description when one was given and no description was, leaving
+// description untouched otherwise (including when the template doesn't
+// exist -- scaffold.New reports that error itself).
+func resolveDescription(description string, kind artifact.Kind, fromTemplate string) string {
+	if description != "" || fromTemplate == "" {
+		return description
+	}
+	if t, ok := scaffold.GetTemplate(kind, fromTemplate); ok {
+		return t.Description
+	}
+	return description
+}
+
 func init() {
 	rootCmd.AddCommand(newCmd)
 	newCmd.Flags().StringVar(&newDescription, "description", "", "one-line description of the artifact")
 	newCmd.Flags().StringVar(&newVersion, "version", "", "artifact version (default: 0.1.0)")
 	newCmd.Flags().StringSliceVar(&newTargetsFlag, "target", nil, "vendor target(s) this artifact supports (repeatable; default: project's default targets)")
+	newCmd.Flags().StringVar(&newFromTemplate, "from-template", "", "scaffold from a built-in starter template (see 'agentworks templates')")
 }

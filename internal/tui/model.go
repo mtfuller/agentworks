@@ -20,6 +20,7 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/project"
+	"github.com/mtfuller/agentworks/internal/scaffold"
 )
 
 // pane identifies which of the browser's screens is active.
@@ -29,7 +30,9 @@ const (
 	paneKinds pane = iota
 	paneArtifacts
 	paneDetail
-	paneForm // a huh.Form (create or export) is active; see actions.go
+	paneForm        // a huh.Form (create or export) is active; see actions.go
+	paneMarketplace // marketplace search/import is active; see marketplace.go
+	paneTemplates   // browsing built-in starter templates; see templates.go
 )
 
 var (
@@ -64,9 +67,11 @@ type Model struct {
 	root string
 	pane pane
 
-	kindList     list.Model
-	artifactList list.Model
-	viewport     viewport.Model
+	kindList        list.Model
+	artifactList    list.Model
+	marketplaceList list.Model
+	templateList    list.Model
+	viewport        viewport.Model
 
 	// currentKind/currentArtifact track what's in view in paneArtifacts/
 	// paneDetail, so "n"/"e" know what kind to scaffold into or which
@@ -89,6 +94,14 @@ type Model struct {
 
 	width, height int
 	err           error
+
+	// initCmd is returned by Init() on program start. It exists so
+	// RunMarketplace can pre-seed the model (see app.go): calling
+	// startMarketplace() before the tea.Program is constructed yields both
+	// the already-mutated Model (pane set, spinner started) and the Cmd
+	// that must run once the program starts, and Init() has no other way
+	// to receive that Cmd from outside the Bubble Tea event loop.
+	initCmd tea.Cmd
 }
 
 // New builds a browser Model rooted at an AgentWorks project directory.
@@ -105,21 +118,32 @@ func New(root string) (Model, error) {
 	kindList := list.New(items, list.NewDefaultDelegate(), 0, 0)
 	kindList.Title = "AgentWorks"
 
-	// artifactList starts empty and is populated in drillIn(); it still
-	// needs to exist so an early WindowSizeMsg can size it safely.
+	// artifactList and marketplaceList start empty and are populated by
+	// drillIn() / startMarketplace() respectively; they still need to exist
+	// so an early WindowSizeMsg can size them safely.
 	artifactList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	marketplaceList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	marketplaceList.Title = "Search skills & plugins"
+
+	// Unlike artifactList/marketplaceList, templateList's data is local and
+	// static -- there's nothing to fetch, so it's populated immediately
+	// rather than lazily on first entering the pane.
+	templateList := list.New(templateItems(scaffold.Templates()), list.NewDefaultDelegate(), 0, 0)
+	templateList.Title = "Browse templates"
 
 	return Model{
-		root:         root,
-		pane:         paneKinds,
-		kindList:     kindList,
-		artifactList: artifactList,
-		viewport:     viewport.New(0, 0),
+		root:            root,
+		pane:            paneKinds,
+		kindList:        kindList,
+		artifactList:    artifactList,
+		marketplaceList: marketplaceList,
+		templateList:    templateList,
+		viewport:        viewport.New(0, 0),
 	}, nil
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.initCmd
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -138,12 +162,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		listHeight := msg.Height - 2
 		m.kindList.SetSize(msg.Width, listHeight)
 		m.artifactList.SetSize(msg.Width, listHeight)
+		m.marketplaceList.SetSize(msg.Width, listHeight)
+		m.templateList.SetSize(msg.Width, listHeight)
 		m.viewport.Width = msg.Width
 		m.viewport.Height = listHeight
 		return m, nil
 
 	case testFinishedMsg:
 		return m.handleTestFinished(msg)
+
+	case marketplaceResultsMsg:
+		return m.handleMarketplaceResults(msg)
+
+	case marketplaceImportedMsg:
+		return m.handleMarketplaceImported(msg)
 
 	case tea.KeyMsg:
 		// While the user is typing into a list's filter box, single-key
@@ -167,6 +199,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.pane == paneArtifacts || m.pane == paneDetail {
 					return m.startTest()
 				}
+			case "a":
+				if m.pane == paneKinds || m.pane == paneArtifacts {
+					return m.startMarketplace()
+				}
+			case "r":
+				if m.pane == paneMarketplace {
+					return m.startMarketplace()
+				}
+			case "b":
+				if m.pane == paneKinds || m.pane == paneArtifacts {
+					return m.startTemplates()
+				}
 			}
 		}
 	}
@@ -179,6 +223,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.artifactList, cmd = m.artifactList.Update(msg)
 	case paneDetail:
 		m.viewport, cmd = m.viewport.Update(msg)
+	case paneMarketplace:
+		m.marketplaceList, cmd = m.marketplaceList.Update(msg)
+	case paneTemplates:
+		m.templateList, cmd = m.templateList.Update(msg)
 	}
 	return m, cmd
 }
@@ -189,6 +237,10 @@ func (m Model) isFiltering() bool {
 		return m.kindList.FilterState() == list.Filtering
 	case paneArtifacts:
 		return m.artifactList.FilterState() == list.Filtering
+	case paneMarketplace:
+		return m.marketplaceList.FilterState() == list.Filtering
+	case paneTemplates:
+		return m.templateList.FilterState() == list.Filtering
 	default:
 		return false
 	}
@@ -204,6 +256,10 @@ func (m Model) goBack() (tea.Model, tea.Cmd) {
 		m.pane = paneKinds
 	case paneDetail:
 		m.pane = paneArtifacts
+	case paneMarketplace:
+		m.pane = paneKinds
+	case paneTemplates:
+		m.pane = paneKinds
 	}
 	return m, nil
 }
@@ -242,6 +298,12 @@ func (m Model) drillIn() (tea.Model, tea.Cmd) {
 		m.viewport.GotoTop()
 		m.pane = paneDetail
 		return m, nil
+
+	case paneMarketplace:
+		return m.importSelected()
+
+	case paneTemplates:
+		return m.startCreateFromTemplate()
 	}
 	return m, nil
 }
@@ -259,6 +321,10 @@ func (m Model) View() string {
 		body = m.artifactList.View()
 	case paneDetail:
 		body = m.viewport.View()
+	case paneMarketplace:
+		body = m.marketplaceList.View()
+	case paneTemplates:
+		body = m.templateList.View()
 	}
 
 	out := body + "\n" + helpStyle.Render(m.helpText())
@@ -273,11 +339,15 @@ func (m Model) View() string {
 func (m Model) helpText() string {
 	switch m.pane {
 	case paneKinds:
-		return "enter: open  •  n: new  •  q: quit"
+		return "enter: open  •  n: new  •  a: add  •  b: templates  •  q: quit"
 	case paneArtifacts:
-		return "enter: open  •  n: new  •  e: export  •  t: test  •  esc: back"
+		return "enter: open  •  n: new  •  e: export  •  t: test  •  a: add  •  b: templates  •  esc: back"
 	case paneDetail:
 		return "e: export  •  t: test  •  esc: back"
+	case paneMarketplace:
+		return "enter: import  •  /: filter loaded results  •  r: refresh  •  esc: back"
+	case paneTemplates:
+		return "enter: create from this template  •  /: filter  •  esc: back"
 	default:
 		return "esc: back  •  ctrl+c: quit"
 	}

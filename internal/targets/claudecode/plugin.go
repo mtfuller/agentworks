@@ -19,12 +19,20 @@ type pluginManifest struct {
 	Description string `json:"description,omitempty"`
 }
 
+// writeClaudePluginManifest is the common case: a plugin built from one
+// artifact, named/described after it.
 func writeClaudePluginManifest(pluginDir string, a *artifact.Artifact) error {
+	return writeClaudePluginManifestNamed(pluginDir, a.Name, a.Description)
+}
+
+// writeClaudePluginManifestNamed is the general form, for a bundle plugin
+// that isn't tied to any single artifact's name/description.
+func writeClaudePluginManifestNamed(pluginDir, name, description string) error {
 	dir := filepath.Join(pluginDir, ".claude-plugin")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", dir, err)
 	}
-	m := pluginManifest{Name: a.Name, Description: a.Description}
+	m := pluginManifest{Name: name, Description: description}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding plugin.json: %w", err)

@@ -100,6 +100,16 @@ type Exporter interface {
 	Export(a *artifact.Artifact, outDir string, opts ExportOptions) (string, error)
 }
 
+// BundleExporter is an optional capability an Exporter may also implement:
+// packaging a *set* of artifacts into one plugin, for targets whose native
+// format is actually meant to bundle several components together (agents,
+// skills, tools, hooks) rather than ship one component per package. Callers
+// type-assert an Exporter to this (the same "optional interface" pattern as
+// io.ReaderFrom) and report a clear error if a target doesn't implement it.
+type BundleExporter interface {
+	ExportBundle(name, description string, artifacts []*artifact.Artifact, outDir string, opts ExportOptions) (string, error)
+}
+
 var exporters = map[string]Exporter{}
 
 // Register makes an Exporter available via GetExporter. Called from an
