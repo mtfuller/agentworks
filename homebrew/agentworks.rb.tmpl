@@ -1,0 +1,30 @@
+class Agentworks < Formula
+  desc "Vendor-agnostic tool for building and exporting AI agent artifacts (agents, skills, tools, hooks, workflows)"
+  homepage "https://github.com/mtfuller/agentworks"
+  version "@VERSION@"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/mtfuller/agentworks/releases/download/v@VERSION@/agentworks_v@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA256_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/mtfuller/agentworks/releases/download/v@VERSION@/agentworks_v@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA256_AMD64@"
+    end
+  end
+
+  livecheck do
+    url :stable
+    strategy :github_latest
+  end
+
+  def install
+    bin.install "agentworks"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/agentworks version --short")
+  end
+end
