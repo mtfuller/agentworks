@@ -50,14 +50,20 @@ Status markers: 🎯 picked to build next, ✅ done, otherwise unprioritized.
 
 ## Tool development experience
 
-- **An MCP inspector / interactive run mode.** Testing a tool today means unit-testing
+- ✅ **An MCP inspector / interactive run mode.** Testing a tool today means unit-testing
   its logic with mocked HTTP calls (right for CI), but there's no way to spin up the
-  real MCP server and poke at it interactively the way an agent actually would. A
-  `agentworks run tools/x` that starts the server and drops into a simple client REPL
-  would close that loop.
-- **`agentworks doctor`.** Checks environment prerequisites (is `mcp` installed? is the
-  declared `command`'s interpreter on PATH?) — jira-fetch already needs
-  `pip install mcp`, and "why did my test fail" is currently just a raw traceback.
+  real MCP server and poke at it interactively the way an agent actually would. Done:
+  `agentworks run tools/x` (`internal/mcpclient` + `internal/inspector`, see AGENTS.md)
+  starts the tool's declared `command` as a real MCP server and opens a full-screen
+  inspector — browse its tools, fill in and submit a call from a form generated off
+  each tool's `inputSchema`, and see the result, call history, and the raw JSON-RPC/
+  stderr traffic. Not a "simple client REPL" as originally scoped — a proper split-pane
+  TUI turned out to be the better fit once built.
+- ✅ **`agentworks doctor`.** Checks environment prerequisites (is the declared
+  `command`'s interpreter on PATH? does a declared `entrypoint` file exist? are a
+  tool's `auth` variables set?) — jira-fetch already needs `pip install mcp`, and "why
+  did my test fail" used to be just a raw traceback. Done: `agentworks doctor [path]`
+  (see AGENTS.md), a static/side-effect-free preflight sibling of `validate`/`test`.
 
 ## Ecosystem / scale
 

@@ -82,7 +82,7 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 ```
 
 - **`cmd/`** — one file per Cobra command (`init`, `new`, `list`, `validate`, `test`,
-  `eval`, `targets`, `export`, `tui`, `version`). Commands parse flags/args, call into the
+  `eval`, `doctor`, `run`, `targets`, `export`, `tui`, `version`). Commands parse flags/args, call into the
   packages below, and format output. Keep business logic out of `Run`/`RunE` — a
   command file should read as "gather input, call one function, print the result."
 - **`internal/artifact`** — the vendor-agnostic artifact model: `Kind`
@@ -177,6 +177,29 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   which is bubbletea's own mechanism for suspending the alt-screen and handing the real
   terminal to a child process — no `paneForm` involved, control returns via a
   `testFinishedMsg` handled in `Model.Update`.
+- **`internal/mcpclient`** — a minimal MCP (Model Context Protocol) client over the
+  stdio JSON-RPC transport: `StartProcess` runs a tool artifact's declared `command`
+  (via `sh -c`, the same convention `mcpconfig.ServerFor`/`cmd/test.go` use) as a real
+  child process and wires up a `Client` speaking `initialize`/`notifications/
+  initialized`, `tools/list` (with cursor pagination), and `tools/call` over it.
+  `Client.OnTrace`/`OnStderr` hooks expose every raw JSON-RPC line and the server's
+  stderr for `internal/inspector`'s log pane; `client_test.go` is fully hermetic
+  (an `io.Pipe`-backed fake server, no real subprocess). Deliberately out of scope:
+  the rest of the MCP spec (resources, prompts, sampling, roots) — `agentworks run`
+  inspects tools, not a general-purpose MCP client.
+- **`internal/inspector`** — the Bubble Tea UI behind `agentworks run`: connects to a
+  tool artifact's MCP server (via `internal/mcpclient`) and drives a full-screen
+  browse/call/inspect loop (`model.go`/`app.go`) — a filterable tool list and a detail/
+  result viewport side by side, a `huh.Form` generated per-tool from its `inputSchema`
+  (`schemaform.go` — string/enum/integer/number/boolean/array/object each get an
+  appropriate field, embedded as a child model the same way `internal/tui/actions.go`
+  does for create/export), a call-history pane, and a raw JSON-RPC/stderr traffic log
+  (`logpane.go`/`history.go`) — the actual debugging payoff over a plain REPL, reachable
+  even from the connection-failure screen so the real cause (e.g. a missing Python
+  package) isn't hidden behind a generic protocol error. A separate package from
+  `internal/tui` rather than another pane in its drill-down browser: this is a
+  different lifecycle (connect once, then browse/call/inspect until quit), not another
+  step in kind → artifact → detail.
 - **`internal/{logger,color,spinner,version}`** — CLI-support code inherited from the
   starter template (leveled logging, ANSI output helpers, a progress spinner, build
   metadata via ldflags).
@@ -276,10 +299,10 @@ Also done as of this pass: BRAINSTORM.md's "Starter templates" item. A `Template
 (`internal/scaffold/templates.go`) is just a named, curated `kindSpec` — the exact same
 shape `specs` already uses for each kind's generic default — selected instead of it via
 `scaffold.Options.Template`, so `scaffold.New` stays the one code path `agentworks new`
-and the TUI both go through. Thirteen built-in templates ship (two per kind, except
-agent (three) and skill (four) -- e.g. a tool's `api-wrapper`/`cli-wrapper`, a skill's
-`pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's PowerPoint/Excel
-skills), discoverable via `agentworks templates [kind]` (a static
+and the TUI both go through. Fifteen built-in templates ship (two per kind, except
+agent/tool (three) and skill (five) -- e.g. a tool's `api-wrapper`/`cli-wrapper`, a
+skill's `pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's
+PowerPoint/Excel skills), discoverable via `agentworks templates [kind]` (a static
 table, no interactivity — mirrors `agentworks targets`) and `agentworks new
 --from-template <id>`, or interactively via `agentworks tui`'s `b` key, which opens a
 browse/search pane (`internal/tui/templates.go`) and, on enter, pre-fills the *same*
@@ -341,6 +364,60 @@ model call rather than a deterministic check) and assertions on an agent's actua
 tool-call trace rather than just its final text output — both would need a runner
 protocol richer than "a prompt in, text out," which is a real design question, not
 just unfinished work.
+
+Also done as of this pass: two Node.js scaffold templates, `node-skill` and `node-tool`
+(`internal/scaffold/templates.go`), for artifacts whose logic outgrows a quick script
+and is more naturally written in JavaScript (or needs an npm package) than Python.
+Each is a normal standalone `package.json` (`"type": "module"`, a `start` script, a
+`test` script wired to Node's built-in test runner) plus a throwing placeholder
+entrypoint and test, generated by three small helpers
+(`nodePackageJSON`/`nodeEntrypointPlaceholder`/`nodeTestPlaceholder`) shared between the
+two templates. Serves guiding scenario 5 (guided boilerplate) and scenario 6 (room to
+build genuinely custom, heavier tooling when a scenario needs it) directly. Deliberately
+*not* built: any cross-artifact build orchestration
+(a monorepo tool, a root workspace, a "build all" command) — every artifact is already
+a self-contained, independently-exportable leaf directory with its own declared
+`command:`/`test:` string that `cmd/test.go`/export shell out to generically regardless
+of language, exactly like the existing Python skills/tools, so there's no shared
+dependency graph across artifacts to orchestrate. Each Node artifact gets its own
+`node_modules` on `npm install` inside its own directory; that's the accepted cost of
+keeping artifacts portable/copyable rather than wiring them into a shared workspace
+root, matching how the Python templates never introduced a shared virtualenv either.
+
+Also done as of this pass: BRAINSTORM.md's "Tool development experience" section,
+both items. `agentworks doctor [path]` (`cmd/doctor.go`) is a static, side-effect-free
+preflight check — a `doctorChecks` sibling of `validate`'s own checks, run per artifact:
+every declared shell command (`command:`/`test:`/`eval_runner:`) has its interpreter/
+binary resolved against `PATH` (`exec.LookPath`), a declared `entrypoint:` is checked to
+actually exist, and a tool's `auth:` variables are checked for presence in the
+environment — as a warning, not a failure (`--strict` promotes it), since they're only
+needed to actually call the tool, not to discover what it offers. `agentworks run
+<tool>` (`cmd/run.go`) is the live counterpart: starts the tool's declared `command` as
+a real MCP server and opens `internal/inspector`'s full-screen UI (see Architecture
+above) to browse its tools, fill in and submit a call from a form built off each tool's
+`inputSchema`, and inspect the result, call history, and raw JSON-RPC/stderr traffic —
+serving the same "test a tool for real, not just its mocked logic" gap `agentworks
+test` always left. `run` only accepts `tool` artifacts (skills/agents/hooks/workflows
+aren't MCP servers) and, unlike `export`'s `${VAR}` placeholders, actually executes with
+the real environment, so a missing `auth:` variable is surfaced as a header warning
+(from the same check `doctor` runs) rather than a silent failure. Manually verified
+end-to-end (not just unit-tested) against a hand-rolled stdio MCP server standing in for
+a real tool: connect, list tools, fill and submit a call, see the result rendered in the
+split-pane layout, inspect the raw wire traffic and call history panes, and a clean
+shutdown with no orphaned process — plus the connection-failure path specifically,
+confirming a broken tool's actual stderr traceback (not just a generic "connection
+closed" protocol error) is reachable via the log pane from the failure screen. Also
+verified: a real subprocess's window size genuinely matters here — the two-column
+layout collapses to a single visible column if the terminal reports a 0×0 size (only
+relevant to non-standard/scripted terminal environments; a real interactive terminal
+always reports its actual size), which is why `internal/inspector`'s `applySizes` is a
+documented, deliberate no-op rather than a silent one when `m.width`/`m.height` are
+still zero. Deliberately out of scope for this pass, not overlooked: an MCP inspector
+for anything beyond `tools/call` (resources, prompts, sampling, roots) — see
+`internal/mcpclient`'s own doc comment — and combining `doctor`'s static checks with a
+live connectivity probe; they're kept as two separate, differently-costed operations
+(one instant and side-effect-free, one that actually starts a process) rather than
+merged into one that's sometimes slow and sometimes not.
 
 `chatgpt` staying skill-only is different from the above: it's a *closed* investigation,
 not an open TODO — see the next section for why, so nobody re-opens it without first

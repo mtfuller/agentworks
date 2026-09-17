@@ -47,6 +47,52 @@ func GetTemplate(kind artifact.Kind, id string) (Template, bool) {
 	return Template{}, false
 }
 
+// nodePackageJSON is the starter package.json for a Node-based scaffold
+// (node-skill/node-tool). main is the entrypoint file its "start" script runs.
+func nodePackageJSON(name, main string) string {
+	return `{
+  "name": "` + name + `",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node ` + main + `",
+    "test": "node --test tests/**/*.test.js"
+  }
+}
+`
+}
+
+// nodeEntrypointPlaceholder is the starter body for a Node-based scaffold's
+// entrypoint file (scripts/main.js or src/index.js).
+func nodeEntrypointPlaceholder(name string) string {
+	return `#!/usr/bin/env node
+// ` + name + ` entrypoint. Replace with real logic.
+
+function main() {
+  throw new Error("` + name + ` is not implemented yet");
+}
+
+main();
+`
+}
+
+// nodeTestPlaceholder is the starter test file for a Node-based scaffold, run
+// via package.json's "test" script (Node's built-in test runner).
+func nodeTestPlaceholder(name string) string {
+	return `// Tests for ` + name + `. Wire this up with Node's built-in test runner (or
+// your tool of choice), then add a ` + "`test:`" + ` command to this artifact's
+// frontmatter.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+test("placeholder", () => {
+  assert.ok(true);
+});
+`
+}
+
 var templates = []Template{
 	{
 		ID: "code-reviewer", Kind: artifact.KindAgent,
@@ -371,6 +417,40 @@ TODO: fill in this workbook's actual structure.
 		},
 	},
 	{
+		ID: "node-skill", Kind: artifact.KindSkill,
+		Title:       "Node.js skill",
+		Description: "A skill implemented in Node.js instead of Python, for logic that's easier to write in JavaScript or needs an npm package.",
+		spec: kindSpec{
+			extra: func(name string) map[string]any {
+				return map[string]any{"entrypoint": "scripts/main.js"}
+			},
+			bodyTmpl: `# {{.Title}}
+
+{{.Description}}
+
+## Usage
+
+Describe what invokes this skill and what it produces.
+
+## Implementation
+
+See ` + "`scripts/main.js`" + `. Run ` + "`npm install`" + ` in this directory if you add
+dependencies to ` + "`package.json`" + `. Add real tests under ` + "`tests/`" + ` and a
+` + "`test:`" + ` command to this file's frontmatter once they exist, so
+` + "`agentworks test`" + ` can run them.
+`,
+			files: func(name string) []extraFile {
+				return []extraFile{
+					{"package.json", nodePackageJSON(name, "scripts/main.js")},
+					{"scripts/main.js", nodeEntrypointPlaceholder(name)},
+					{"tests/main.test.js", nodeTestPlaceholder(name)},
+					{"evals/example.yaml", evalExampleContent(name)},
+				}
+			},
+			extraDirs: []string{"samples", "evals"},
+		},
+	},
+	{
 		ID: "api-wrapper", Kind: artifact.KindTool,
 		Title:       "API wrapper",
 		Description: "Wraps a REST API's endpoints as an MCP tool.",
@@ -499,6 +579,52 @@ if __name__ == "__main__":
 				}
 			},
 			extraDirs: []string{"tests"},
+		},
+	},
+	{
+		ID: "node-tool", Kind: artifact.KindTool,
+		Title:       "Node.js MCP tool",
+		Description: "Wraps custom Node.js logic as an MCP tool, for tools too complex for a quick script.",
+		spec: kindSpec{
+			extra: func(name string) map[string]any {
+				return map[string]any{
+					"entrypoint": "src/index.js",
+					"command":    "node src/index.js",
+					"auth":       []string{},
+				}
+			},
+			bodyTmpl: `# {{.Title}}
+
+{{.Description}}
+
+## Interface
+
+Describe the tool's inputs/outputs (arguments, request/response shape, etc).
+
+## Implementation
+
+` + "`src/index.js`" + ` shows the entrypoint shape -- wire it into whatever MCP
+server framework you're using for the actual stdio loop (e.g.
+` + "`@modelcontextprotocol/sdk`" + `, added to ` + "`package.json`" + `'s dependencies
+once you pick one). Run ` + "`npm install`" + ` in this directory before running or
+testing it. Add real tests under ` + "`tests/`" + ` and a ` + "`test:`" + ` command to
+this file's frontmatter once they exist, so ` + "`agentworks test`" + ` can run them.
+
+## Running as an MCP server
+
+` + "`command`" + ` is already set to run this file directly. Claude Code and GitHub
+Copilot both expose tools via MCP; ` + "`agentworks export ... --target claude-code`" + `
+or ` + "`--target github-copilot`" + ` uses ` + "`command`" + `/` + "`auth`" + ` to generate the server
+registration, passing each ` + "`auth`" + ` entry through as an env var reference, never
+a literal secret.
+`,
+			files: func(name string) []extraFile {
+				return []extraFile{
+					{"package.json", nodePackageJSON(name, "src/index.js")},
+					{"src/index.js", nodeEntrypointPlaceholder(name)},
+					{"tests/index.test.js", nodeTestPlaceholder(name)},
+				}
+			},
 		},
 	},
 	{
