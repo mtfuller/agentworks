@@ -7,11 +7,12 @@
 // agentskills) under skills/<name>/. Tools export as an mcp.json server
 // registration at the plugin root (see internal/targets/mcpconfig), since
 // MCP is how Copilot actually wires up an arbitrary authenticated external
-// capability -- the Agent Plugins spec has no other "tool" concept.
+// capability -- the Agent Plugins spec has no other "tool" concept. Agents,
+// hooks, and workflows export under the client-specific com.github.copilot/
+// namespace (see agent.go, hook.go, and workflow.go respectively).
 package githubcopilot
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,23 +30,6 @@ func init() {
 
 const TargetID = "github-copilot"
 
-// pluginSchema is the constant $schema value the Agent Plugins spec
-// requires every plugin.json to declare.
-const pluginSchema = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
-
-// mcpSchema is the constant $schema value for an Agent Plugins mcp.json.
-const mcpSchema = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
-
-// pluginManifest is the (partial) Agent Plugins plugin.json shape --
-// AgentWorks only fills the fields it has real values for; the spec's other
-// optional fields (author, homepage, license, ...) are left for a human to
-// add if they want them.
-type pluginManifest struct {
-	Schema      string `json:"$schema"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
-
 type exporter struct{}
 
 func (exporter) TargetID() string { return TargetID }
@@ -56,10 +40,14 @@ func (exporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportO
 		return exportSkill(a, outDir, opts)
 	case artifact.KindTool:
 		return exportTool(a, outDir, opts)
+	case artifact.KindAgent:
+		return exportAgent(a, outDir, opts)
+	case artifact.KindHook:
+		return exportHook(a, outDir, opts)
 	case artifact.KindWorkflow:
 		return exportWorkflow(a, outDir, opts)
 	default:
-		return "", fmt.Errorf("github-copilot export doesn't support %s yet (skills, tools, and workflows only)", a.Kind)
+		return "", fmt.Errorf("github-copilot export doesn't support %s", a.Kind)
 	}
 }
 
@@ -112,20 +100,4 @@ func exportTool(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 		return filecopy.ZipDir(pluginDir)
 	}
 	return pluginDir, nil
-}
-
-func writePluginManifest(pluginDir string, a *artifact.Artifact) error {
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", pluginDir, err)
-	}
-	m := pluginManifest{Schema: pluginSchema, Name: a.Name, Description: a.Description}
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encoding plugin.json: %w", err)
-	}
-	path := filepath.Join(pluginDir, "plugin.json")
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
 }

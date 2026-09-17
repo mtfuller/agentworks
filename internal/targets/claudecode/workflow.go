@@ -1,7 +1,6 @@
 package claudecode
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,23 +14,6 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 	"github.com/mtfuller/agentworks/internal/targets/workflowsteps"
 )
-
-// pluginManifest is the (partial) Claude Code plugin.json shape -- only
-// `name` is required by the schema; AgentWorks doesn't invent values for
-// the rest (author, version, ...).
-type pluginManifest struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
-
-// agentFrontmatter is a Claude Code subagent's minimal, documented
-// frontmatter. Richer fields (model, effort, tools, ...) are human tuning
-// AgentWorks has no real value for, so they're left out rather than
-// invented.
-type agentFrontmatter struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-}
 
 // commandFrontmatter is a Claude Code slash command's frontmatter.
 type commandFrontmatter struct {
@@ -93,39 +75,6 @@ func exportWorkflow(a *artifact.Artifact, outDir string, opts targets.ExportOpti
 	return pluginDir, nil
 }
 
-func writeClaudePluginManifest(pluginDir string, a *artifact.Artifact) error {
-	dir := filepath.Join(pluginDir, ".claude-plugin")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", dir, err)
-	}
-	m := pluginManifest{Name: a.Name, Description: a.Description}
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encoding plugin.json: %w", err)
-	}
-	path := filepath.Join(dir, "plugin.json")
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
-}
-
-func writeClaudeAgentFile(path string, a *artifact.Artifact) error {
-	fm := agentFrontmatter{Name: a.Name, Description: a.Description}
-	data, err := yaml.Marshal(fm)
-	if err != nil {
-		return fmt.Errorf("encoding %s frontmatter: %w", path, err)
-	}
-	content := "---\n" + string(data) + "---\n\n" + a.Body
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
-}
-
 func writeClaudeCommandFile(path string, a *artifact.Artifact, steps []workflowsteps.Step) error {
 	fm := commandFrontmatter{Name: a.Name, Description: a.Description}
 	data, err := yaml.Marshal(fm)
@@ -152,17 +101,6 @@ func writeClaudeCommandFile(path string, a *artifact.Artifact, steps []workflows
 		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
-}
-
-func writeMCPFile(path string, file mcpconfig.File) error {
-	data, err := json.MarshalIndent(file, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encoding %s: %w", path, err)
-	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil

@@ -37,8 +37,10 @@ of truth for what "done" looks like for any given piece of functionality:
    suite — a good next scenario-2 pass.)*
 3. **AI researcher** — a domain-specific agent with its own guidance markdown and
    resources, exported to ChatGPT, Claude, and others as drag-and-drop artifacts.
-   *(Agent scaffolding works; `m365-copilot` exports agents as a declarative agent, but
-   `claude-code`/`chatgpt`/`github-copilot` still only export skills, not agents.)*
+   *(`claude-code`, `github-copilot`, and `m365-copilot` all export a standalone agent
+   now (a subagent-file plugin for the first two, a declarative agent for the third) --
+   `agentworks export agents/x --target claude-code`. `chatgpt` remains the one gap:
+   no researched mapping yet for a persona/agent concept there, only skills.)*
 4. **Engineering leader** — multiple agents/tools/MCP servers composed into pipelines
    ("software factory" workflows), targeted at Claude Code and GitHub Copilot, exported
    as one or more plugins. *(Done, deliberately without an execution engine -- see
@@ -119,7 +121,17 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 
   `m365copilot` is genuinely different from all of this (a declarative agent + Teams app
   package, not a skill directory or an MCP registration) and doesn't use any of these
-  shared packages.
+  shared packages. Hook export (`claudecode`/`hook.go`, `githubcopilot`/`hook.go`)
+  is deliberately *not* a third shared package like `mcpconfig`: the two vendors'
+  `hooks.json` shapes genuinely differ (Claude Code nests an extra matcher array per
+  event and uses a `command` field; Copilot is flatter and uses `bash`), so forcing a
+  shared struct would fight the schema difference rather than reflect it.
+
+  Internally, `claudecode` and `githubcopilot` are each split one file per kind
+  (`export.go`'s `Export` just dispatches by `a.Kind`) plus a `plugin.go` holding what's
+  common to every plugin they produce (the manifest writer, `writeMCPFile`) — `agent.go`
+  and `workflow.go` both call the same `write*AgentFile` helper so a subagent file looks
+  identical whether it's exported standalone or bundled into a workflow.
 - **`internal/tui`** — the Bubble Tea project browser (`model.go`/`app.go`) and the
   `huh`-based interactive wizard (`wizard.go`) that both `cmd/new.go` (non-interactive
   runs skip it) and the browser's future "create artifact" action call.
@@ -135,25 +147,25 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 
 Implemented: the project/artifact model, scaffolding for all 5 kinds, project-wide
 discovery/validation (including a workflow's step references)/test-running, the vendor
-capability matrix, real exporters for all four registered targets (`claude-code`/
-`github-copilot`: skills via the shared `agentskills` writer, tools via the shared
-`mcpconfig` MCP-registration builder, *and* workflows as a bundled plugin via
-`workflowsteps`; `chatgpt`: skills only; `m365-copilot`: skills and agents, as a
-declarative-agent app package), and the Bubble Tea browser + `new` wizard.
+capability matrix, and real exporters for all four registered targets. `claude-code`
+and `github-copilot` each export *all five* artifact kinds now — skills via the shared
+`agentskills` writer, tools via the shared `mcpconfig` MCP-registration builder, agents
+as a subagent-file plugin, hooks as a lifecycle-event plugin, and workflows as a bundled
+plugin composing the others via `workflowsteps`. `chatgpt` exports skills only.
+`m365-copilot` exports skills and agents as a declarative-agent app package. Also
+implemented: the Bubble Tea browser + `new` wizard.
 
 Deliberately deferred (do this later, not by accident while doing something else):
-exporting the `hook` kind anywhere, or `tool`/`workflow` on `chatgpt`/`m365-copilot`
-(the registry's capability matrix already says which vendor could take a kind in
-principle — the exporter is the gap, not the model); `claude-code`/`chatgpt`/
-`github-copilot` exporting a *standalone* agent (only inside a workflow bundle, and
-only on `claude-code`/`github-copilot` — `m365-copilot` is still the only target that
-exports a bare agent artifact); any workflow *execution* engine — a workflow export
-produces a real plugin the vendor's own agent loop runs, AgentWorks never executes a
-workflow itself, and that's permanent, not a gap; wiring export/test actions into the
-TUI itself (it's browse-only for now); `m365-copilot`'s placeholder developer/privacy/
-terms URLs becoming real project-level config in `agentworks.yaml` instead of TODO
-strings a human has to find and edit; `examples/starter-project/tools/jira-fetch` still
-being empty
+exporting `hook`/`tool`/`workflow` on `chatgpt`/`m365-copilot`, or a standalone `agent`
+on `chatgpt` (the registry's capability matrix already says which vendor could take a
+kind in principle — the exporter is the gap, not the model, and there's no researched
+mapping yet for what an "agent" or "tool" even means on ChatGPT beyond skills); any
+workflow *execution* engine — a workflow export produces a real plugin the vendor's own
+agent loop runs, AgentWorks never executes a workflow itself, and that's permanent, not
+a gap; wiring export/test actions into the TUI itself (it's browse-only for now);
+`m365-copilot`'s placeholder developer/privacy/terms URLs becoming real project-level
+config in `agentworks.yaml` instead of TODO strings a human has to find and edit;
+`examples/starter-project/tools/jira-fetch` still being empty
 placeholders rather than a real fetch/parse implementation with a simulated-API test
 suite (the rest of scenario 2, see above).
 

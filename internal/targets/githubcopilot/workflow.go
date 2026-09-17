@@ -1,7 +1,6 @@
 package githubcopilot
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,17 +14,6 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 	"github.com/mtfuller/agentworks/internal/targets/workflowsteps"
 )
-
-// agentFrontmatter is a Copilot custom agent's frontmatter. Public docs for
-// com.github.copilot/*.agent.md don't give a full field table the way
-// Claude Code's agents/*.md docs do (this corner of the Agent Plugins spec
-// is newer and less documented) -- name/description + body is the one
-// concretely confirmed shape, so that's what AgentWorks generates rather
-// than guessing at unconfirmed fields like model/tools.
-type agentFrontmatter struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-}
 
 // commandFrontmatter is a Copilot custom command's frontmatter, following
 // the same documented-fields-only policy as agentFrontmatter above.
@@ -88,22 +76,6 @@ func exportWorkflow(a *artifact.Artifact, outDir string, opts targets.ExportOpti
 	return pluginDir, nil
 }
 
-func writeCopilotAgentFile(path string, a *artifact.Artifact) error {
-	fm := agentFrontmatter{Name: a.Name, Description: a.Description}
-	data, err := yaml.Marshal(fm)
-	if err != nil {
-		return fmt.Errorf("encoding %s frontmatter: %w", path, err)
-	}
-	content := "---\n" + string(data) + "---\n\n" + a.Body
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
-}
-
 func writeCopilotCommandFile(path string, a *artifact.Artifact, steps []workflowsteps.Step) error {
 	fm := commandFrontmatter{Name: a.Name, Description: a.Description}
 	data, err := yaml.Marshal(fm)
@@ -130,17 +102,6 @@ func writeCopilotCommandFile(path string, a *artifact.Artifact, steps []workflow
 		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
-}
-
-func writeMCPFile(path string, file mcpconfig.File) error {
-	data, err := json.MarshalIndent(file, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encoding %s: %w", path, err)
-	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil

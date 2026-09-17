@@ -6,7 +6,10 @@
 // project .mcp.json server registration (see internal/targets/mcpconfig),
 // since MCP is how Claude Code actually wires up an arbitrary authenticated
 // external capability -- there's no "tool" concept of its own to target.
-// Both are optionally zipped for upload/sharing.
+// Agents, hooks, and workflows each export as a real Claude Code plugin
+// (agents/*.md, hooks/hooks.json, and a workflow's fuller bundle --
+// see agent.go, hook.go, and workflow.go respectively). All are optionally
+// zipped for upload/sharing.
 package claudecode
 
 import (
@@ -37,10 +40,14 @@ func (exporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportO
 		return exportSkill(a, outDir, opts)
 	case artifact.KindTool:
 		return exportTool(a, outDir, opts)
+	case artifact.KindAgent:
+		return exportAgent(a, outDir, opts)
+	case artifact.KindHook:
+		return exportHook(a, outDir, opts)
 	case artifact.KindWorkflow:
 		return exportWorkflow(a, outDir, opts)
 	default:
-		return "", fmt.Errorf("claude-code export doesn't support %s yet (skills, tools, and workflows only)", a.Kind)
+		return "", fmt.Errorf("claude-code export doesn't support %s", a.Kind)
 	}
 }
 

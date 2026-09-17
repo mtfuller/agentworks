@@ -142,14 +142,13 @@ func TestExportToolRequiresCommand(t *testing.T) {
 	}
 }
 
-func TestExportRejectsUnsupportedKind(t *testing.T) {
-	root := t.TempDir()
-	a, err := scaffold.New(root, artifact.KindAgent, "researcher", scaffold.Options{Description: "x"})
-	if err != nil {
-		t.Fatalf("scaffold.New() error = %v", err)
-	}
+func TestExportRejectsUnknownKind(t *testing.T) {
+	// github-copilot now handles all five real artifact.Kind values;
+	// exercise the defensive default branch with a value that can't come
+	// from artifact.ParseKind.
+	a := &artifact.Artifact{Frontmatter: artifact.Frontmatter{Kind: artifact.Kind("bogus"), Name: "x", Description: "x"}}
 	if _, err := (exporter{}).Export(a, t.TempDir(), targets.ExportOptions{}); err == nil {
-		t.Fatal("Export() of an agent expected error, got nil")
+		t.Fatal("Export() of an unknown kind expected error, got nil")
 	}
 }
 
