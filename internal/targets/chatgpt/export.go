@@ -1,9 +1,8 @@
-// Package claudecode implements the "claude-code" export target: it turns
-// an AgentWorks skill into a real Claude Code skill directory (Claude Code
-// consumes the same Agent Skills format AgentWorks' own <kind>.md is
-// modeled on -- see internal/targets/agentskills), optionally zipped for
-// upload/sharing.
-package claudecode
+// Package chatgpt implements the "chatgpt" export target: ChatGPT consumes
+// the same Agent Skills format Claude Code does (see
+// internal/targets/agentskills) -- upload it as a directory, or as a .zip
+// containing that one directory.
+package chatgpt
 
 import (
 	"fmt"
@@ -18,7 +17,7 @@ func init() {
 	targets.Register(skillExporter{})
 }
 
-const TargetID = "claude-code"
+const TargetID = "chatgpt"
 
 type skillExporter struct{}
 
@@ -26,7 +25,7 @@ func (skillExporter) TargetID() string { return TargetID }
 
 func (skillExporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
 	if a.Kind != artifact.KindSkill {
-		return "", fmt.Errorf("claude-code export only supports skills right now (got %s)", a.Kind)
+		return "", fmt.Errorf("chatgpt export only supports skills right now (got %s)", a.Kind)
 	}
 
 	destDir := filepath.Join(outDir, a.Name)

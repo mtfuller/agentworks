@@ -13,8 +13,8 @@ The repo was bootstrapped from `starterpack-go-cli` (a Go/Cobra CLI template) �
 logging, color output, and Taskfile are that template's conventions, kept because
 they're a reasonable foundation, not because they're AgentWorks-specific. The core
 model (project manifest, artifact kinds, scaffolding, the vendor target registry, and
-the `claude-code` skill exporter) is implemented; see Architecture below for what's
-real today versus deliberately deferred.
+real exporters for all four registered targets) is implemented; see Architecture below
+for what's real today versus deliberately deferred.
 
 ## Guiding scenarios
 
@@ -24,16 +24,18 @@ of truth for what "done" looks like for any given piece of functionality:
 
 1. **Data analyst** — a skill (Python script + tests + sample CSVs) validated locally by
    running its test scripts, then exported as both a ChatGPT skill upload and a
-   Microsoft 365 Copilot zip, versioned per export. *(Scaffold + local test-running
-   work today, see `examples/starter-project/skills/csv-analyzer`; ChatGPT/M365 export
-   is the main gap — only `claude-code` has a real exporter so far.)*
+   Microsoft 365 Copilot zip, versioned per export. *(Fully works end to end, see
+   `examples/starter-project/skills/csv-analyzer` — `agentworks export ... --target
+   chatgpt` and `--target m365-copilot` are both real.)*
 2. **Developer** — a tool that fetches/parses a Jira ticket (real API + auth, with a
    simulated API for tests), validated locally, then exported to both Claude Code and
-   GitHub Copilot. *(Tool scaffolding + local testing work; both exporters are gaps.)*
+   GitHub Copilot. *(Tool scaffolding + local testing work; neither `claude-code` nor
+   `github-copilot` exports tools yet — both are skill-only exporters so far, so this
+   is still the main gap.)*
 3. **AI researcher** — a domain-specific agent with its own guidance markdown and
    resources, exported to ChatGPT, Claude, and others as drag-and-drop artifacts.
-   *(Agent scaffolding works; export for any target is a gap — even `claude-code` only
-   exports skills today.)*
+   *(Agent scaffolding works; `m365-copilot` exports agents as a declarative agent, but
+   `claude-code`/`chatgpt`/`github-copilot` still only export skills, not agents.)*
 4. **Engineering leader** — multiple agents/tools/MCP servers composed into pipelines
    ("software factory" workflows), targeted at Claude Code and GitHub Copilot, exported
    as one or more plugins. *(Workflow artifacts can be scaffolded and reference other
@@ -82,9 +84,15 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   wizard call — never generate an artifact's files by hand in either front end.
 - **`internal/targets`** — the static vendor registry (which artifact kinds each vendor
   can consume — this is what `agentworks targets` prints) and the `Exporter` interface.
-  Vendor-specific exporters live in their own subpackage (e.g.
-  `internal/targets/claudecode`) and self-register via `init()` + `targets.Register`;
-  `cmd/export.go` blank-imports each implemented one.
+  `internal/targets/agentskills` writes the shared, spec-compliant
+  ([agentskills.io](https://agentskills.io/specification)) `SKILL.md` shape that
+  `claudecode`, `chatgpt`, and `githubcopilot` all build on — extend *that* package for
+  a skill-format change, not each vendor package individually. `m365copilot` is
+  genuinely different (a declarative agent + Teams app package, not a skill directory)
+  and doesn't use it. Vendor-specific exporters live in their own subpackage and
+  self-register via `init()` + `targets.Register`; `cmd/export.go` imports each
+  implemented one (blank import unless it also needs to reference the package directly,
+  like `m365copilot.TargetID` for the post-export placeholder-data warning).
 - **`internal/tui`** — the Bubble Tea project browser (`model.go`/`app.go`) and the
   `huh`-based interactive wizard (`wizard.go`) that both `cmd/new.go` (non-interactive
   runs skip it) and the browser's future "create artifact" action call.
@@ -99,14 +107,20 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 ### What's real vs. deferred
 
 Implemented: the project/artifact model, scaffolding for all 5 kinds, project-wide
-discovery/validation/test-running, the vendor capability matrix, a real `claude-code`
-skill exporter (directory or `--zip`), and the Bubble Tea browser + `new` wizard.
+discovery/validation/test-running, the vendor capability matrix, real exporters for all
+four registered targets (`claude-code`/`chatgpt`/`github-copilot`: skills only, via the
+shared `agentskills` writer; `m365-copilot`: skills and agents, as a declarative-agent
+app package), and the Bubble Tea browser + `new` wizard.
 
 Deliberately deferred (do this later, not by accident while doing something else):
-exporters for `chatgpt`/`github-copilot`/`m365-copilot` and for non-skill kinds on
-`claude-code`; an actual workflow *execution* engine (a workflow's `steps:` today is
-just documentation an exporter could read, not something AgentWorks runs); wiring
-export/test actions into the TUI itself (it's browse-only for now).
+exporting `tool`/`hook`/`workflow` kinds anywhere (the registry's capability matrix
+already says which vendor could take them in principle — the exporter is the gap, not
+the model); `claude-code`/`chatgpt`/`github-copilot` exporting agents (only
+`m365-copilot` does today); an actual workflow *execution* engine (a workflow's
+`steps:` today is just documentation an exporter could read, not something AgentWorks
+runs); wiring export/test actions into the TUI itself (it's browse-only for now);
+`m365-copilot`'s placeholder developer/privacy/terms URLs becoming real project-level
+config in `agentworks.yaml` instead of TODO strings a human has to find and edit.
 
 ## Conventions
 

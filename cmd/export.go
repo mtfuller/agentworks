@@ -5,11 +5,14 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/color"
 	"github.com/mtfuller/agentworks/internal/targets"
+	"github.com/mtfuller/agentworks/internal/targets/m365copilot"
 
-	// Blank-imported so its init() registers the "claude-code" exporter
-	// with internal/targets. Add further vendor exporter packages here as
+	// Blank-imported so each package's init() registers its exporter with
+	// internal/targets. Add further vendor exporter packages here as
 	// they're implemented.
+	_ "github.com/mtfuller/agentworks/internal/targets/chatgpt"
 	_ "github.com/mtfuller/agentworks/internal/targets/claudecode"
+	_ "github.com/mtfuller/agentworks/internal/targets/githubcopilot"
 )
 
 var (
@@ -42,6 +45,9 @@ exporter implemented yet.`,
 		}
 
 		color.Success("Exported %s (%s) to %s for %s", a.Name, a.Kind, out, exportTarget)
+		if exportTarget == m365copilot.TargetID {
+			color.Warning("manifest.json inside %s has placeholder developer/privacy/terms URLs -- edit them before submitting to AppSource", out)
+		}
 		return nil
 	},
 }

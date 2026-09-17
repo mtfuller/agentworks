@@ -107,7 +107,7 @@ with a few kind-specific frontmatter fields (a tool's `entrypoint`/`test`, a hoo
 | `agentworks validate [path]` | Parse and validate one artifact or the whole project. |
 | `agentworks test [path]` | Run the `test:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it). |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
-| `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format. Currently implemented for `claude-code` (skills); other targets are registered but not yet exportable — `agentworks targets` shows which. |
+| `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format. Implemented for `claude-code`, `chatgpt`, and `github-copilot` (skills — all three build on the shared [Agent Skills](https://agentskills.io/specification) format), and `m365-copilot` (skills and agents, packaged as a Microsoft 365 app package zip with placeholder publisher info you'll need to edit before submitting to AppSource). `agentworks targets` shows the full matrix. |
 | `agentworks tui` | Full-screen Bubble Tea browser: drill from kind → artifact → its rendered frontmatter and body. |
 | `agentworks version` | Print version/commit/build-date info. |
 
@@ -142,7 +142,11 @@ task install             # to GOPATH/bin
 │   ├── project/                # agentworks.yaml manifest, project discovery
 │   ├── scaffold/                # `new` boilerplate generation, one starter per kind
 │   ├── targets/                 # vendor registry (capability matrix) + Exporter interface
-│   │   └── claudecode/          # the "claude-code" skill exporter
+│   │   ├── agentskills/         # shared Agent Skills (agentskills.io) SKILL.md writer
+│   │   ├── claudecode/          # the "claude-code" skill exporter (wraps agentskills)
+│   │   ├── chatgpt/             # the "chatgpt" skill exporter (wraps agentskills)
+│   │   ├── githubcopilot/       # the "github-copilot" Agent Plugin exporter (wraps agentskills)
+│   │   └── m365copilot/         # the "m365-copilot" declarative agent + app package exporter
 │   ├── tui/                     # Bubble Tea project browser + the `new` wizard (huh)
 │   ├── color/ logger/ spinner/ version/   # CLI-support packages from the starter template
 ├── examples/starter-project/    # a finished example project, one artifact of each kind
