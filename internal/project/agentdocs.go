@@ -41,6 +41,10 @@ See [.agents/skills/agentworks-cli/SKILL.md](.agents/skills/agentworks-cli/SKILL
 how to scaffold, validate, test, and export artifacts with the ` + "`agentworks`" + ` CLI. Prefer
 the CLI over hand-writing ` + "`<kind>.md`" + ` files from scratch (` + "`agentworks new`" + `) and over
 hand-editing exported vendor output (` + "`agentworks export`" + ` regenerates it).
+` + "`agentworks validate`" + ` also warns on weak descriptions (too vague, too long, or
+indistinguishable from another artifact's) -- worth heeding even though it won't fail
+the command unless ` + "`--strict`" + ` is passed, since a bad description is how an agent picks
+the wrong artifact or misses this one entirely.
 `
 
 // agentworksCLISkillTemplate is the SKILL.md written into every new project
@@ -70,6 +74,8 @@ these commands over hand-writing or hand-editing files under ` + "`agents/`" + `
 - ` + "`agentworks list [kind]`" + ` — table of this project's discovered artifacts.
 - ` + "`agentworks validate [path]`" + ` — parse and validate one artifact, or the whole
   project if no path is given. Run this after hand-editing any ` + "`<kind>.md`" + ` file.
+  Beyond structural checks, it also warns on weak descriptions (too short, too long, or
+  overlapping heavily with another artifact's) -- pass ` + "`--strict`" + ` to fail on those too.
 - ` + "`agentworks test [path]`" + ` — run the ` + "`test:`" + ` command an artifact declares in its
   frontmatter (no path runs every artifact that declares one).
 - ` + "`agentworks targets`" + ` — capability matrix of which vendor targets support which

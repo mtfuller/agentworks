@@ -90,7 +90,9 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   fields round-trip through `Extra` so there's one parser for all five kinds), and
   `Parse`/`Render`/`Load`/`Save` for the `<kind>.md` (YAML frontmatter + Markdown body)
   file format. This is the one place that understands that file format — nothing else
-  should hand-parse it.
+  should hand-parse it. `lint.go`'s `LintDescription`/`LintOverlap` are heuristic
+  description-quality checks (not structural validation, which stays in `Validate()`)
+  used by `cmd/validate.go`.
 - **`internal/project`** — `agentworks.yaml` (the project manifest), `Init` (scaffold a
   new project), `FindRoot` (walk upward for the manifest, like git finds `.git`), and
   `Discover` (walk the 5 kind directories and load every artifact). `Manifest.Publisher`
@@ -268,6 +270,23 @@ in prose instead of live frontmatter, so a template-scaffolded workflow never fa
 `agentworks validate` out of the box. Deliberately deferred: project-defined custom
 templates (a `templates/` directory the project itself contributes) — built-in only for
 now, confirmed with the user rather than assumed.
+
+Also done as of this pass: description-quality linting. `agentworks validate` now also
+runs `Artifact.LintDescription()` and (project-wide only) `artifact.LintOverlap()` from
+`internal/artifact/lint.go` — heuristic warnings, not the structural errors
+`Validate()`/`validateKindSpecific` produce, so they never fail the command by default.
+They catch a description that's over the
+[Agent Skills spec](https://agentskills.io/specification)'s 1024-character limit, under
+20 characters (the spec's own "poor example" shape, e.g. "Helps with PDFs."), redundant
+with the artifact's name (its significant words are a subset of the name's), or
+overlapping heavily (≥70% Jaccard similarity of significant words) with another
+same-kind artifact's description in the project. `cmd/validate.go`'s new `--strict` flag
+promotes these warnings to failures for a CI gate that wants them enforced. Serves
+guiding scenario 6 (local validate workflows) directly — a description is how an agent
+*finds* an artifact in the first place, and that was previously untested by anything in
+AgentWorks. `agentworks init`'s generated `AGENTS.md`/`agentworks-cli` `SKILL.md`
+(`internal/project/agentdocs.go`) mention it too, so a coding agent working inside a
+scaffolded project knows to heed the warnings.
 
 `chatgpt` staying skill-only is different from the above: it's a *closed* investigation,
 not an open TODO — see the next section for why, so nobody re-opens it without first

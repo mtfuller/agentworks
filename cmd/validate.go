@@ -11,16 +11,25 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets/workflowsteps"
 )
 
+var validateStrict bool
+
 var validateCmd = &cobra.Command{
 	Use:   "validate [path]",
 	Short: "Validate artifact frontmatter",
-	Long:  "Parse and validate one artifact (by path) or every artifact in the project.",
-	Args:  cobra.MaximumNArgs(1),
+	Long: `Parse and validate one artifact (by path) or every artifact in the project.
+
+Beyond structural checks (required fields, a workflow's "steps:" resolving,
+etc.), this also lints description quality -- too long, too vague, redundant
+with the name, or overlapping with another artifact's description -- and
+prints those as warnings. Warnings don't fail the command unless --strict is
+set.`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var toCheck []*artifact.Artifact
 		discoverErrs := 0
+		wholeProject := len(args) == 0
 
-		if len(args) == 1 {
+		if !wholeProject {
 			a, err := loadArtifactAtPath(args[0])
 			if err != nil {
 				return err
@@ -40,6 +49,7 @@ var validateCmd = &cobra.Command{
 		}
 
 		failed := discoverErrs
+		warned := 0
 		for _, a := range toCheck {
 			if err := a.Validate(); err != nil {
 				color.Error("%v", err)
@@ -51,9 +61,23 @@ var validateCmd = &cobra.Command{
 				failed++
 				continue
 			}
+			for _, w := range a.LintDescription() {
+				color.Warning("%s: %s", w.Dir, w.Message)
+				warned++
+			}
 			color.Success("%s (%s)", a.Name, a.Kind)
 		}
 
+		if wholeProject {
+			for _, w := range artifact.LintOverlap(toCheck) {
+				color.Warning("%s: %s", w.Dir, w.Message)
+				warned++
+			}
+		}
+
+		if validateStrict {
+			failed += warned
+		}
 		if failed > 0 {
 			return fmt.Errorf("%d artifact(s) failed validation", failed)
 		}
@@ -89,4 +113,5 @@ func validateKindSpecific(a *artifact.Artifact) error {
 
 func init() {
 	rootCmd.AddCommand(validateCmd)
+	validateCmd.Flags().BoolVar(&validateStrict, "strict", false, "treat description-quality warnings as failures")
 }
