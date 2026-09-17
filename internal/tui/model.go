@@ -1,7 +1,10 @@
 // Package tui is AgentWorks' Bubble Tea front end: a project browser
-// (Model in this file) and the interactive "new artifact" wizard
-// (wizard.go), both built on the same internal/artifact, internal/project,
-// and internal/scaffold packages the CLI uses -- so the CLI and TUI never
+// (Model in this file), the actions it can take (actions.go -- create and
+// export, both embedding a huh.Form as a child Bubble Tea model rather
+// than shelling out to a second tea.Program), and the interactive
+// "new artifact" wizard (wizard.go) that also backs `agentworks new` on
+// the CLI. All built on the same internal/artifact, internal/project, and
+// internal/scaffold packages the CLI uses -- the CLI and TUI never
 // disagree about what a project or an artifact is.
 package tui
 
@@ -12,24 +15,27 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/project"
 )
 
-// pane identifies which of the browser's three screens is active.
+// pane identifies which of the browser's screens is active.
 type pane int
 
 const (
 	paneKinds pane = iota
 	paneArtifacts
 	paneDetail
+	paneForm // a huh.Form (create or export) is active; see actions.go
 )
 
 var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Padding(0, 1)
-	helpStyle  = lipgloss.NewStyle().Faint(true)
+	titleStyle  = lipgloss.NewStyle().Bold(true).Padding(0, 1)
+	helpStyle   = lipgloss.NewStyle().Faint(true)
+	statusStyle = lipgloss.NewStyle().Bold(true)
 )
 
 type kindItem struct {
@@ -51,7 +57,9 @@ func (i artifactItem) FilterValue() string { return i.a.Name }
 
 // Model is the root Bubble Tea model for `agentworks tui`: a drill-down
 // browser from artifact kinds, to that kind's artifacts, to one artifact's
-// rendered frontmatter + body.
+// rendered frontmatter + body -- plus, from the right pane, creating a new
+// artifact ("n") or exporting the current one ("e"). See actions.go for
+// both of those.
 type Model struct {
 	root string
 	pane pane
@@ -59,6 +67,25 @@ type Model struct {
 	kindList     list.Model
 	artifactList list.Model
 	viewport     viewport.Model
+
+	// currentKind/currentArtifact track what's in view in paneArtifacts/
+	// paneDetail, so "n"/"e" know what kind to scaffold into or which
+	// artifact to export without re-deriving it from the list widgets.
+	currentKind     artifact.Kind
+	currentArtifact *artifact.Artifact
+
+	// Form state for the active create/export action, if any -- see
+	// actions.go's startCreateForm/startExportForm/updateForm/finishForm.
+	activeForm     *huh.Form
+	formPurpose    formPurpose
+	formReturnPane pane
+	newAnswers     *NewArtifactAnswers
+	exportAnswers  *ExportAnswers
+	exportSubject  *artifact.Artifact
+
+	// statusMsg reports the outcome of the last create/export action,
+	// shown in the footer until the next one replaces it.
+	statusMsg string
 
 	width, height int
 	err           error
@@ -96,6 +123,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// ctrl+c always quits, regardless of pane or an in-progress form.
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		return m, tea.Quit
+	}
+
+	if m.pane == paneForm {
+		return m.updateForm(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -107,13 +143,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
-		case "q", "esc":
-			return m.goBack()
-		case "enter":
-			return m.drillIn()
+		// While the user is typing into a list's filter box, single-key
+		// shortcuts must fall through to it like any other character --
+		// otherwise typing "new" into a filter would trigger "n".
+		if !m.isFiltering() {
+			switch msg.String() {
+			case "q", "esc":
+				return m.goBack()
+			case "enter":
+				return m.drillIn()
+			case "n":
+				if m.pane == paneKinds || m.pane == paneArtifacts {
+					return m.startCreateForm()
+				}
+			case "e":
+				if m.pane == paneArtifacts || m.pane == paneDetail {
+					return m.startExportForm()
+				}
+			}
 		}
 	}
 
@@ -127,6 +174,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport, cmd = m.viewport.Update(msg)
 	}
 	return m, cmd
+}
+
+func (m Model) isFiltering() bool {
+	switch m.pane {
+	case paneKinds:
+		return m.kindList.FilterState() == list.Filtering
+	case paneArtifacts:
+		return m.artifactList.FilterState() == list.Filtering
+	default:
+		return false
+	}
 }
 
 // goBack handles "q"/"esc": quit from the top-level pane, otherwise step up
@@ -163,6 +221,7 @@ func (m Model) drillIn() (tea.Model, tea.Cmd) {
 		}
 		m.artifactList = list.New(items, list.NewDefaultDelegate(), m.width, m.height-2)
 		m.artifactList.Title = item.Title()
+		m.currentKind = item.kind
 		m.pane = paneArtifacts
 		return m, nil
 
@@ -171,6 +230,7 @@ func (m Model) drillIn() (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
+		m.currentArtifact = item.a
 		m.viewport.SetContent(renderArtifact(item.a))
 		m.viewport.GotoTop()
 		m.pane = paneDetail
@@ -180,6 +240,10 @@ func (m Model) drillIn() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	if m.pane == paneForm {
+		return m.activeForm.View()
+	}
+
 	var body string
 	switch m.pane {
 	case paneKinds:
@@ -189,8 +253,27 @@ func (m Model) View() string {
 	case paneDetail:
 		body = m.viewport.View()
 	}
-	help := helpStyle.Render("enter: open  •  q/esc: back  •  ctrl+c: quit")
-	return body + "\n" + help
+
+	out := body + "\n" + helpStyle.Render(m.helpText())
+	if m.statusMsg != "" {
+		out += "\n" + statusStyle.Render(m.statusMsg)
+	}
+	return out
+}
+
+// helpText is the footer hint line, tailored to what's actually available
+// from the current pane.
+func (m Model) helpText() string {
+	switch m.pane {
+	case paneKinds:
+		return "enter: open  •  n: new  •  q: quit"
+	case paneArtifacts:
+		return "enter: open  •  n: new  •  e: export  •  esc: back"
+	case paneDetail:
+		return "e: export  •  esc: back"
+	default:
+		return "esc: back  •  ctrl+c: quit"
+	}
 }
 
 func renderArtifact(a *artifact.Artifact) string {

@@ -56,9 +56,12 @@ of truth for what "done" looks like for any given piece of functionality:
    test/validate/simulate workflows and room to build genuinely custom, heavier tooling
    when a scenario needs it. *(The `<kind>.md` format + `validate`/`test` commands.)*
 7. **Any user** — a polished TUI for building agents/tools/skills, with control over
-   whether an export is a standalone skill zip or a full plugin. *(`agentworks tui`
-   browses the project; it doesn't yet drive scaffolding/export itself — CLI-only for
-   those actions so far.)*
+   whether an export is a standalone skill zip or a full plugin. *(Done — `agentworks
+   tui` now drives both from inside the browser: `n` opens the same `huh` wizard
+   `agentworks new` uses (embedded as a child Bubble Tea model, not a second program),
+   landing on the freshly-created artifact; `e` opens an export form restricted to
+   targets that actually support the artifact's kind, with a zip toggle, reusing the
+   exact same `Exporter` call `agentworks export` makes. See `internal/tui/actions.go`.)*
 8. **Any user** — early, explicit visibility into which capabilities are portable across
    every target vendor versus specific to a subset, before investing effort in either.
    *(`agentworks targets`.)*
@@ -132,9 +135,14 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   common to every plugin they produce (the manifest writer, `writeMCPFile`) — `agent.go`
   and `workflow.go` both call the same `write*AgentFile` helper so a subagent file looks
   identical whether it's exported standalone or bundled into a workflow.
-- **`internal/tui`** — the Bubble Tea project browser (`model.go`/`app.go`) and the
-  `huh`-based interactive wizard (`wizard.go`) that both `cmd/new.go` (non-interactive
-  runs skip it) and the browser's future "create artifact" action call.
+- **`internal/tui`** — the Bubble Tea project browser (`model.go`/`app.go`), the
+  create/export actions it drives (`actions.go`, `export_form.go`), and the `huh`-based
+  create-artifact wizard (`wizard.go`) shared with `cmd/new.go`'s non-interactive-args
+  fallback. `huh.Form` implements `tea.Model` itself, so a form is embedded as a child
+  model (`Model.activeForm`) rather than run via its own blocking `.Run()` inside the
+  browser — see `actions.go`'s `updateForm`/`finishForm` for the pane that hands control
+  to/from it (`paneForm`), keyed off the form's own `State` field
+  (`StateCompleted`/`StateAborted`).
 - **`internal/{logger,color,spinner,version}`** — CLI-support code inherited from the
   starter template (leveled logging, ANSI output helpers, a progress spinner, build
   metadata via ldflags).
@@ -165,9 +173,10 @@ kind in principle — the exporter is the gap, not the model, and there's no res
 mapping yet for what an "agent" or "tool" even means on ChatGPT beyond skills); any
 workflow *execution* engine — a workflow export produces a real plugin the vendor's own
 agent loop runs, AgentWorks never executes a workflow itself, and that's permanent, not
-a gap; wiring export/test actions into the TUI itself (it's browse-only for now);
-`m365-copilot`'s placeholder developer/privacy/terms URLs becoming real project-level
-config in `agentworks.yaml` instead of TODO strings a human has to find and edit.
+a gap; wiring a `test` action into the TUI (`n`/`e` — create/export — are wired now;
+running an artifact's `test:` command from inside the browser isn't yet); `m365-copilot`'s
+placeholder developer/privacy/terms URLs becoming real project-level config in
+`agentworks.yaml` instead of TODO strings a human has to find and edit.
 
 ## Conventions
 

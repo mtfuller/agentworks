@@ -24,6 +24,18 @@ type NewArtifactAnswers struct {
 // are still needed to scaffold a new artifact, so `agentworks new` and the
 // TUI's "create artifact" action share one prompt flow instead of two.
 func RunNewArtifactWizard(defaults NewArtifactAnswers) (NewArtifactAnswers, error) {
+	form, answers := newArtifactForm(defaults)
+	if err := form.Run(); err != nil {
+		return NewArtifactAnswers{}, err
+	}
+	return *answers, nil
+}
+
+// newArtifactForm builds the create-artifact form and the answers struct
+// its fields are bound to, without running it -- shared by
+// RunNewArtifactWizard (which runs it as a blocking CLI prompt) and the
+// TUI browser (which embeds it as a child Bubble Tea model instead).
+func newArtifactForm(defaults NewArtifactAnswers) (*huh.Form, *NewArtifactAnswers) {
 	a := defaults
 
 	kindOptions := make([]huh.Option[string], 0, len(artifact.Kinds()))
@@ -68,8 +80,5 @@ func RunNewArtifactWizard(defaults NewArtifactAnswers) (NewArtifactAnswers, erro
 				Value(&a.Targets),
 		),
 	)
-	if err := form.Run(); err != nil {
-		return NewArtifactAnswers{}, err
-	}
-	return a, nil
+	return form, &a
 }
