@@ -90,6 +90,12 @@ these commands over hand-writing or hand-editing files under ` + "`agents/`" + `
   into this project (the reverse of export). Accepts a GitHub ` + "`owner/repo`" + `
   shorthand, a repo/tree/blob URL, or a direct archive URL. With no argument in an
   interactive terminal, opens the marketplace search TUI instead.
+- ` + "`agentworks marketplace`" + ` — publish this whole project as a plugin marketplace
+  repo: exports every artifact into committed ` + "`plugins/`" + ` directories (bundled one
+  per namespace, or ` + "`--single`" + ` for one plugin total) and writes
+  ` + "`.claude-plugin/marketplace.json`" + ` / ` + "`.github/plugin/marketplace.json`" + ` so a
+  team can add this repo directly as a plugin source instead of installing artifacts
+  one at a time.
 - ` + "`agentworks tui`" + ` — full-screen browser for all of the above: drill into an
   artifact, then ` + "`n`" + `ew/` + "`e`" + `xport/` + "`t`" + `est/` + "`a`" + `dd/` + "`b`" + `rowse-templates without
   dropping back to individual CLI calls.

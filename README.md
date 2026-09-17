@@ -144,6 +144,7 @@ argument, `--bundle` members. An unnamespaced artifact is unaffected either way.
 | `agentworks add <url>` | Import a published skill or Claude Code plugin into this project — the reverse of `export`. Accepts an `owner/repo` GitHub shorthand, a full `github.com` repo/tree/blob URL, a `raw.githubusercontent.com` file URL, or a direct `.zip`/`.tar.gz` archive URL (including agentskills.codes's download links). A bare Agent Skill (`SKILL.md` at its root) becomes one skill artifact, supporting files included. A Claude Code plugin (`.claude-plugin/plugin.json` at its root) decomposes into one artifact per skill/agent it contains; tools and hooks inside a fetched plugin aren't supported yet and are reported, not silently dropped. A name that doesn't fit AgentWorks' slug rules is converted automatically, with the original preserved in a `source:` provenance block alongside where it came from. `--name` overrides the derived name (single-skill imports only); `--dry-run` shows what would be imported without writing anything. If any imported content declares a shell `command` (see "Drift and supply-chain safety"), it's printed and you're asked to confirm — `--yes` skips that prompt for scripted use. Every import is pinned in `agentworks.lock`. With no URL and no argument, it launches the marketplace search TUI in an interactive terminal. |
 | `agentworks update [path...]` | Check artifacts imported with `add` for upstream changes: re-fetches each locked source and compares its content hash against what was pinned at import time. Report-only by default; `--apply` overwrites a changed artifact with the fresh content (refusing rather than silently renaming/moving it if upstream itself renamed the artifact) and updates the pin, subject to the same shell-command confirmation gate as `add` (`--yes` to skip it). With no path, checks every import in `agentworks.lock`. |
 | `agentworks status [path]` | Fully offline check of `dist/` output against `agentworks.lock`'s export records: `in sync`, `stale` (source artifact changed, re-export), `modified` (dist was hand-edited since the last export — re-exporting discards it), or `missing`. |
+| `agentworks marketplace` | Publish this project as a plugin marketplace repo a team can point Claude Code or GitHub Copilot at directly — see "Becoming a plugin marketplace repo" below. |
 | `agentworks tui` | Full-screen Bubble Tea browser: drill from kind → artifact → its rendered frontmatter and body. Press `n` to scaffold a new artifact (the same wizard `agentworks new` uses), `e` to export the current one to a vendor target with a zip toggle, `t` to run its declared `test:` command, `a` to search and import from agentskills.codes plus the Claude Code and GitHub Copilot marketplaces, or `b` to browse/search the built-in starter templates and create straight from one — all run right there, no dropping back to the CLI. |
 | `agentworks version` | Print version/commit/build-date info. |
 
@@ -174,6 +175,35 @@ bit). `validate` and `export` only warn; `add` (and `update --apply`) require an
 explicit `y`/`--yes` before writing anything that triggers a warning. This is a scan
 and a confirmation gate, not a sandbox — it catches sloppy or obviously hostile
 commands, not a determined obfuscator.
+
+## Becoming a plugin marketplace repo
+
+```bash
+agentworks marketplace
+```
+
+turns the project itself into a repo a team can point Claude Code or GitHub
+Copilot at directly, instead of exporting one artifact at a time. It exports
+every eligible artifact into committed plugin directories under `plugins/`
+(unlike `export`'s disposable, gitignored `dist/`), then writes a
+`marketplace.json` listing them — `.claude-plugin/marketplace.json` for
+Claude Code, `.github/plugin/marketplace.json` for GitHub Copilot, both by
+default (pass `--target claude-code` or `--target github-copilot` to
+generate just one). A team adds either as a plugin marketplace source (e.g.
+Claude Code's `/plugin marketplace add <repo>`) and installs whatever
+plugins it lists.
+
+Skills, agents, tools, and hooks are grouped into one bundled plugin per
+namespace — an unnamespaced artifact lands in one plugin named after the
+project, and each `namespace:` (see "A project, on disk" above) gets its
+own. Pass `--single` to collapse everything into one plugin regardless of
+namespace. Workflows always export as their own plugin, since a workflow
+can't be a bundle member (same rule `export --bundle` follows). Re-running
+`agentworks marketplace` regenerates `plugins/` and both `marketplace.json`
+files from scratch, so it stays in sync as artifacts are added, removed,
+renamed, or re-namespaced — nothing from a previous run is left behind.
+Exports are recorded in `agentworks.lock` exactly like `agentworks export`,
+so `agentworks status` reports on them too.
 
 ## Development
 
@@ -214,7 +244,7 @@ task install             # to GOPATH/bin
 │   │   ├── githubcopilot/       # "github-copilot": all 5 kinds, each a real Agent Plugin
 │   │   └── m365copilot/         # the "m365-copilot" declarative agent + app package exporter
 │   ├── importer/                 # the reverse of targets/: fetch + decompose a skill/plugin into local artifacts
-│   ├── marketplace/               # agentskills.codes + well-known marketplace.json search, resolving to importer.Source
+│   ├── marketplace/               # agentskills.codes + well-known marketplace.json search (resolving to importer.Source), plus writing this project's own marketplace.json for `agentworks marketplace`
 │   ├── tui/                     # Bubble Tea browser + `n`ew/`e`xport/`t`est/`a`dd/`b`rowse-templates actions
 │   ├── color/ logger/ spinner/ version/   # CLI-support packages from the starter template
 ├── examples/starter-project/    # a finished example project, one artifact of each kind
