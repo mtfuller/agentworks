@@ -196,6 +196,14 @@ warning only fires when `m365copilot.UsesPlaceholderPublisher` says a required f
 (name, privacy URL, or terms URL — accent color is cosmetic, not warned about) is still
 a placeholder, so a project that's configured it stops seeing the nag.
 
+Also done as of this pass: `agentworks init` now writes an `AGENTS.md` plus
+`.agents/skills/agentworks-cli/SKILL.md` into every new project (see
+`internal/project/agentdocs.go`), so a coding agent working inside a scaffolded project
+knows to drive it via the CLI rather than hand-writing `<kind>.md` files or hand-editing
+exported vendor output. Neither file is overwritten if a project already has one
+(`writeAgentDocs`/`writeIfAbsent`), so re-running init-adjacent tooling never clobbers
+hand edits.
+
 Also done as of this pass: the two items from [BRAINSTORM.md](BRAINSTORM.md)'s
 Distribution section. `agentworks export` now handles more than one artifact per call —
 `--all`/`--kind` export every matching artifact in the project individually (skipping,

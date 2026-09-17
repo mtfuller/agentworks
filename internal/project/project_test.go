@@ -3,6 +3,7 @@ package project
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
@@ -31,6 +32,55 @@ func TestInitAndLoad(t *testing.T) {
 	}
 	if loaded.Name != "myproject" || len(loaded.Targets) != 1 || loaded.Targets[0] != "claude-code" {
 		t.Errorf("Load() = %+v, want name=myproject targets=[claude-code]", loaded)
+	}
+}
+
+func TestInitWritesAgentDocs(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Init(dir, "myproject", nil); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	agentsMD, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("reading AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(agentsMD), "myproject") {
+		t.Errorf("AGENTS.md should mention the project name, got: %s", agentsMD)
+	}
+	if !strings.Contains(string(agentsMD), ".agents/skills/agentworks-cli/SKILL.md") {
+		t.Errorf("AGENTS.md should point at the agentworks-cli skill, got: %s", agentsMD)
+	}
+
+	skillPath := filepath.Join(dir, ".agents", "skills", "agentworks-cli", "SKILL.md")
+	skill, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", skillPath, err)
+	}
+	if !strings.Contains(string(skill), "name: agentworks-cli") {
+		t.Errorf("SKILL.md should have an agentworks-cli frontmatter name, got: %s", skill)
+	}
+	if !strings.Contains(string(skill), "agentworks new") || !strings.Contains(string(skill), "agentworks export") {
+		t.Errorf("SKILL.md should document core commands, got: %s", skill)
+	}
+}
+
+func TestWriteAgentDocsDoesNotClobberHandEdits(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("custom content"), 0o644); err != nil {
+		t.Fatalf("writing AGENTS.md: %v", err)
+	}
+
+	if err := writeAgentDocs(dir, "myproject"); err != nil {
+		t.Fatalf("writeAgentDocs() error = %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("reading AGENTS.md: %v", err)
+	}
+	if string(got) != "custom content" {
+		t.Errorf("AGENTS.md = %q, want hand-edited content preserved", got)
 	}
 }
 

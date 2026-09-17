@@ -53,11 +53,19 @@ without building one yourself.
 
 ## A project, on disk
 
-`agentworks init` creates a project manifest plus one directory per artifact kind:
+`agentworks init` creates a project manifest, one directory per artifact kind, and an
+`AGENTS.md` + `.agents/skills/agentworks-cli/` skill so a coding agent working in the
+project immediately knows how to drive the CLI (neither is overwritten if it already
+exists):
 
 ```
 myproject/
 ├── agentworks.yaml       # project manifest: name, description, default targets, publisher (optional)
+├── AGENTS.md             # guidance for coding agents working in this project
+├── .agents/
+│   └── skills/
+│       └── agentworks-cli/
+│           └── SKILL.md  # how to scaffold/validate/test/export with agentworks
 ├── agents/
 ├── skills/
 ├── tools/
@@ -104,7 +112,7 @@ artifacts by name).
 
 | Command | What it does |
 | --- | --- |
-| `agentworks init [path]` | Scaffold a new project (`agentworks.yaml` + the 5 kind directories). |
+| `agentworks init [path]` | Scaffold a new project (`agentworks.yaml`, the 5 kind directories, and an `AGENTS.md` + `.agents/skills/agentworks-cli/SKILL.md` teaching a coding agent how to drive this CLI in the project). |
 | `agentworks new <kind> [name]` | Scaffold a new agent/skill/tool/hook/workflow. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. Pass `--from-template <id>` to start from a curated built-in template instead of the generic blank scaffold (see `agentworks templates`) — its own description covers you if you don't pass `--description`. |
 | `agentworks templates [kind]` | Table of the built-in starter templates `--from-template` can scaffold from (two per kind: e.g. a tool's `api-wrapper`/`cli-wrapper`, a workflow's `research-then-act`/`fetch-then-review`). Pass a kind to filter. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |

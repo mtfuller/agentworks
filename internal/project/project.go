@@ -65,6 +65,10 @@ func Init(dir, name string, defaultTargets []string) (*Manifest, error) {
 		}
 	}
 
+	if err := writeAgentDocs(dir, name); err != nil {
+		return nil, err
+	}
+
 	m := &Manifest{Name: name, Targets: defaultTargets}
 	if err := m.save(manifestPath); err != nil {
 		return nil, err
