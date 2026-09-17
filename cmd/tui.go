@@ -8,12 +8,13 @@ import (
 
 var tuiCmd = &cobra.Command{
 	Use:   "tui",
-	Short: "Browse, create, and export artifacts in a full-screen terminal UI",
+	Short: "Browse, create, export, and test artifacts in a full-screen terminal UI",
 	Long: `Launch an interactive browser: drill from artifact kind, to artifact, to its
 rendered frontmatter and body.
 
   n    scaffold a new artifact (same wizard as 'agentworks new')
   e    export the current artifact to a vendor target, with an option to zip
+  t    run the current artifact's declared "test:" command (same as 'agentworks test')
   enter / esc / q   drill in / step back / quit`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {

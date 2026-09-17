@@ -48,19 +48,25 @@ func (m Model) startCreateForm() (tea.Model, tea.Cmd) {
 	return m, m.activeForm.Init()
 }
 
+// selectedArtifact is whichever artifact is currently selected (in
+// paneArtifacts) or being viewed (in paneDetail) -- what "e"/"t" act on.
+func (m Model) selectedArtifact() *artifact.Artifact {
+	switch m.pane {
+	case paneArtifacts:
+		if item, ok := m.artifactList.SelectedItem().(artifactItem); ok {
+			return item.a
+		}
+	case paneDetail:
+		return m.currentArtifact
+	}
+	return nil
+}
+
 // startExportForm opens the export wizard for whichever artifact is
 // currently selected/viewed. If no registered target supports its kind,
 // it reports that in the footer instead of opening an empty form.
 func (m Model) startExportForm() (tea.Model, tea.Cmd) {
-	var subject *artifact.Artifact
-	switch m.pane {
-	case paneArtifacts:
-		if item, ok := m.artifactList.SelectedItem().(artifactItem); ok {
-			subject = item.a
-		}
-	case paneDetail:
-		subject = m.currentArtifact
-	}
+	subject := m.selectedArtifact()
 	if subject == nil {
 		return m, nil
 	}

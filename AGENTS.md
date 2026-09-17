@@ -57,11 +57,14 @@ of truth for what "done" looks like for any given piece of functionality:
    when a scenario needs it. *(The `<kind>.md` format + `validate`/`test` commands.)*
 7. **Any user** — a polished TUI for building agents/tools/skills, with control over
    whether an export is a standalone skill zip or a full plugin. *(Done — `agentworks
-   tui` now drives both from inside the browser: `n` opens the same `huh` wizard
+   tui` now drives all three from inside the browser: `n` opens the same `huh` wizard
    `agentworks new` uses (embedded as a child Bubble Tea model, not a second program),
    landing on the freshly-created artifact; `e` opens an export form restricted to
    targets that actually support the artifact's kind, with a zip toggle, reusing the
-   exact same `Exporter` call `agentworks export` makes. See `internal/tui/actions.go`.)*
+   exact same `Exporter` call `agentworks export` makes; `t` runs the artifact's
+   declared `test:` command via `tea.ExecProcess` (suspends the alt-screen, hands the
+   real terminal to the child process, resumes after). See `internal/tui/actions.go`
+   and `internal/tui/test_action.go`.)*
 8. **Any user** — early, explicit visibility into which capabilities are portable across
    every target vendor versus specific to a subset, before investing effort in either.
    *(`agentworks targets`.)*
@@ -90,7 +93,11 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   should hand-parse it.
 - **`internal/project`** — `agentworks.yaml` (the project manifest), `Init` (scaffold a
   new project), `FindRoot` (walk upward for the manifest, like git finds `.git`), and
-  `Discover` (walk the 5 kind directories and load every artifact).
+  `Discover` (walk the 5 kind directories and load every artifact). `Manifest.Publisher`
+  is optional project-level publishing identity (name/website/privacy/terms/accent
+  color) — currently only `internal/targets/m365copilot` reads it, for its app
+  manifest's developer block; there's no CLI flag for it, a project sets it by hand-
+  editing a `publisher:` block into `agentworks.yaml`.
 - **`internal/scaffold`** — `New(root, kind, name, opts)` writes a new artifact's
   directory + starter files. This is the single code path both `cmd/new.go` and the TUI
   wizard call — never generate an artifact's files by hand in either front end.
@@ -136,13 +143,17 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   and `workflow.go` both call the same `write*AgentFile` helper so a subagent file looks
   identical whether it's exported standalone or bundled into a workflow.
 - **`internal/tui`** — the Bubble Tea project browser (`model.go`/`app.go`), the
-  create/export actions it drives (`actions.go`, `export_form.go`), and the `huh`-based
-  create-artifact wizard (`wizard.go`) shared with `cmd/new.go`'s non-interactive-args
-  fallback. `huh.Form` implements `tea.Model` itself, so a form is embedded as a child
-  model (`Model.activeForm`) rather than run via its own blocking `.Run()` inside the
-  browser — see `actions.go`'s `updateForm`/`finishForm` for the pane that hands control
-  to/from it (`paneForm`), keyed off the form's own `State` field
-  (`StateCompleted`/`StateAborted`).
+  create/export actions it drives (`actions.go`, `export_form.go`), the test action
+  (`test_action.go`), and the `huh`-based create-artifact wizard (`wizard.go`) shared
+  with `cmd/new.go`'s non-interactive-args fallback. `huh.Form` implements `tea.Model`
+  itself, so a form is embedded as a child model (`Model.activeForm`) rather than run
+  via its own blocking `.Run()` inside the browser — see `actions.go`'s
+  `updateForm`/`finishForm` for the pane that hands control to/from it (`paneForm`),
+  keyed off the form's own `State` field (`StateCompleted`/`StateAborted`). The test
+  action doesn't use that machinery: it hands a plain `*exec.Cmd` to `tea.ExecProcess`,
+  which is bubbletea's own mechanism for suspending the alt-screen and handing the real
+  terminal to a child process — no `paneForm` involved, control returns via a
+  `testFinishedMsg` handled in `Model.Update`.
 - **`internal/{logger,color,spinner,version}`** — CLI-support code inherited from the
   starter template (leveled logging, ANSI output helpers, a progress spinner, build
   metadata via ldflags).
@@ -172,11 +183,18 @@ exporting `hook`/`tool`/`workflow` on `m365-copilot` (the registry's capability 
 already says which vendor could take a kind in principle — the exporter is the gap, not
 the model); any workflow *execution* engine — a workflow export produces a real plugin
 the vendor's own agent loop runs, AgentWorks never executes a workflow itself, and
-that's permanent, not a gap; wiring a `test` action into the TUI (`n`/`e` —
-create/export — are wired now; running an artifact's `test:` command from inside the
-browser isn't yet); `m365-copilot`'s placeholder developer/privacy/terms URLs becoming
-real project-level config in `agentworks.yaml` instead of TODO strings a human has to
-find and edit.
+that's permanent, not a gap.
+
+As of this pass, both smaller items that used to be listed here are done: the TUI's `t`
+key runs an artifact's `test:` command (see `internal/tui/test_action.go` — `n`/`e`/`t`
+now cover create/export/test from inside the browser); and `m365-copilot`'s developer/
+privacy/terms URLs come from an optional `publisher:` block in `agentworks.yaml`
+(`internal/project.Manifest.Publisher`, read via `internal/targets/m365copilot/
+publisher.go`'s `publisherFor`) when a project sets one, falling back to the old
+clearly-labeled placeholders field-by-field otherwise. `cmd/export.go`'s post-export
+warning only fires when `m365copilot.UsesPlaceholderPublisher` says a required field
+(name, privacy URL, or terms URL — accent color is cosmetic, not warned about) is still
+a placeholder, so a project that's configured it stops seeing the nag.
 
 `chatgpt` staying skill-only is different from the above: it's a *closed* investigation,
 not an open TODO — see the next section for why, so nobody re-opens it without first

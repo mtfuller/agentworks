@@ -34,6 +34,54 @@ func TestInitAndLoad(t *testing.T) {
 	}
 }
 
+func TestPublisherIsNilByDefaultAndLoadsWhenHandEdited(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Init(dir, "proj", nil); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if loaded.Publisher != nil {
+		t.Fatalf("Publisher = %+v, want nil for a project that never set one", loaded.Publisher)
+	}
+
+	// Simulate a human hand-editing agentworks.yaml to add a publisher
+	// block, the way it's actually meant to be set (Init doesn't prompt
+	// for it).
+	yaml := `name: proj
+publisher:
+  name: Jane Doe
+  website: https://example.org
+  privacy_url: https://example.org/privacy
+  terms_url: https://example.org/terms
+  accent_color: "#123456"
+`
+	if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(yaml), 0o644); err != nil {
+		t.Fatalf("writing %s: %v", ManifestFile, err)
+	}
+
+	reloaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if reloaded.Publisher == nil {
+		t.Fatal("Publisher = nil, want the hand-edited block")
+	}
+	want := Publisher{
+		Name:        "Jane Doe",
+		Website:     "https://example.org",
+		PrivacyURL:  "https://example.org/privacy",
+		TermsURL:    "https://example.org/terms",
+		AccentColor: "#123456",
+	}
+	if *reloaded.Publisher != want {
+		t.Errorf("Publisher = %+v, want %+v", *reloaded.Publisher, want)
+	}
+}
+
 func TestInitRefusesExisting(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := Init(dir, "proj", nil); err != nil {

@@ -32,12 +32,6 @@ const (
 	declarativeAgentVer    = "v1.8"
 	teamsManifestSchema    = "https://developer.microsoft.com/en-us/json-schemas/teams/v1.18/MicrosoftTeams.schema.json"
 	teamsManifestVersion   = "1.18"
-
-	placeholderDeveloperName = "TODO: replace with your publisher name"
-	placeholderWebsiteURL    = "https://example.com"
-	placeholderPrivacyURL    = "https://example.com/privacy"
-	placeholderTermsURL      = "https://example.com/terms"
-	defaultAccentColor       = "#5B5FC7"
 )
 
 // declarativeAgent is the minimal declarative agent manifest (schema
@@ -121,27 +115,28 @@ func (agentExporter) Export(a *artifact.Artifact, outDir string, opts targets.Ex
 		Instructions: truncate(instructions, 8000),
 	}
 
+	pub, _ := publisherFor(a)
 	manifest := teamsManifest{
 		Schema:          teamsManifestSchema,
 		ManifestVersion: teamsManifestVersion,
 		Version:         "1.0.0",
 		ID:              appID(a.Name),
 		Developer: developerInfo{
-			Name:          placeholderDeveloperName,
-			WebsiteURL:    placeholderWebsiteURL,
-			PrivacyURL:    placeholderPrivacyURL,
-			TermsOfUseURL: placeholderTermsURL,
+			Name:          pub.Name,
+			WebsiteURL:    pub.Website,
+			PrivacyURL:    pub.PrivacyURL,
+			TermsOfUseURL: pub.TermsURL,
 		},
 		Icons:       iconRefs{Color: "color.png", Outline: "outline.png"},
 		Name:        localizableText{Short: truncate(a.Name, 30), Full: truncate(a.Name, 100)},
 		Description: localizableText{Short: truncate(a.Description, 80), Full: truncate(a.Description, 4000)},
-		AccentColor: defaultAccentColor,
+		AccentColor: pub.AccentColor,
 		CopilotAgents: copilotAgentsBlock{
 			DeclarativeAgents: []declarativeAgentRef{{ID: "agent1", File: "declarativeAgent.json"}},
 		},
 	}
 
-	colorPNG, err := colorIcon(defaultAccentColor)
+	colorPNG, err := colorIcon(pub.AccentColor)
 	if err != nil {
 		return "", err
 	}

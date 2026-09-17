@@ -45,8 +45,8 @@ exporter implemented yet.`,
 		}
 
 		color.Success("Exported %s (%s) to %s for %s", a.Name, a.Kind, out, exportTarget)
-		if exportTarget == m365copilot.TargetID {
-			color.Warning("manifest.json inside %s has placeholder developer/privacy/terms URLs -- edit them before submitting to AppSource", out)
+		if exportTarget == m365copilot.TargetID && m365copilot.UsesPlaceholderPublisher(a) {
+			color.Warning("manifest.json inside %s has placeholder developer/privacy/terms URLs -- set a `publisher:` block in agentworks.yaml, or edit them directly before submitting to AppSource", out)
 		}
 		return nil
 	},

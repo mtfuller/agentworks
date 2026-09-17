@@ -142,6 +142,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = listHeight
 		return m, nil
 
+	case testFinishedMsg:
+		return m.handleTestFinished(msg)
+
 	case tea.KeyMsg:
 		// While the user is typing into a list's filter box, single-key
 		// shortcuts must fall through to it like any other character --
@@ -159,6 +162,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "e":
 				if m.pane == paneArtifacts || m.pane == paneDetail {
 					return m.startExportForm()
+				}
+			case "t":
+				if m.pane == paneArtifacts || m.pane == paneDetail {
+					return m.startTest()
 				}
 			}
 		}
@@ -268,9 +275,9 @@ func (m Model) helpText() string {
 	case paneKinds:
 		return "enter: open  •  n: new  •  q: quit"
 	case paneArtifacts:
-		return "enter: open  •  n: new  •  e: export  •  esc: back"
+		return "enter: open  •  n: new  •  e: export  •  t: test  •  esc: back"
 	case paneDetail:
-		return "e: export  •  esc: back"
+		return "e: export  •  t: test  •  esc: back"
 	default:
 		return "esc: back  •  ctrl+c: quit"
 	}
