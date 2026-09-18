@@ -396,6 +396,34 @@ dependency graph across artifacts to orchestrate. Each Node artifact gets its ow
 keeping artifacts portable/copyable rather than wiring them into a shared workspace
 root, matching how the Python templates never introduced a shared virtualenv either.
 
+Also done as of this pass: a generic `build:` frontmatter field and `agentworks build`
+(`cmd/build.go`), a straight mirror of `cmd/test.go` -- shells out to a declared
+`build:` command from the artifact's own directory, same "no path runs every artifact
+that declares one" behavior, added to `doctor`'s `shellCommandFields` so a bad
+interpreter is caught before the command actually runs. Exists for the same reason
+Node artifacts need `npm install`/a compile step before they're runnable: something
+between "scaffolded" and "testable/exportable" that AgentWorks shouldn't guess at or
+run automatically (kept fully independent of `test`/`export`, same as those two are
+independent of each other). Alongside it, a real bug fix in
+`internal/targets/filecopy.CopyDirExcept` (used by every exporter): it copied
+*everything* in an artifact's directory except the manifest, which meant a
+`node_modules` (or `__pycache__`/`.venv`/`.git`) present at export time got zipped and
+shipped into every vendor package. Fixed with a small fixed skip-list checked during
+the directory walk, language-agnostic rather than Node-specific.
+
+That combination is also the answer to sharing code between several small Node
+artifacts without reopening the "no shared workspace" decision two paragraphs up: put
+shared logic in its own ordinary npm package under `packages/<name>/` at the project
+root (invisible to `Discover`, which only ever walks the five kind directories), have
+an artifact depend on it via a `file:` reference during development (an npm symlink,
+immediate edit loop, no publishing needed), then give that artifact a `build:` command
+that bundles the shared code in (e.g. an esbuild step) before `agentworks export` ships
+it — since a `file:` symlink's target won't exist once the artifact directory is
+copied out on its own. This stays a documented convention (see README.md, "Sharing
+code between Node artifacts"), not new CLI surface: `packages/` needs no code change
+to stay outside the artifact model, and bundling is just another `build:` command like
+any other.
+
 Also done as of this pass: BRAINSTORM.md's "Tool development experience" section,
 both items. `agentworks doctor [path]` (`cmd/doctor.go`) is a static, side-effect-free
 preflight check — a `doctorChecks` sibling of `validate`'s own checks, run per artifact:

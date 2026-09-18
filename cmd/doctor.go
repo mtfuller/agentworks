@@ -22,8 +22,8 @@ var doctorCmd = &cobra.Command{
 	Long: `A static, side-effect-free preflight check -- unlike "test"/"run", it never
 shells out to anything the artifact declares, it just checks that it could.
 
-For every declared shell command ("command:"/"test:"/"eval_runner:"), resolves its
-interpreter/binary against PATH. For a declared "entrypoint:", checks the file exists.
+For every declared shell command ("command:"/"test:"/"build:"/"eval_runner:"), resolves
+its interpreter/binary against PATH. For a declared "entrypoint:", checks the file exists.
 For a tool's "auth:" environment variables, checks they're set -- as a warning, not a
 failure, since they're only needed to actually call the tool (see 'agentworks run'),
 not to discover what it offers.
@@ -98,11 +98,11 @@ type doctorIssue struct {
 }
 
 // shellCommandFields are the frontmatter fields whose value is a shell
-// command AgentWorks itself will later exec via "sh -c" (see cmd/test.go,
-// cmd/eval.go, internal/targets/mcpconfig) -- doctor checks its
+// command AgentWorks itself will later exec via "sh -c" (see cmd/build.go,
+// cmd/test.go, cmd/eval.go, internal/targets/mcpconfig) -- doctor checks its
 // interpreter/binary is resolvable now, rather than the first sign of
 // trouble being a raw "command not found" from the shell later.
-var shellCommandFields = []string{"command", "test", "eval_runner"}
+var shellCommandFields = []string{"command", "test", "build", "eval_runner"}
 
 // doctorChecks runs every preflight check against a, given the environment
 // (os.Environ() normally; a fake slice in tests) it would actually run in.

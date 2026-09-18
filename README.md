@@ -128,6 +128,41 @@ argument, `--bundle` members. An unnamespaced artifact is unaffected either way.
 `agentworks add`/`export` write an `agentworks.lock` at the project root -- see
 "Drift and supply-chain safety" below.
 
+## Sharing code between Node artifacts
+
+Every artifact -- including a `node-skill`/`node-tool` -- is a self-contained,
+independently-copyable leaf directory (its own `package.json`, its own
+`node_modules`), so `agentworks export`/`agentworks add` can move one in or out
+without dragging along a shared workspace root. That's deliberate, not an oversight
+(see AGENTS.md) -- but it still leaves the question of how to share real logic
+between several small Node artifacts without duplicating it everywhere. The
+recommended pattern:
+
+1. Put shared code in its own ordinary npm package under `packages/<name>/` at the
+   project root. AgentWorks never looks there -- `list`/`validate`/`test`/`build`/
+   `export` only ever walk `agents/ skills/ tools/ hooks/ workflows/` -- so it's just
+   a normal npm package with its own `package.json` and its own tests (plain `npm
+   test`, run directly rather than through `agentworks test`, since it isn't an
+   artifact).
+2. From a Node artifact, depend on it like any other package during development, via
+   a relative `file:` reference in that artifact's own `package.json`:
+   ```json
+   "dependencies": {
+     "@myproject/shared-lib": "file:../../packages/shared-lib"
+   }
+   ```
+   `npm install` resolves this to a symlink, so edits to the shared package are
+   picked up immediately -- nothing to publish for local dev.
+3. A `file:` dependency is a symlink into a path that only exists inside this
+   project, so it won't survive the artifact directory being copied out by
+   `export`/`add`. Give the artifact a `build:` command that bundles the shared code
+   in first (e.g. `npm install && npx esbuild src/index.js --bundle --platform=node
+   --outfile=dist/index.js`), and point its `command:`/`entrypoint:` at the bundled
+   output rather than the raw source. Run `agentworks build <path>` before
+   `agentworks export` -- export itself doesn't need anything special, it already
+   just copies whatever's in the directory (`node_modules` is never included, whether
+   or not you use this pattern).
+
 ## Commands
 
 | Command | What it does |
@@ -137,9 +172,10 @@ argument, `--bundle` members. An unnamespaced artifact is unaffected either way.
 | `agentworks templates [kind]` | Table of the built-in starter templates `--from-template` can scaffold from (two per kind for hook/workflow, three for agent and tool, five for skill: e.g. a tool's `api-wrapper`/`cli-wrapper`/`node-tool`, a workflow's `research-then-act`/`fetch-then-review`, a skill's `pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's PowerPoint/Excel skills, or `node-skill`/`node-tool` for a Node.js implementation instead of the Python default). Pass a kind to filter. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |
 | `agentworks validate [path]` | Parse and validate one artifact or the whole project. Beyond the generic checks (name/description/kind), also catches export-readiness gaps per kind: a workflow's `steps:` must resolve to real artifacts, a hook's `events`/`command` must be set together, and a tool declaring `auth` must also declare `command`. Also lints description quality — too long (over the [Agent Skills spec](https://agentskills.io/specification)'s 1024-character limit), too short/vague, redundant with the name, or overlapping heavily with another same-kind artifact's description (checked project-wide) — and flags a hook/tool `command` that will run arbitrary shell code (see "Drift and supply-chain safety") — all printed as warnings that don't fail the command unless `--strict` is passed. |
+| `agentworks build [path]` | Run the `build:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it, e.g. installing dependencies, compiling, or bundling before the artifact can run or be exported). With no path, runs every artifact that declares one. |
 | `agentworks test [path]` | Run the `test:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it). |
 | `agentworks eval [path]` | Behavior-test a skill/agent: for each case under its `evals/` directory, pipe the case's `prompt` to the artifact's `eval_runner` command (or the project's `agentworks.yaml` `eval.default_runner` if it doesn't set its own) and check the runner's stdout against the case's `assert` rules (`contains`/`not_contains`/`matches`/`not_matches`/`max_length`/`min_length`). AgentWorks never calls a model itself here — `eval_runner` is your own shell command (a script calling whatever model/API you want, `claude -p`, or anything else reading a prompt on stdin and printing a response on stdout), the same "orchestrate, don't execute" split `agentworks test` and workflow export already follow. With no path, runs every artifact with an `evals/` directory; artifacts without one, or without a runner configured, are skipped rather than failed. Pass `--case <name>` to re-run a single case. |
-| `agentworks doctor [path]` | A static, side-effect-free preflight check: resolves every declared shell command's (`command:`/`test:`/`eval_runner:`) interpreter/binary against `PATH`, checks a declared `entrypoint:` file actually exists, and checks a tool's `auth:` environment variables are set (a warning, not a failure, unless `--strict` — they're only needed to actually call the tool, not to discover what it offers). With no path, checks every artifact in the project. Run this before `agentworks run` if you're not sure the command/environment is even set up. |
+| `agentworks doctor [path]` | A static, side-effect-free preflight check: resolves every declared shell command's (`command:`/`test:`/`build:`/`eval_runner:`) interpreter/binary against `PATH`, checks a declared `entrypoint:` file actually exists, and checks a tool's `auth:` environment variables are set (a warning, not a failure, unless `--strict` — they're only needed to actually call the tool, not to discover what it offers). With no path, checks every artifact in the project. Run this before `agentworks run` if you're not sure the command/environment is even set up. |
 | `agentworks run <tool>` | Start a tool artifact's declared `command` as a real MCP server and open a full-screen inspector: browse the tools it exposes, fill in and submit a call from a form generated off each tool's `inputSchema`, and see the result — the same way an agent actually would, instead of only unit-testing the tool's logic with mocked calls. Also shows a call-history pane and the raw JSON-RPC/stderr traffic (reachable even from a connection-failure screen, so the real cause isn't hidden behind a generic protocol error). Only tool artifacts qualify; unlike `export`'s `${VAR}` placeholders, this actually executes with your real environment. Needs an interactive terminal. |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
 | `agentworks export <path> --target <id>` | Export an artifact to a vendor's native format. `claude-code` and `github-copilot` have a real exporter for all five kinds: skills (the shared [Agent Skills](https://agentskills.io/specification) format, also used by `chatgpt`), tools and workflow tool-steps as an MCP server registration (`.mcp.json` / Agent Plugins' `mcp.json`, `auth` env vars passed through as `${VAR}` references, never literal secrets), agents as a subagent file (`agents/<name>.md` / `com.github.copilot/agents/<name>.agent.md`), hooks as a lifecycle-event handler (`hooks/hooks.json` / `com.github.copilot/hooks/hooks.json`), and workflows as a bundled plugin composing all of the above plus a generated orchestrator command (the vendor's own agent loop runs it; AgentWorks doesn't execute anything itself). `m365-copilot` exports skills and agents as a declarative agent in a Microsoft 365 app package zip. Its `manifest.json` developer/privacy/terms fields come from an optional `publisher:` block in `agentworks.yaml` (`name`/`website`/`privacy_url`/`terms_url`/`accent_color`) when a project sets one; otherwise they're clearly-labeled placeholders, and the CLI warns you after export so it's not a silent gap. `cursor` and `gemini-cli` have a real exporter for skills/agents/tools/hooks (no workflow -- neither vendor has an orchestration/bundle format), each writing loose, project-scoped files rather than a plugin: Cursor a project rule (`.cursor/rules/<name>.mdc`), a subagent file (`.cursor/agents/<name>.md`, name/description only -- Cursor's docs don't confirm a tools/model mapping yet), `.cursor/mcp.json`, and `.cursor/hooks.json`; Gemini CLI a distributable extension directory (`gemini-extension.json` + `GEMINI.md` for a skill, or just an `mcpServers`-only manifest for a bare tool), a subagent file (`.gemini/agents/<name>.md`, with a real tools/model mapping), and a `.gemini/settings.json` hooks fragment meant to be merged by hand (Gemini CLI hooks live only in a shared settings file, not an extension-scoped format). See AGENTS.md, "Cursor and Gemini CLI: what's real vs. deferred," for the full reasoning. `agentworks targets` shows the full matrix. Pass `--all` (every artifact in the project) or `--kind <kind>` (every artifact of one kind) instead of a path to export the whole project in one call, each artifact to its own output; a kind the target can't consume is skipped with a warning rather than failing the run. Pass several paths (or one path with `--bundle <name>`) to package multiple artifacts into a single plugin instead of one per artifact -- only `claude-code`/`github-copilot` support this, since it's their native format that's actually meant to bundle several components together; a tool member's own `src/`-relative command is namespaced under `tools/<name>/` so multiple tools' files don't collide. |

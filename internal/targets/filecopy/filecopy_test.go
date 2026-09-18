@@ -33,6 +33,35 @@ func TestCopyArtifactFilesSkipsManifest(t *testing.T) {
 	}
 }
 
+func TestCopyArtifactFilesSkipsNodeModules(t *testing.T) {
+	root := t.TempDir()
+	a, err := scaffold.New(root, artifact.KindTool, "demo-node", scaffold.Options{Description: "x"})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(a.Dir, "node_modules", "some-dep"), 0o755); err != nil {
+		t.Fatalf("creating node_modules: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(a.Dir, "node_modules", "some-dep", "index.js"), []byte("module.exports = {};\n"), 0o644); err != nil {
+		t.Fatalf("writing node_modules/some-dep/index.js: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(a.Dir, "src", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("writing src/main.go: %v", err)
+	}
+
+	destDir := filepath.Join(t.TempDir(), "demo-node")
+	if err := CopyArtifactFiles(a, destDir); err != nil {
+		t.Fatalf("CopyArtifactFiles() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(destDir, "src", "main.go")); err != nil {
+		t.Errorf("expected src/main.go to be copied: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "node_modules")); err == nil {
+		t.Error("node_modules should not be copied")
+	}
+}
+
 func TestCopyDirExceptSkipsNamedFiles(t *testing.T) {
 	srcDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("skip me"), 0o644); err != nil {

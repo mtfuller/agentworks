@@ -76,6 +76,10 @@ these commands over hand-writing or hand-editing files under ` + "`agents/`" + `
   project if no path is given. Run this after hand-editing any ` + "`<kind>.md`" + ` file.
   Beyond structural checks, it also warns on weak descriptions (too short, too long, or
   overlapping heavily with another artifact's) -- pass ` + "`--strict`" + ` to fail on those too.
+- ` + "`agentworks build [path]`" + ` — run the ` + "`build:`" + ` command an artifact declares in
+  its frontmatter (installing dependencies, compiling, bundling, or whatever else it
+  needs before it can run or be exported; no path runs every artifact that declares
+  one).
 - ` + "`agentworks test [path]`" + ` — run the ` + "`test:`" + ` command an artifact declares in its
   frontmatter (no path runs every artifact that declares one).
 - ` + "`agentworks targets`" + ` — capability matrix of which vendor targets support which
@@ -111,8 +115,9 @@ Global flags: ` + "`-p, --project`" + ` (path inside the project to operate on, 
 2. ` + "`agentworks validate`" + ` to catch frontmatter and cross-reference problems
    (a workflow's ` + "`steps:`" + ` resolving to real artifacts, a hook's
    ` + "`events`" + `/` + "`command`" + ` set together, a tool's ` + "`auth`" + ` requiring ` + "`command`" + `).
-3. ` + "`agentworks test <path>`" + ` if the artifact declares a ` + "`test:`" + ` command.
-4. ` + "`agentworks export <path> --target <id>`" + ` for each vendor this artifact needs
+3. ` + "`agentworks build <path>`" + ` if the artifact declares a ` + "`build:`" + ` command.
+4. ` + "`agentworks test <path>`" + ` if the artifact declares a ` + "`test:`" + ` command.
+5. ` + "`agentworks export <path> --target <id>`" + ` for each vendor this artifact needs
    to ship to. Never hand-edit the exported output — re-export instead.
 `
 

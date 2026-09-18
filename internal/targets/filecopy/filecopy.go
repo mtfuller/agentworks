@@ -25,11 +25,32 @@ func CopyArtifactFiles(a *artifact.Artifact, destDir string) error {
 	return CopyDirExcept(a.Dir, destDir, a.Kind.FileName())
 }
 
+// alwaysSkippedDirs are directory names never copied into an export/import
+// destination, regardless of the exclude list a caller passes in --
+// reinstallable dependency trees and VCS metadata that would otherwise get
+// zipped and shipped verbatim into every vendor package the first time
+// someone runs "npm install" (or the Python equivalent) inside an
+// artifact's own directory.
+var alwaysSkippedDirs = map[string]bool{
+	"node_modules": true,
+	"__pycache__":  true,
+	".venv":        true,
+	"venv":         true,
+	".git":         true,
+}
+
+// alwaysSkippedFiles are file names never copied, for the same reason as
+// alwaysSkippedDirs but for entries that aren't directories.
+var alwaysSkippedFiles = map[string]bool{
+	".DS_Store": true,
+}
+
 // CopyDirExcept copies everything in srcDir into destDir, skipping any
 // entry whose path relative to srcDir exactly matches one of exclude (e.g.
 // a vendor manifest file being replaced by a different format, or a format
 // marker like "SKILL.md" that an importer is translating rather than
-// copying verbatim). destDir is created if it doesn't exist.
+// copying verbatim), plus anything in alwaysSkippedDirs/alwaysSkippedFiles
+// at any depth. destDir is created if it doesn't exist.
 func CopyDirExcept(srcDir, destDir string, exclude ...string) error {
 	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -40,6 +61,12 @@ func CopyDirExcept(srcDir, destDir string, exclude ...string) error {
 			return err
 		}
 		if rel == "." {
+			return nil
+		}
+		if d.IsDir() && alwaysSkippedDirs[d.Name()] {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && alwaysSkippedFiles[d.Name()] {
 			return nil
 		}
 		for _, skip := range exclude {

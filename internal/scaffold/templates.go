@@ -435,9 +435,10 @@ Describe what invokes this skill and what it produces.
 ## Implementation
 
 See ` + "`scripts/main.js`" + `. Run ` + "`npm install`" + ` in this directory if you add
-dependencies to ` + "`package.json`" + `. Add real tests under ` + "`tests/`" + ` and a
-` + "`test:`" + ` command to this file's frontmatter once they exist, so
-` + "`agentworks test`" + ` can run them.
+dependencies to ` + "`package.json`" + `, or wire it into a ` + "`build:`" + ` command in this
+file's frontmatter (` + "`agentworks build`" + `) if there's a compile/bundle step too. Add
+real tests under ` + "`tests/`" + ` and a ` + "`test:`" + ` command to this file's frontmatter
+once they exist, so ` + "`agentworks test`" + ` can run them.
 `,
 			files: func(name string) []extraFile {
 				return []extraFile{
@@ -607,8 +608,12 @@ Describe the tool's inputs/outputs (arguments, request/response shape, etc).
 server framework you're using for the actual stdio loop (e.g.
 ` + "`@modelcontextprotocol/sdk`" + `, added to ` + "`package.json`" + `'s dependencies
 once you pick one). Run ` + "`npm install`" + ` in this directory before running or
-testing it. Add real tests under ` + "`tests/`" + ` and a ` + "`test:`" + ` command to
-this file's frontmatter once they exist, so ` + "`agentworks test`" + ` can run them.
+testing it, or wire it into a ` + "`build:`" + ` command in this file's frontmatter
+(` + "`agentworks build`" + `) if there's a compile/bundle step too -- ` + "`agentworks export`" + `
+never ships ` + "`node_modules`" + `, so anything the tool needs at runtime has to
+either be installed by whoever runs it or bundled in by ` + "`build:`" + `. Add real
+tests under ` + "`tests/`" + ` and a ` + "`test:`" + ` command to this file's frontmatter
+once they exist, so ` + "`agentworks test`" + ` can run them.
 
 ## Running as an MCP server
 
