@@ -3,9 +3,6 @@ kind: mcp
 name: jira-fetch
 description: Fetch a Jira ticket and extract feature-relevant information.
 version: 0.1.0
-targets:
-  - claude-code
-  - github-copilot
 entrypoint: src/main.py
 command: python3 src/main.py
 test: python3 -m unittest discover -s tests -p "test_*.py"

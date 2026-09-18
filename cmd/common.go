@@ -18,13 +18,27 @@ import (
 
 // projectRoot resolves the AgentWorks project root from the global
 // --project flag, walking upward the same way git finds a repo root.
+//
+// The first time a root is resolved its manifest is loaded, so an unreadable
+// manifest or a project format newer than this binary understands stops the
+// command up front rather than being misread halfway through.
 func projectRoot() (string, error) {
 	root, err := project.FindRoot(projectFlag)
 	if err != nil {
 		return "", fmt.Errorf("%w (run 'agentworks init' first, or pass --project)", err)
 	}
+	if !checkedRoots[root] {
+		if _, err := project.Load(root); err != nil {
+			return "", err
+		}
+		checkedRoots[root] = true
+	}
 	return root, nil
 }
+
+// checkedRoots remembers which project roots have already had their manifest
+// validated in this process.
+var checkedRoots = map[string]bool{}
 
 // loadArtifactAtPath loads the artifact rooted at path, which may either be
 // an artifact's directory (e.g. "skills/demo") or a direct path to its

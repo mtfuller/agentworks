@@ -3,9 +3,6 @@ kind: skill
 name: csv-analyzer
 description: Analyze a CSV file and flag rows that stand out.
 version: 0.1.0
-targets:
-  - claude-code
-  - chatgpt
 entrypoint: scripts/main.py
 test: python3 -m unittest discover -s tests -p "test_*.py"
 ---

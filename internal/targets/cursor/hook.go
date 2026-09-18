@@ -15,9 +15,14 @@ type hooksDoc struct {
 	Hooks   map[string][]hookAction `json:"hooks"`
 }
 
+// hookAction's Timeout is seconds (Cursor's unit and AgentWorks' alike);
+// Matcher is a regex filter, which Cursor honors on only some events -- see
+// Cursor's hooks docs -- and ignores elsewhere.
 type hookAction struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
+	Timeout int    `json:"timeout,omitempty"`
+	Matcher string `json:"matcher,omitempty"`
 }
 
 // exportHook writes outDir/.cursor/hooks.json. AgentWorks' hook artifact
@@ -28,10 +33,12 @@ type hookAction struct {
 // (beforeShellExecution, afterFileEdit, preToolUse, ...), which are
 // unrelated to Claude Code's or Gemini CLI's.
 func exportHook(a *artifact.Artifact, outDir string) (string, error) {
-	events := a.ExtraStringSlice("events")
-	command := a.ExtraString("command")
-	if len(events) == 0 || command == "" {
-		return "", fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", a.Dir)
+	handlers, err := a.HookHandlers()
+	if err != nil {
+		return "", err
+	}
+	if len(handlers) == 0 {
+		return "", fmt.Errorf("%s declares no hook handlers -- set \"handlers\", or \"events\" and \"command\", before exporting", a.Dir)
 	}
 
 	// .cursor/hooks.json is one file for every hook, so merge into an
@@ -47,10 +54,10 @@ func exportHook(a *artifact.Artifact, outDir string) (string, error) {
 			doc.Hooks = map[string][]hookAction{}
 		}
 	}
-	action := hookAction{Type: "command", Command: command}
-	for _, event := range events {
-		if !containsAction(doc.Hooks[event], action) {
-			doc.Hooks[event] = append(doc.Hooks[event], action)
+	for _, h := range handlers {
+		action := hookAction{Type: "command", Command: h.Command, Timeout: h.Timeout, Matcher: h.Matcher}
+		if !containsAction(doc.Hooks[h.Event], action) {
+			doc.Hooks[h.Event] = append(doc.Hooks[h.Event], action)
 		}
 	}
 

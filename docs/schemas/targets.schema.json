@@ -1,0 +1,58 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/targets.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "targets",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "targets": {
+      "items": {
+        "properties": {
+          "export_implemented": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "supports": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "supports",
+          "export_implemented",
+          "notes"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "targets"
+  ],
+  "title": "agentworks targets --json",
+  "type": "object"
+}

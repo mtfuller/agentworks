@@ -119,7 +119,9 @@ own default: inherit every tool, resolve the model from context).
 {{.Description}}
 
 Set ` + "`events`" + ` and ` + "`command`" + ` in this file's frontmatter to describe
-what triggers this hook and what it runs.
+what triggers this hook and what it runs. For a matcher (to fire only for some
+tools or files), a timeout in seconds, or a different command per event, replace
+them with a ` + "`handlers`" + ` list of ` + "`{event, matcher, command, timeout}`" + `.
 `,
 	},
 }

@@ -1,0 +1,61 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/list.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "qualified_name",
+          "description",
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "command": {
+      "const": "list",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "artifacts"
+  ],
+  "title": "agentworks list --json",
+  "type": "object"
+}

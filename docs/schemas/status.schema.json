@@ -1,0 +1,75 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/status.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "status",
+      "type": "string"
+    },
+    "exports": {
+      "items": {
+        "properties": {
+          "artifact": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "artifact",
+          "output",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "summary": {
+      "properties": {
+        "in_sync": {
+          "type": "integer"
+        },
+        "missing": {
+          "type": "integer"
+        },
+        "modified": {
+          "type": "integer"
+        },
+        "stale": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "in_sync",
+        "modified",
+        "stale",
+        "missing"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "summary",
+    "exports"
+  ],
+  "title": "agentworks status --json",
+  "type": "object"
+}

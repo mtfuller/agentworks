@@ -84,7 +84,8 @@ warning, so a working project passes --strict; only a suspicious command shape
 				color.Info("%s: %s", n.Dir, n.Message)
 				item.Notices = append(item.Notices, n.Message)
 			}
-			for _, w := range append(a.LintDescription(), a.LintSecurityRisks()...) {
+			warns := append(a.LintDescription(), a.LintFields()...)
+			for _, w := range append(warns, a.LintSecurityRisks()...) {
 				color.Warning("%s: %s", w.Dir, w.Message)
 				warned++
 				item.Warnings = append(item.Warnings, w.Message)
@@ -158,6 +159,9 @@ type validateWarning struct {
 // mistake at `validate` time rather than only when `export`/`test` later
 // shells out to a field that was never filled in.
 func validateKindSpecific(a *artifact.Artifact) error {
+	if err := a.ValidateFieldTypes(); err != nil {
+		return err
+	}
 	switch a.Kind {
 	case artifact.KindAgent:
 		for _, tool := range a.ExtraStringSlice("tools") {
@@ -169,10 +173,8 @@ func validateKindSpecific(a *artifact.Artifact) error {
 			return fmt.Errorf("%s: unknown model %q (want one of: %s)", a.Dir, model, strings.Join(agentcaps.ValidModels(), ", "))
 		}
 	case artifact.KindHook:
-		events := a.ExtraStringSlice("events")
-		command := a.ExtraString("command")
-		if (len(events) > 0) != (command != "") {
-			return fmt.Errorf("%s: \"events\" and \"command\" must be set together (a hook needs both to do anything)", a.Dir)
+		if _, err := a.HookHandlers(); err != nil {
+			return err
 		}
 	case artifact.KindMCP:
 		if err := mcpconfig.Validate(a); err != nil {

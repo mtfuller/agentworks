@@ -166,6 +166,23 @@ func doctorChecks(a *artifact.Artifact, env []string) []doctorIssue {
 		}
 	}
 
+	if a.Kind == artifact.KindHook {
+		handlers, _ := a.HookHandlers() // a malformed declaration is validate's to report
+		for _, h := range handlers {
+			if h.Command == a.ExtraString("command") {
+				continue // already checked above
+			}
+			if bin := firstShellWord(h.Command); bin != "" {
+				if _, err := exec.LookPath(bin); err != nil {
+					issues = append(issues, doctorIssue{
+						fatal:   true,
+						message: fmt.Sprintf("%q (from a %s handler's command) is not on PATH", bin, h.Event),
+					})
+				}
+			}
+		}
+	}
+
 	if entrypoint := a.ExtraString("entrypoint"); entrypoint != "" {
 		path := filepath.Join(a.Dir, entrypoint)
 		if _, err := os.Stat(path); err != nil {

@@ -58,6 +58,7 @@ func TestJSONStdoutIsOnlyTheDocument(t *testing.T) {
 		t.Run(cmd, func(t *testing.T) {
 			stdout, _, exit := runJSON(t, cmd, "--project", dir)
 			doc := decodeDoc(t, stdout)
+			assertMatchesSchema(t, cmd, stdout)
 			if doc["schema_version"] != float64(1) {
 				t.Errorf("schema_version = %v, want 1", doc["schema_version"])
 			}
@@ -126,6 +127,7 @@ func TestJSONValidateReportsFailuresInBand(t *testing.T) {
 	if exit == 0 {
 		t.Fatal("validate should exit non-zero for an invalid artifact")
 	}
+	assertMatchesSchema(t, "validate", stdout)
 	var doc struct {
 		OK        bool `json:"ok"`
 		Summary   struct{ Failed int }
@@ -157,6 +159,7 @@ func TestJSONErrorOutsideAProjectIsStillJSON(t *testing.T) {
 		t.Fatal("list outside a project should exit non-zero")
 	}
 	doc := decodeDoc(t, stdout)
+	assertMatchesSchema(t, "error", stdout)
 	if doc["ok"] != false {
 		t.Errorf("ok = %v, want false", doc["ok"])
 	}
@@ -254,4 +257,20 @@ func TestStrictValidatePassesOnCommandsButFailsOnRiskyOnes(t *testing.T) {
 	if _, _, exit := runJSON(t, "validate", "--strict", "--project", dir); exit == 0 {
 		t.Error("validate --strict should fail on a command that pipes a download into a shell")
 	}
+}
+
+func TestJSONVersionAndTestDocumentsMatchTheirSchemas(t *testing.T) {
+	stdout, _, exit := runJSON(t, "version")
+	if exit != 0 {
+		t.Fatalf("version --json exited %d", exit)
+	}
+	assertMatchesSchema(t, "version", stdout)
+	doc := decodeDoc(t, stdout)
+	if doc["project_format"] != float64(1) {
+		t.Errorf("project_format = %v, want 1", doc["project_format"])
+	}
+
+	dir := jsonProject(t)
+	testOut, _, _ := runJSON(t, "test", "--project", dir)
+	assertMatchesSchema(t, "test", testOut)
 }

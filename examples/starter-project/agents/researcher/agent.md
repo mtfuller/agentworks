@@ -3,9 +3,6 @@ kind: agent
 name: researcher
 description: Domain-specific research agent that gathers and synthesizes sources on a topic.
 version: 0.1.0
-targets:
-  - claude-code
-  - chatgpt
 resources:
   - resources/source-checklist.md
 tools:

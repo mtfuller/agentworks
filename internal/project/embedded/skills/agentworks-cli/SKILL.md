@@ -23,7 +23,9 @@ matching `agentworks-author-<kind>` skill.
 - `agentworks templates [kind]` — list built-in starter templates.
 - `agentworks list [kind]` — table of discovered artifacts.
 - `agentworks validate [path]` — structural checks (required fields, kind-specific rules,
-  eval file syntax) plus description-quality warnings. `--strict`
+  eval file syntax, field types) plus description-quality warnings, and a warning for any
+  unrecognized frontmatter key (ignored on export, so usually a typo; prefix your own keys
+  `x-`). `--strict`
   makes warnings fail. Run after every hand edit.
 
 ## Verifying

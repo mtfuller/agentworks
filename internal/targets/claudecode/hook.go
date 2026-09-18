@@ -18,15 +18,18 @@ type claudeHooksDoc struct {
 	Hooks map[string][]claudeHookMatcher `json:"hooks"`
 }
 
-// claudeHookMatcher groups hook actions under an (optional, unused here --
-// AgentWorks' hook model has no matcher concept yet) tool/file matcher.
+// claudeHookMatcher groups hook actions under an optional matcher (a tool
+// name or regex; empty matches everything).
 type claudeHookMatcher struct {
-	Hooks []claudeHookAction `json:"hooks"`
+	Matcher string             `json:"matcher,omitempty"`
+	Hooks   []claudeHookAction `json:"hooks"`
 }
 
+// claudeHookAction's Timeout is in seconds, the same unit as AgentWorks'.
 type claudeHookAction struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
+	Timeout int    `json:"timeout,omitempty"`
 }
 
 // exportHook bundles a hook into a real Claude Code plugin: a plugin.json
@@ -56,22 +59,34 @@ func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 }
 
 // buildHooksDoc accumulates one or more hook artifacts into a single
-// hooks.json document, appending an additional matcher entry (not
-// overwriting) when more than one hook targets the same event -- so
-// bundling several hooks together doesn't silently drop all but the last
-// one that happens to share an event name.
+// hooks.json document. Handlers for the same event and matcher share one
+// matcher block (appended, never overwritten), so bundling several hooks
+// together doesn't drop all but the last one that happens to share an event.
 func buildHooksDoc(hooks []*artifact.Artifact) (claudeHooksDoc, error) {
 	doc := claudeHooksDoc{Hooks: map[string][]claudeHookMatcher{}}
 	for _, h := range hooks {
-		events := h.ExtraStringSlice("events")
-		command := h.ExtraString("command")
-		if len(events) == 0 || command == "" {
-			return claudeHooksDoc{}, fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", h.Dir)
+		handlers, err := h.HookHandlers()
+		if err != nil {
+			return claudeHooksDoc{}, err
 		}
-		for _, event := range events {
-			doc.Hooks[event] = append(doc.Hooks[event], claudeHookMatcher{
-				Hooks: []claudeHookAction{{Type: "command", Command: command}},
-			})
+		if len(handlers) == 0 {
+			return claudeHooksDoc{}, fmt.Errorf("%s declares no hook handlers -- set \"handlers\", or \"events\" and \"command\", before exporting", h.Dir)
+		}
+		for _, hd := range handlers {
+			action := claudeHookAction{Type: "command", Command: hd.Command, Timeout: hd.Timeout}
+			blocks := doc.Hooks[hd.Event]
+			placed := false
+			for i := range blocks {
+				if blocks[i].Matcher == hd.Matcher {
+					blocks[i].Hooks = append(blocks[i].Hooks, action)
+					placed = true
+					break
+				}
+			}
+			if !placed {
+				blocks = append(blocks, claudeHookMatcher{Matcher: hd.Matcher, Hooks: []claudeHookAction{action}})
+			}
+			doc.Hooks[hd.Event] = blocks
 		}
 	}
 	return doc, nil

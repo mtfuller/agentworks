@@ -172,9 +172,11 @@ func TestMarketplaceUnknownTarget(t *testing.T) {
 func TestMarketplaceCheckDetectsStaleAndMissing(t *testing.T) {
 	dir := setUpMarketplaceProject(t)
 
-	if _, _, exit := runJSON(t, "marketplace", "--check", "--project", dir); exit == 0 {
+	checkOut, _, exit := runJSON(t, "marketplace", "--check", "--project", dir)
+	if exit == 0 {
 		t.Fatal("--check should fail before anything has been published")
 	}
+	assertMatchesSchema(t, "marketplace", checkOut)
 
 	runAgentworks(t, "marketplace", "--project", dir)
 	if out, err := runAgentworksErr("marketplace", "--check", "--project", dir); err != nil {

@@ -1,0 +1,70 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/doctor.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "properties": {
+          "issues": {
+            "items": {
+              "properties": {
+                "message": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "severity",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "path",
+          "issues"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "command": {
+      "const": "doctor",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "strict": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "strict",
+    "artifacts"
+  ],
+  "title": "agentworks doctor --json",
+  "type": "object"
+}

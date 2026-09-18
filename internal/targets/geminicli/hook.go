@@ -19,15 +19,19 @@ type settingsFragment struct {
 }
 
 // hookGroup is one entry in an event's array: a set of hook configs that
-// all run together. AgentWorks' hook model has no matcher concept, so
-// "matcher" is left unset (matches every occurrence of the event).
+// all run together under one matcher (a regex for tool events, an exact
+// string for lifecycle events; empty matches every occurrence).
 type hookGroup struct {
-	Hooks []hookAction `json:"hooks"`
+	Matcher string       `json:"matcher,omitempty"`
+	Hooks   []hookAction `json:"hooks"`
 }
 
+// hookAction's Timeout is milliseconds -- Gemini CLI's unit, unlike
+// AgentWorks' seconds (see toMillis).
 type hookAction struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
+	Timeout int    `json:"timeout,omitempty"`
 }
 
 // exportHook writes the outDir/.gemini/settings.json fragment described
@@ -38,10 +42,12 @@ type hookAction struct {
 // expected to use Gemini CLI's own event names (BeforeTool, AfterTool,
 // SessionStart, ...), which are unrelated to Claude Code's or Cursor's.
 func exportHook(a *artifact.Artifact, outDir string) (string, error) {
-	events := a.ExtraStringSlice("events")
-	command := a.ExtraString("command")
-	if len(events) == 0 || command == "" {
-		return "", fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", a.Dir)
+	handlers, err := a.HookHandlers()
+	if err != nil {
+		return "", err
+	}
+	if len(handlers) == 0 {
+		return "", fmt.Errorf("%s declares no hook handlers -- set \"handlers\", or \"events\" and \"command\", before exporting", a.Dir)
 	}
 
 	// The fragment is one file for every hook, so merge into an existing one
@@ -57,10 +63,13 @@ func exportHook(a *artifact.Artifact, outDir string) (string, error) {
 			frag.Hooks = map[string][]hookGroup{}
 		}
 	}
-	group := hookGroup{Hooks: []hookAction{{Type: "command", Command: command}}}
-	for _, event := range events {
-		if !containsGroup(frag.Hooks[event], group) {
-			frag.Hooks[event] = append(frag.Hooks[event], group)
+	for _, h := range handlers {
+		group := hookGroup{
+			Matcher: h.Matcher,
+			Hooks:   []hookAction{{Type: "command", Command: h.Command, Timeout: toMillis(h.Timeout)}},
+		}
+		if !containsGroup(frag.Hooks[h.Event], group) {
+			frag.Hooks[h.Event] = append(frag.Hooks[h.Event], group)
 		}
 	}
 
@@ -78,9 +87,13 @@ func exportHook(a *artifact.Artifact, outDir string) (string, error) {
 	return path, nil
 }
 
+// toMillis converts AgentWorks' seconds to Gemini CLI's milliseconds; zero
+// stays zero (omitted, so Gemini's own default applies).
+func toMillis(seconds int) int { return seconds * 1000 }
+
 func containsGroup(groups []hookGroup, want hookGroup) bool {
 	for _, g := range groups {
-		if len(g.Hooks) == len(want.Hooks) && len(g.Hooks) == 1 && g.Hooks[0] == want.Hooks[0] {
+		if g.Matcher == want.Matcher && len(g.Hooks) == len(want.Hooks) && len(g.Hooks) == 1 && g.Hooks[0] == want.Hooks[0] {
 			return true
 		}
 	}

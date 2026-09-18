@@ -1,0 +1,40 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/version.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "build_date": {
+      "type": "string"
+    },
+    "command": {
+      "const": "version",
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "project_format": {
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "version",
+    "commit",
+    "build_date",
+    "project_format"
+  ],
+  "title": "agentworks version --json",
+  "type": "object"
+}

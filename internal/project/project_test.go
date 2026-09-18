@@ -338,3 +338,61 @@ func TestWriteCIWorkflow(t *testing.T) {
 		t.Error("WriteCIWorkflow() over an existing workflow should refuse to overwrite it")
 	}
 }
+
+// Each embedded authoring skill must mention every field the registry says is
+// specific to its kind, so a coding agent in a scaffolded project is never told
+// less than `agentworks validate` enforces.
+func TestAuthoringSkillsCoverEveryKindSpecificField(t *testing.T) {
+	for _, kind := range artifact.Kinds() {
+		data, err := embeddedDocs.ReadFile("embedded/skills/agentworks-author-" + string(kind) + "/SKILL.md")
+		if err != nil {
+			t.Fatalf("reading the %s authoring skill: %v", kind, err)
+		}
+		text := string(data)
+		for _, f := range artifact.FieldsFor(kind) {
+			if len(f.Kinds) == 0 || f.Deprecated != "" {
+				continue // common fields are covered by agentworks-cli
+			}
+			if !strings.Contains(text, f.Name) {
+				t.Errorf("agentworks-author-%s doesn't mention the %q field", kind, f.Name)
+			}
+		}
+	}
+}
+
+func TestInitWritesFormatAndLoadEnforcesIt(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "p")
+	if _, err := Init(dir, "p", nil); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	m, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if m.Format != CurrentFormat {
+		t.Errorf("Format = %d, want %d written by Init", m.Format, CurrentFormat)
+	}
+
+	write := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("name: p\n") // no format: treated as the current one
+	if _, err := Load(dir); err != nil {
+		t.Errorf("a manifest without a format should load: %v", err)
+	}
+
+	write("name: p\nformat: 999\n")
+	_, err = Load(dir)
+	if err == nil || !strings.Contains(err.Error(), "upgrade agentworks") {
+		t.Errorf("Load() of a newer format error = %v, want it to tell the user to upgrade", err)
+	}
+
+	write("name: p\nformat: -1\n")
+	if _, err := Load(dir); err == nil {
+		t.Error("Load() of a negative format expected an error")
+	}
+}

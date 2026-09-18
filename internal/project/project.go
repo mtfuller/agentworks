@@ -1,6 +1,6 @@
 // Package project loads and scaffolds an AgentWorks project: the
-// agentworks.yaml manifest at its root and the agent/skill/tool/hook/
-// workflow directories discovered underneath it.
+// agentworks.yaml manifest at its root and the agent/skill/mcp/hook
+// directories discovered underneath it.
 package project
 
 import (
@@ -18,11 +18,20 @@ import (
 // ManifestFile is the name of a project's root manifest.
 const ManifestFile = "agentworks.yaml"
 
+// CurrentFormat is the project format this build of AgentWorks reads and
+// writes: the shape of agentworks.yaml, the artifact frontmatter, and the
+// lockfile taken together. It is bumped only for a change an older binary
+// could not read correctly, so that such a binary can refuse a newer project
+// with a clear message instead of misreading it. See COMPATIBILITY.md.
+const CurrentFormat = 1
+
 // ErrNotFound is returned by FindRoot when no agentworks.yaml is found.
 var ErrNotFound = errors.New("not inside an AgentWorks project (no agentworks.yaml found)")
 
 // Manifest is the content of a project's agentworks.yaml.
 type Manifest struct {
+	// Format is the project format version (see CurrentFormat). Absent means 1.
+	Format      int    `yaml:"format,omitempty"`
 	Name        string `yaml:"name"`
 	Description string `yaml:"description,omitempty"`
 	// Targets lists the vendor targets this project exports to. It is the
@@ -83,7 +92,7 @@ func Init(dir, name string, targets []string) (*Manifest, error) {
 		return nil, err
 	}
 
-	m := &Manifest{Name: name, Targets: targets}
+	m := &Manifest{Format: CurrentFormat, Name: name, Targets: targets}
 	if err := m.save(manifestPath); err != nil {
 		return nil, err
 	}
@@ -110,6 +119,12 @@ func Load(root string) (*Manifest, error) {
 	var m Manifest
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", ManifestFile, err)
+	}
+	if m.Format < 0 {
+		return nil, fmt.Errorf("%s: format must be a positive integer, got %d", ManifestFile, m.Format)
+	}
+	if m.Format > CurrentFormat {
+		return nil, fmt.Errorf("%s declares project format %d, but this agentworks only understands up to format %d -- upgrade agentworks", ManifestFile, m.Format, CurrentFormat)
 	}
 	return &m, nil
 }

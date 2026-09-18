@@ -119,3 +119,35 @@ func TestExportHookMergesIntoOneFile(t *testing.T) {
 		t.Errorf("SessionStart has %d groups, want 1: %s", got, data)
 	}
 }
+
+func TestExportHookHandlersConvertTimeoutToMilliseconds(t *testing.T) {
+	a, err := scaffold.New(t.TempDir(), artifact.KindHook, "guard", scaffold.Options{Description: "Guard file access."})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	a.Extra = map[string]any{"handlers": []map[string]any{
+		{"event": "BeforeTool", "matcher": "read_file", "command": "check.js", "timeout": 5},
+		{"event": "SessionStart", "command": "hello.js"},
+	}}
+	outDir := t.TempDir()
+	if _, err := exportHook(a, outDir); err != nil {
+		t.Fatalf("exportHook() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, ".gemini", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frag settingsFragment
+	if err := json.Unmarshal(data, &frag); err != nil {
+		t.Fatal(err)
+	}
+	before := frag.Hooks["BeforeTool"]
+	if len(before) != 1 || before[0].Matcher != "read_file" || before[0].Hooks[0].Timeout != 5000 {
+		t.Errorf("BeforeTool = %+v, want matcher read_file and a 5000 ms timeout (Gemini CLI's unit is milliseconds)", before)
+	}
+	start := frag.Hooks["SessionStart"]
+	if len(start) != 1 || start[0].Hooks[0].Timeout != 0 {
+		t.Errorf("SessionStart = %+v, want no timeout so Gemini's own default applies", start)
+	}
+}

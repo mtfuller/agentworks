@@ -3,8 +3,6 @@ kind: hook
 name: pre-commit-lint
 description: Lint staged files before commit.
 version: 0.1.0
-targets:
-  - claude-code
 command: gofmt -l .
 events:
   - pre-commit

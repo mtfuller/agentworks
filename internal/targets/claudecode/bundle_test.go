@@ -140,9 +140,11 @@ func TestExportBundle(t *testing.T) {
 	if err := json.Unmarshal(hooksData, &doc); err != nil {
 		t.Fatalf("parsing hooks.json: %v", err)
 	}
+	// Two hooks on the same event with no matcher share one matcher block, so
+	// both commands must be present in it (appended, not overwritten).
 	matchers := doc.Hooks["PreToolUse"]
-	if len(matchers) != 2 {
-		t.Fatalf("hooks.json PreToolUse matchers = %d, want 2 (appended, not overwritten)", len(matchers))
+	if len(matchers) != 1 || len(matchers[0].Hooks) != 2 {
+		t.Fatalf("hooks.json PreToolUse = %+v, want one matcher block holding both hooks", matchers)
 	}
 	var commands []string
 	for _, m := range matchers {

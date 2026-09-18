@@ -3,6 +3,7 @@ package artifact
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // suspiciousCommandPatterns is a small, deliberately conservative denylist
@@ -26,13 +27,13 @@ var suspiciousCommandPatterns = []struct {
 	{regexp.MustCompile(`\bsudo\b`), "runs a command with elevated privileges"},
 }
 
-// LintSecurity checks a hook or tool's declared `command` for supply-chain
-// risk Validate() doesn't cover: it's structurally fine (present, paired
-// with events/auth as required) but will run arbitrary shell code with the
-// user's own permissions the moment it's exported and triggered/invoked.
-// Never fails `validate` on its own -- see cmd/validate.go's --strict flag
-// -- and callers that write new artifacts to disk (`agentworks add`) use
-// these as a confirmation gate rather than a silent warning.
+// LintSecurity checks a hook or mcp server's declared command(s) for
+// supply-chain risk Validate() doesn't cover: it's structurally fine (present,
+// paired with events/auth as required) but will run arbitrary shell code with
+// the user's own permissions the moment it's exported and triggered/invoked.
+// Never fails `validate` on its own -- see cmd/validate.go's --strict flag --
+// and callers that write new artifacts to disk (`agentworks add`) use these
+// as a confirmation gate rather than a silent warning.
 //
 // The result is the notice that a command exists (LintSecurityNotice)
 // followed by any risky-shape hits (LintSecurityRisks). Callers that only
@@ -47,25 +48,47 @@ func (a *Artifact) LintSecurity() []LintWarning {
 	return append([]LintWarning{*notice}, a.LintSecurityRisks()...)
 }
 
+// Commands returns every shell command the artifact declares: its `command`
+// plus, for a hook, each handler's command, without duplicates.
+func (a *Artifact) Commands() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(c string) {
+		if c != "" && !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	add(a.ExtraString("command"))
+	if a.Kind == KindHook {
+		handlers, _ := a.HookHandlers() // a malformed declaration is Validate's to report
+		for _, h := range handlers {
+			add(h.Command)
+		}
+	}
+	return out
+}
+
 // LintSecurityNotice returns the informational note that this artifact runs
-// a shell command with the user's permissions, or nil if it has none.
+// shell commands with the user's permissions, or nil if it has none.
 func (a *Artifact) LintSecurityNotice() *LintWarning {
-	command := a.ExtraString("command")
-	if command == "" {
+	commands := a.Commands()
+	if len(commands) == 0 {
 		return nil
 	}
 	return &LintWarning{a.Dir, fmt.Sprintf(
-		"declares a shell command that will run with your permissions when exported and triggered/invoked: %s", command)}
+		"declares a shell command that will run with your permissions when exported and triggered/invoked: %s", strings.Join(commands, "; "))}
 }
 
 // LintSecurityRisks returns a warning for each suspicious shape (see
-// suspiciousCommandPatterns) found in the artifact's command.
+// suspiciousCommandPatterns) found in any of the artifact's commands.
 func (a *Artifact) LintSecurityRisks() []LintWarning {
-	command := a.ExtraString("command")
 	var warnings []LintWarning
-	for _, p := range suspiciousCommandPatterns {
-		if p.pattern.MatchString(command) {
-			warnings = append(warnings, LintWarning{a.Dir, fmt.Sprintf("command %s -- review it carefully before trusting", p.reason)})
+	for _, command := range a.Commands() {
+		for _, p := range suspiciousCommandPatterns {
+			if p.pattern.MatchString(command) {
+				warnings = append(warnings, LintWarning{a.Dir, fmt.Sprintf("command %s -- review it carefully before trusting", p.reason)})
+			}
 		}
 	}
 	return warnings

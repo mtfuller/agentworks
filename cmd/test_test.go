@@ -68,3 +68,44 @@ func TestScaffoldedMCPServersAreWorking(t *testing.T) {
 		})
 	}
 }
+
+// Every scaffold -- each kind's default and every built-in template -- must
+// use only supported frontmatter fields with the right types, so a fresh
+// project passes `validate --strict` without touching anything.
+func TestEveryScaffoldUsesOnlyRegisteredFields(t *testing.T) {
+	type combo struct {
+		kind     artifact.Kind
+		template string
+	}
+	var combos []combo
+	for _, k := range artifact.Kinds() {
+		combos = append(combos, combo{k, ""})
+	}
+	for _, tmpl := range scaffold.Templates() {
+		combos = append(combos, combo{tmpl.Kind, tmpl.ID})
+	}
+
+	for _, c := range combos {
+		name := string(c.kind) + "/" + c.template
+		t.Run(name, func(t *testing.T) {
+			a, err := scaffold.New(t.TempDir(), c.kind, "demo", scaffold.Options{
+				Description: "A scaffold used to check its frontmatter uses only supported fields.",
+				Template:    c.template,
+			})
+			if err != nil {
+				t.Fatalf("scaffold.New() error = %v", err)
+			}
+			// Reload so the check sees what YAML produces, not in-memory values.
+			reloaded, err := artifact.Load(a.Dir, c.kind)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if err := reloaded.ValidateFieldTypes(); err != nil {
+				t.Errorf("wrong field type: %v", err)
+			}
+			for _, w := range reloaded.LintFields() {
+				t.Errorf("scaffold frontmatter: %s", w.Message)
+			}
+		})
+	}
+}

@@ -1,0 +1,72 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/eval.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "cases": {
+      "items": {
+        "properties": {
+          "artifact": {
+            "type": "string"
+          },
+          "case": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "path",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "command": {
+      "const": "eval",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "summary": {
+      "properties": {
+        "failed": {
+          "type": "integer"
+        },
+        "ran": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ran",
+        "failed"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "summary",
+    "cases"
+  ],
+  "title": "agentworks eval --json",
+  "type": "object"
+}

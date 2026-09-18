@@ -46,6 +46,10 @@ eval_runner: claude -p        # optional; see agentworks-evals
 ---
 ```
 
+Optional `license` (an SPDX identifier) and `compatibility` (environment requirements, e.g.
+"needs python3.11") are exported into the skill's `SKILL.md`. Any other key is ignored on
+export, and `agentworks validate` warns about it; prefix your own metadata keys with `x-`.
+
 `build`, `test`, and `eval_runner` are shell commands run from the artifact's directory.
 `agentworks export` runs `build` first and aborts if it fails. `node_modules` is never
 exported, so a Node skill must bundle its dependencies (e.g. esbuild `--bundle`) into a

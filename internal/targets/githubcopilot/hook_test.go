@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
@@ -84,5 +85,34 @@ func TestExportHookRequiresEventsAndCommand(t *testing.T) {
 				t.Fatalf("Export() with %s expected error, got nil", tt.name)
 			}
 		})
+	}
+}
+
+func TestExportHookHandlersMatcherAndTimeout(t *testing.T) {
+	a, err := scaffold.New(t.TempDir(), artifact.KindHook, "guard", scaffold.Options{Description: "Guard tool use."})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	a.Extra = map[string]any{"handlers": []map[string]any{
+		{"event": "preToolUse", "matcher": "bash|edit", "command": "check.sh", "timeout": 45},
+		{"event": "sessionStart", "command": "hello.sh"},
+	}}
+
+	doc, err := buildCopilotHooksDoc([]*artifact.Artifact{a})
+	if err != nil {
+		t.Fatalf("buildCopilotHooksDoc() error = %v", err)
+	}
+	pre := doc.Hooks["preToolUse"]
+	if len(pre) != 1 || pre[0].Bash != "check.sh" || pre[0].Matcher != "bash|edit" || pre[0].TimeoutSec != 45 {
+		t.Errorf("preToolUse = %+v, want the matcher and a 45-second timeoutSec carried through", pre)
+	}
+	start := doc.Hooks["sessionStart"]
+	if len(start) != 1 || start[0].Matcher != "" || start[0].TimeoutSec != 0 {
+		t.Errorf("sessionStart = %+v, want no matcher or timeout", start)
+	}
+
+	data, _ := json.Marshal(doc)
+	if strings.Contains(string(data), `"matcher":""`) || strings.Contains(string(data), `"timeoutSec":0`) {
+		t.Errorf("empty matcher/timeout must be omitted, got %s", data)
 	}
 }

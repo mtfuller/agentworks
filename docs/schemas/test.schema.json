@@ -1,0 +1,74 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/test.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "test",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "results": {
+      "items": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "path",
+          "type",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "summary": {
+      "properties": {
+        "failed": {
+          "type": "integer"
+        },
+        "ran": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ran",
+        "failed"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "summary",
+    "results"
+  ],
+  "title": "agentworks test --json",
+  "type": "object"
+}

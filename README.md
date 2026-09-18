@@ -105,7 +105,10 @@ test: python3 -m unittest discover -s tests -p "test_*.py"
 `agents/`, `mcp/`, and `hooks/` follow the same `<kind>.md` shape, each with a few
 kind-specific frontmatter fields (an MCP server's `command`/`args`/`env`/`auth`, or its
 `transport`/`url`/`headers` for a remote one -- see "MCP servers" below -- and a hook's
-`events`/`command`). An agent can also set `tools:` (a list) and `model:` (a tier) --
+`handlers`, or the `events`/`command` shorthand). Every supported field is listed in
+[docs/reference/frontmatter.md](docs/reference/frontmatter.md); `agentworks validate` warns
+about any other key (it would be ignored on export -- usually a typo) and rejects a
+supported field with the wrong type. Prefix your own metadata keys with `x-`. An agent can also set `tools:` (a list) and `model:` (a tier) --
 a small, closed, vendor-agnostic vocabulary (`agentworks validate` lists the
 recognized values) that `agentworks export` maps to each target's real shape: Claude
 Code's and Gemini CLI's `tools:`/`model:` subagent frontmatter. GitHub Copilot's and
@@ -126,6 +129,10 @@ team-a/csv-analyzer` sets `namespace: team-a` in its frontmatter and nests it at
 two teams (or two projects merged into one registry) can each have their own
 `csv-analyzer` without colliding. Reference it the same qualified way everywhere else
 an artifact is named: `agentworks validate`/`export`'s path argument. An unnamespaced artifact is unaffected either way.
+
+`agentworks.yaml` also carries a `format:` number (written by `init`; absent means 1). A
+binary refuses a project whose format is newer than it understands, so an old install never
+misreads a new project. See [COMPATIBILITY.md](COMPATIBILITY.md) for what is kept stable.
 
 `agentworks add`/`export` write an `agentworks.lock` at the project root -- see
 "Drift and supply-chain safety" below.
@@ -316,12 +323,14 @@ human-readable messages go to stderr, so `agentworks validate --json | jq` is sa
                    "errors": ["..."], "warnings": [], "notices": [] } ] }
 ```
 
-`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`, and `marketplace --check`
-support it. Every document has `schema_version`, `command`, and `ok` (true exactly when the
+`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`, `version`, and
+`marketplace --check` support it. Every document has `schema_version`, `command`, and `ok` (true exactly when the
 command exits 0); a failure that happens before a command can build its own document still
 yields `{"ok": false, "error": "..."}` on stdout. `schema_version` changes only for a
 breaking change (a removed or retyped field), so ignore keys you don't recognize. Paths are
-project-relative, so output is stable across machines.
+project-relative, so output is stable across machines. Each document has a JSON Schema in
+[docs/schemas/](docs/schemas/), generated from the Go types and checked against real output
+in the tests.
 
 The gates a CI run wants all exit non-zero on failure: `validate --strict`, `doctor`,
 `marketplace --check`, and `status --fail-on-drift` (report-only without the flag).

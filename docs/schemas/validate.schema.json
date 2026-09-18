@@ -1,0 +1,118 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/validate.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "path",
+          "errors",
+          "warnings",
+          "notices"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "command": {
+      "const": "validate",
+      "type": "string"
+    },
+    "discovery_errors": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "project_warnings": {
+      "items": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "strict": {
+      "type": "boolean"
+    },
+    "summary": {
+      "properties": {
+        "artifacts": {
+          "type": "integer"
+        },
+        "failed": {
+          "type": "integer"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifacts",
+        "failed",
+        "warnings"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "strict",
+    "summary",
+    "artifacts",
+    "discovery_errors",
+    "project_warnings"
+  ],
+  "title": "agentworks validate --json",
+  "type": "object"
+}

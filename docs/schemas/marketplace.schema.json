@@ -1,0 +1,47 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/marketplace.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "checked": {
+      "items": {
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "path",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "command": {
+      "const": "marketplace",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "checked"
+  ],
+  "title": "agentworks marketplace --json",
+  "type": "object"
+}

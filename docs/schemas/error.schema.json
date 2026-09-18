@@ -1,0 +1,27 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/error.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "error"
+  ],
+  "title": "agentworks error --json",
+  "type": "object"
+}

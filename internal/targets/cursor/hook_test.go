@@ -108,3 +108,31 @@ func TestExportHookMergesIntoOneFile(t *testing.T) {
 		t.Errorf("afterFileEdit has %d actions, want 1: %s", got, data)
 	}
 }
+
+func TestExportHookHandlersMatcherAndTimeout(t *testing.T) {
+	a, err := scaffold.New(t.TempDir(), artifact.KindHook, "fmt", scaffold.Options{Description: "Format edited files."})
+	if err != nil {
+		t.Fatalf("scaffold.New() error = %v", err)
+	}
+	a.Extra = map[string]any{"handlers": []map[string]any{
+		{"event": "afterFileEdit", "matcher": `\.ts$`, "command": "./hooks/format.sh", "timeout": 30},
+	}}
+	outDir := t.TempDir()
+	if _, err := exportHook(a, outDir); err != nil {
+		t.Fatalf("exportHook() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, ".cursor", "hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc hooksDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := doc.Hooks["afterFileEdit"]
+	want := hookAction{Type: "command", Command: "./hooks/format.sh", Timeout: 30, Matcher: `\.ts$`}
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("afterFileEdit = %+v, want [%+v] (timeout in seconds, Cursor's unit)", got, want)
+	}
+}

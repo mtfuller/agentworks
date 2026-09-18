@@ -21,9 +21,13 @@ type copilotHooksDoc struct {
 	Hooks   map[string][]copilotHookEntry `json:"hooks"`
 }
 
+// copilotHookEntry's TimeoutSec is seconds, the same unit as AgentWorks';
+// Matcher is a regex filter Copilot applies to the event.
 type copilotHookEntry struct {
-	Type string `json:"type"`
-	Bash string `json:"bash"`
+	Type       string `json:"type"`
+	Bash       string `json:"bash"`
+	TimeoutSec int    `json:"timeoutSec,omitempty"`
+	Matcher    string `json:"matcher,omitempty"`
 }
 
 // exportHook bundles a hook into an Agent Plugin: a plugin.json plus
@@ -54,19 +58,23 @@ func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 
 // buildCopilotHooksDoc accumulates one or more hook artifacts into a single
 // hooks.json document, appending an additional entry (not overwriting) when
-// more than one hook targets the same event -- so bundling several hooks
+// more than one handler targets the same event -- so bundling several hooks
 // together doesn't silently drop all but the last one that happens to share
 // an event name.
 func buildCopilotHooksDoc(hooks []*artifact.Artifact) (copilotHooksDoc, error) {
 	doc := copilotHooksDoc{Version: 1, Hooks: map[string][]copilotHookEntry{}}
 	for _, h := range hooks {
-		events := h.ExtraStringSlice("events")
-		command := h.ExtraString("command")
-		if len(events) == 0 || command == "" {
-			return copilotHooksDoc{}, fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", h.Dir)
+		handlers, err := h.HookHandlers()
+		if err != nil {
+			return copilotHooksDoc{}, err
 		}
-		for _, event := range events {
-			doc.Hooks[event] = append(doc.Hooks[event], copilotHookEntry{Type: "command", Bash: command})
+		if len(handlers) == 0 {
+			return copilotHooksDoc{}, fmt.Errorf("%s declares no hook handlers -- set \"handlers\", or \"events\" and \"command\", before exporting", h.Dir)
+		}
+		for _, hd := range handlers {
+			doc.Hooks[hd.Event] = append(doc.Hooks[hd.Event], copilotHookEntry{
+				Type: "command", Bash: hd.Command, TimeoutSec: hd.Timeout, Matcher: hd.Matcher,
+			})
 		}
 	}
 	return doc, nil
