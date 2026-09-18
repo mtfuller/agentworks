@@ -48,7 +48,9 @@ something to run.
 - `agentworks export [path...]` — bundle to each target in `agentworks.yaml`'s `targets:`
   (override with `--target <id>`). `--namespace <ns>` bundles one plugin per namespace
   (`.` = your own un-namespaced artifacts). `--format skills.zip` / `--format skill` export
-  every skill as one zip or as individual `.skill` files, no target needed. Output goes to
+  every skill as one zip or as individual `.skill` files, no target needed. Export first runs
+  every exported artifact's `build:` command and aborts if any fails (`--no-build` skips
+  this), so bundled output is always fresh. Output goes to
   `dist/`, which is gitignored. Targets are project-level; artifacts don't declare their own.
 - `agentworks status [path]` — offline drift check of `dist/` against `agentworks.lock`:
   `in sync`, `modified` (exported output was hand-edited; re-export discards it), `stale`
@@ -79,6 +81,6 @@ something to run.
 1. `agentworks new <kind> <name> --description "..."`, or edit an existing artifact.
 2. Fill in the kind-specific fields (see the `agentworks-author-<kind>` skill).
 3. `agentworks validate`, then fix errors and heed description warnings.
-4. `agentworks build <path>` / `agentworks test <path>` if declared; `agentworks doctor <path>`
+4. `agentworks build <path>` (export also runs it) / `agentworks test <path>` if declared; `agentworks doctor <path>`
    if either can't find a binary.
-5. `agentworks export`. Never hand-edit the output in `dist/` — re-export instead.
+5. `agentworks export` (rebuilds first; a failed build stops it). Never hand-edit the output in `dist/` — re-export instead.

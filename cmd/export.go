@@ -20,6 +20,7 @@ var (
 	exportFormat     string
 	exportNamespaces []string
 	exportName       string
+	exportNoBuild    bool
 )
 
 var exportCmd = &cobra.Command{
@@ -47,7 +48,12 @@ agentworks.yaml; pass --target (repeatable) to override it for one run.
 The skill formats are vendor-neutral and need no target. Pass paths to
 export only those artifacts rather than the whole project. Vendors with no
 plugin format (chatgpt, cursor, gemini-cli, m365-copilot) get each artifact
-exported on its own instead, and workflows always become their own plugin.`,
+exported on its own instead, and workflows always become their own plugin.
+
+Before exporting, every artifact being exported (the whole project unless
+paths are given) that declares a "build:" command is built, so bundled output
+like dist/main.js is fresh. If any build fails, nothing is exported. Pass
+--no-build to skip this step.`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		format := export.Format(exportFormat)
@@ -89,6 +95,20 @@ exported on its own instead, and workflows always become their own plugin.`,
 				return err
 			}
 			req.Artifacts = append(req.Artifacts, a)
+		}
+
+		if !exportNoBuild {
+			toBuild := req.Artifacts
+			if len(toBuild) == 0 {
+				found, errs := project.Discover(root)
+				for _, e := range errs {
+					color.Warning("%v", e)
+				}
+				toBuild = found
+			}
+			if _, failed := runBuilds(toBuild); failed > 0 {
+				return fmt.Errorf("%d artifact(s) failed to build; nothing was exported (fix the build or pass --no-build)", failed)
+			}
 		}
 
 		lf, err := lockfile.Load(root)
@@ -158,5 +178,6 @@ func init() {
 	exportCmd.Flags().BoolVar(&exportZip, "zip", false, "also package each plugin as a .zip")
 	exportCmd.Flags().StringVar(&exportFormat, "format", "plugin", "plugin, skills.zip (all skills in one zip), or skill (one .skill file per skill)")
 	exportCmd.Flags().StringSliceVar(&exportNamespaces, "namespace", nil, `bundle one plugin per namespace ("." for your own un-namespaced artifacts; repeatable)`)
+	exportCmd.Flags().BoolVar(&exportNoBuild, "no-build", false, "skip running artifacts' build: commands before exporting")
 	exportCmd.Flags().StringVar(&exportName, "name", "", "plugin/archive name (default: the project name)")
 }

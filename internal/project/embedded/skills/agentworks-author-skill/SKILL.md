@@ -47,6 +47,9 @@ eval_runner: claude -p        # optional; see agentworks-evals
 ```
 
 `build`, `test`, and `eval_runner` are shell commands run from the artifact's directory.
+`agentworks export` runs `build` first and aborts if it fails. `node_modules` is never
+exported, so a Node skill must bundle its dependencies (e.g. esbuild `--bundle`) into a
+file in the artifact and have its instructions run that file.
 
 ## Write the description first
 

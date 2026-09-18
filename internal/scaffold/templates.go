@@ -729,7 +729,8 @@ once you pick one). Run ` + "`npm install`" + ` in this directory before running
 testing it, or wire it into a ` + "`build:`" + ` command in this file's frontmatter
 (` + "`agentworks build`" + `) if there's a compile/bundle step too -- ` + "`agentworks export`" + `
 never ships ` + "`node_modules`" + `, so anything the tool needs at runtime has to
-either be installed by whoever runs it or bundled in by ` + "`build:`" + `. Add real
+either be installed by whoever runs it or bundled in by ` + "`build:`" + `
+(` + "`agentworks export`" + ` runs it first, and stops if it fails). Add real
 tests under ` + "`tests/`" + ` and a ` + "`test:`" + ` command to this file's frontmatter
 once they exist, so ` + "`agentworks test`" + ` can run them.
 

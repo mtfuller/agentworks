@@ -2,9 +2,12 @@ package tests
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -141,4 +144,99 @@ func TestCLIRunNeedsInteractiveTerminal(t *testing.T) {
 	if !strings.Contains(out.String(), "interactive terminal") {
 		t.Errorf("run output should mention needing an interactive terminal, got: %s", out.String())
 	}
+}
+
+var (
+	buildOnce sync.Once
+	buildDir  string
+	buildErr  error
+)
+
+// runCLI builds the agentworks binary once per test run and runs it in dir
+// (go run can't be used from a temp directory outside the module), returning
+// combined output and error.
+func runCLI(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	buildOnce.Do(func() {
+		buildDir, buildErr = os.MkdirTemp("", "agentworks-bin")
+		if buildErr != nil {
+			return
+		}
+		out, err := exec.Command("go", "build", "-o", filepath.Join(buildDir, "agentworks"), "..").CombinedOutput()
+		if err != nil {
+			buildErr = fmt.Errorf("%v\n%s", err, out)
+		}
+	})
+	if buildErr != nil {
+		t.Fatalf("building agentworks: %v", buildErr)
+	}
+	cmd := exec.Command(filepath.Join(buildDir, "agentworks"), args...)
+	cmd.Dir = dir
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	return out.String(), err
+}
+
+// TestCLIExportRunsBuildFirst checks export runs each artifact's build:
+// command (so bundled output ships fresh) and aborts before exporting
+// anything if one fails, unless --no-build is passed.
+func TestCLIExportRunsBuildFirst(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := runCLI(t, dir, "init", "--target", "claude-code"); err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if out, err := runCLI(t, dir, "new", "skill", "bundled", "--description", "A skill whose build produces its output"); err != nil {
+		t.Fatalf("new: %v\n%s", err, out)
+	}
+	skillMD := filepath.Join(dir, "skills", "bundled", "skill.md")
+	data, err := os.ReadFile(skillMD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withBuild := func(cmd string) {
+		t.Helper()
+		content := strings.Replace(string(data), "entrypoint:", "build: "+cmd+"\nentrypoint:", 1)
+		if err := os.WriteFile(skillMD, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	withBuild("mkdir -p dist && echo bundled > dist/main.js")
+	if out, err := runCLI(t, dir, "export"); err != nil {
+		t.Fatalf("export with passing build: %v\n%s", err, out)
+	}
+	shipped, _ := filepath.Glob(filepath.Join(dir, "dist", "claude-code", "*", "skills", "bundled", "dist", "main.js"))
+	if len(shipped) == 0 {
+		t.Errorf("built dist/main.js should be included in the export, output tree:\n%s", listTree(t, filepath.Join(dir, "dist", "claude-code")))
+	}
+
+	if err := os.RemoveAll(filepath.Join(dir, "dist")); err != nil {
+		t.Fatal(err)
+	}
+	withBuild("exit 1")
+	out, err := runCLI(t, dir, "export")
+	if err == nil {
+		t.Fatalf("export should fail when a build fails\n%s", out)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "dist")); statErr == nil {
+		t.Errorf("nothing should be exported after a failed build\n%s", out)
+	}
+
+	if out, err := runCLI(t, dir, "export", "--no-build"); err != nil {
+		t.Fatalf("export --no-build should skip the failing build: %v\n%s", err, out)
+	}
+}
+
+func listTree(t *testing.T, root string) string {
+	t.Helper()
+	var b strings.Builder
+	_ = filepath.WalkDir(root, func(p string, _ os.DirEntry, err error) error {
+		if err == nil {
+			b.WriteString(p + "\n")
+		}
+		return nil
+	})
+	return b.String()
 }

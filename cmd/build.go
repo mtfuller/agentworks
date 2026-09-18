@@ -45,26 +45,7 @@ command; artifacts without one are skipped.`,
 			toRun = found
 		}
 
-		ran, failed := 0, 0
-		for _, a := range toRun {
-			buildCommand := a.ExtraString("build")
-			if buildCommand == "" {
-				continue
-			}
-			ran++
-			color.Info("Building %s (%s): %s", a.Name, a.Kind, buildCommand)
-
-			c := exec.Command("sh", "-c", buildCommand)
-			c.Dir = a.Dir
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			if err := c.Run(); err != nil {
-				color.Error("%s: build failed: %v", a.Name, err)
-				failed++
-				continue
-			}
-			color.Success("%s: build succeeded", a.Name)
-		}
+		ran, failed := runBuilds(toRun)
 
 		if ran == 0 {
 			color.Info("No artifacts declare a `build:` command.")
@@ -74,6 +55,33 @@ command; artifacts without one are skipped.`,
 		}
 		return nil
 	},
+}
+
+// runBuilds runs each artifact's declared "build:" command from within its
+// directory, skipping artifacts that declare none. It reports how many
+// builds ran and how many of those failed, and keeps going after a failure
+// so one run surfaces every broken build.
+func runBuilds(arts []*artifact.Artifact) (ran, failed int) {
+	for _, a := range arts {
+		buildCommand := a.ExtraString("build")
+		if buildCommand == "" {
+			continue
+		}
+		ran++
+		color.Info("Building %s (%s): %s", a.Name, a.Kind, buildCommand)
+
+		c := exec.Command("sh", "-c", buildCommand)
+		c.Dir = a.Dir
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		if err := c.Run(); err != nil {
+			color.Error("%s: build failed: %v", a.Name, err)
+			failed++
+			continue
+		}
+		color.Success("%s: build succeeded", a.Name)
+	}
+	return ran, failed
 }
 
 func init() {
