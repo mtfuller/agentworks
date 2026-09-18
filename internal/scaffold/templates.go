@@ -93,6 +93,84 @@ test("placeholder", () => {
 `
 }
 
+// nodeTSPackageJSON is the starter package.json for a TypeScript-based
+// scaffold (node-ts-skill/node-ts-tool). entryTS is the TypeScript
+// entrypoint the "build" script type-checks and bundles from; outJS is the
+// bundled file the "start" script runs -- tsc never emits here (see
+// nodeTSConfig), esbuild produces the actual runtime output.
+func nodeTSPackageJSON(name, entryTS, outJS string) string {
+	return `{
+  "name": "` + name + `",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node ` + outJS + `",
+    "build": "tsc --noEmit && esbuild ` + entryTS + ` --bundle --platform=node --format=esm --outfile=` + outJS + `",
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "esbuild": "^0.24.0",
+    "@types/node": "^22.0.0"
+  }
+}
+`
+}
+
+// nodeTSConfig is the starter tsconfig.json for a TypeScript-based
+// scaffold. "noEmit" is deliberate: tsc here only type-checks ("build:"
+// runs it with --noEmit before esbuild's own separate bundle step), it
+// never produces the runtime output itself.
+func nodeTSConfig() string {
+	return `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  }
+}
+`
+}
+
+// nodeTSEntrypointPlaceholder is the starter body for a TypeScript-based
+// scaffold's entrypoint file (scripts/main.ts or src/index.ts).
+func nodeTSEntrypointPlaceholder(name string) string {
+	return `// ` + name + ` entrypoint. Replace with real logic.
+
+function main(): void {
+  throw new Error("` + name + ` is not implemented yet");
+}
+
+main();
+`
+}
+
+// nodeTSTestPlaceholder is the starter test file for a TypeScript-based
+// scaffold. Node's built-in test runner can't execute ".ts" directly, so
+// running this for real needs a TypeScript-aware runner -- package.json's
+// own "test" script already uses Node's "--experimental-strip-types" flag
+// for that; swap it for "tsx --test" or similar if you'd rather not depend
+// on an experimental flag.
+func nodeTSTestPlaceholder(name string) string {
+	return `// Tests for ` + name + `. Node's built-in test runner can't execute ".ts"
+// directly -- see package.json's "test" script -- then add a ` + "`test:`" + `
+// command to this artifact's frontmatter once these are real.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+test("placeholder", () => {
+  assert.ok(true);
+});
+`
+}
+
 var templates = []Template{
 	{
 		ID: "code-reviewer", Kind: artifact.KindAgent,
@@ -452,6 +530,46 @@ once they exist, so ` + "`agentworks test`" + ` can run them.
 		},
 	},
 	{
+		ID: "node-ts-skill", Kind: artifact.KindSkill,
+		Title:       "TypeScript skill",
+		Description: "A Node.js skill written in TypeScript and bundled with esbuild, for logic that benefits from static types.",
+		spec: kindSpec{
+			extra: func(name string) map[string]any {
+				return map[string]any{
+					"entrypoint": "scripts/main.ts",
+					"build":      "npm install && npx tsc --noEmit && npx esbuild scripts/main.ts --bundle --platform=node --format=esm --outfile=dist/main.js",
+				}
+			},
+			bodyTmpl: `# {{.Title}}
+
+{{.Description}}
+
+## Usage
+
+Describe what invokes this skill and what it produces.
+
+## Implementation
+
+See ` + "`scripts/main.ts`" + `. ` + "`build:`" + ` in this file's frontmatter (` + "`agentworks build`" + `)
+type-checks it with ` + "`tsc`" + ` and bundles it with ` + "`esbuild`" + ` into ` + "`dist/main.js`" + `
+-- run it after editing before trying the skill for real. Add real tests under
+` + "`tests/`" + ` (Node's built-in test runner can't execute ` + "`.ts`" + ` directly -- see
+` + "`package.json`" + `'s own ` + "`test`" + ` script) and a ` + "`test:`" + ` command to this
+file's frontmatter once they exist, so ` + "`agentworks test`" + ` can run them.
+`,
+			files: func(name string) []extraFile {
+				return []extraFile{
+					{"package.json", nodeTSPackageJSON(name, "scripts/main.ts", "dist/main.js")},
+					{"tsconfig.json", nodeTSConfig()},
+					{"scripts/main.ts", nodeTSEntrypointPlaceholder(name)},
+					{"tests/main.test.ts", nodeTSTestPlaceholder(name)},
+					{"evals/example.yaml", evalExampleContent(name)},
+				}
+			},
+			extraDirs: []string{"samples", "evals"},
+		},
+	},
+	{
 		ID: "api-wrapper", Kind: artifact.KindTool,
 		Title:       "API wrapper",
 		Description: "Wraps a REST API's endpoints as an MCP tool.",
@@ -628,6 +746,62 @@ a literal secret.
 					{"package.json", nodePackageJSON(name, "src/index.js")},
 					{"src/index.js", nodeEntrypointPlaceholder(name)},
 					{"tests/index.test.js", nodeTestPlaceholder(name)},
+				}
+			},
+		},
+	},
+	{
+		ID: "node-ts-tool", Kind: artifact.KindTool,
+		Title:       "TypeScript MCP tool",
+		Description: "Wraps custom TypeScript logic as an MCP tool, bundled with esbuild into a self-contained runtime output.",
+		spec: kindSpec{
+			extra: func(name string) map[string]any {
+				return map[string]any{
+					"entrypoint": "src/index.ts",
+					"command":    "node dist/index.js",
+					"build":      "npm install && npx tsc --noEmit && npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js",
+					"auth":       []string{},
+				}
+			},
+			bodyTmpl: `# {{.Title}}
+
+{{.Description}}
+
+## Interface
+
+Describe the tool's inputs/outputs (arguments, request/response shape, etc).
+
+## Implementation
+
+` + "`src/index.ts`" + ` shows the entrypoint shape -- wire it into whatever MCP
+server framework you're using for the actual stdio loop (e.g.
+` + "`@modelcontextprotocol/sdk`" + `, added to ` + "`package.json`" + `'s dependencies
+once you pick one). ` + "`build:`" + ` in this file's frontmatter (` + "`agentworks build`" + `)
+type-checks with ` + "`tsc`" + ` and bundles with ` + "`esbuild`" + ` into ` + "`dist/index.js`" + `
+-- ` + "`command`" + ` above runs that bundled output, not the raw ` + "`.ts`" + ` source, so
+run ` + "`agentworks build`" + ` before ` + "`agentworks run`" + `/` + "`agentworks export`" + `.
+Bundling also means a shared local package (e.g. a ` + "`file:`" + ` dependency under a
+project-root ` + "`packages/`" + ` directory -- see README.md, "Sharing code between Node
+artifacts") ends up fully inlined instead of left as a symlink that wouldn't survive
+export. Add real tests under ` + "`tests/`" + ` (Node's built-in test runner can't execute
+` + "`.ts`" + ` directly -- see ` + "`package.json`" + `'s own ` + "`test`" + ` script) and a
+` + "`test:`" + ` command to this file's frontmatter once they exist, so
+` + "`agentworks test`" + ` can run them.
+
+## Running as an MCP server
+
+` + "`command`" + ` is already set to run the bundled output. Claude Code and GitHub
+Copilot both expose tools via MCP; ` + "`agentworks export ... --target claude-code`" + `
+or ` + "`--target github-copilot`" + ` uses ` + "`command`" + `/` + "`auth`" + ` to generate the server
+registration, passing each ` + "`auth`" + ` entry through as an env var reference, never
+a literal secret.
+`,
+			files: func(name string) []extraFile {
+				return []extraFile{
+					{"package.json", nodeTSPackageJSON(name, "src/index.ts", "dist/index.js")},
+					{"tsconfig.json", nodeTSConfig()},
+					{"src/index.ts", nodeTSEntrypointPlaceholder(name)},
+					{"tests/index.test.ts", nodeTSTestPlaceholder(name)},
 				}
 			},
 		},

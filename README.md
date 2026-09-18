@@ -163,13 +163,19 @@ recommended pattern:
    just copies whatever's in the directory (`node_modules` is never included, whether
    or not you use this pattern).
 
+The `node-ts-skill`/`node-ts-tool` templates (`agentworks new tool <name>
+--from-template node-ts-tool`) already set this up out of the box -- TypeScript
+source, a `tsconfig.json`, and a `build:` command that type-checks with `tsc` and
+bundles with `esbuild` into a single `dist/` output, which is exactly what step 3
+above needs. See `agentworks templates` for the full list.
+
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `agentworks init [path]` | Scaffold a new project (`agentworks.yaml`, the 5 kind directories, and an `AGENTS.md` + `.agents/skills/agentworks-cli/SKILL.md` teaching a coding agent how to drive this CLI in the project). |
 | `agentworks new <kind> [name]` | Scaffold a new agent/skill/tool/hook/workflow. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. Pass `--from-template <id>` to start from a curated built-in template instead of the generic blank scaffold (see `agentworks templates`) — its own description covers you if you don't pass `--description`. |
-| `agentworks templates [kind]` | Table of the built-in starter templates `--from-template` can scaffold from (two per kind for hook/workflow, three for agent and tool, five for skill: e.g. a tool's `api-wrapper`/`cli-wrapper`/`node-tool`, a workflow's `research-then-act`/`fetch-then-review`, a skill's `pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's PowerPoint/Excel skills, or `node-skill`/`node-tool` for a Node.js implementation instead of the Python default). Pass a kind to filter. |
+| `agentworks templates [kind]` | Table of the built-in starter templates `--from-template` can scaffold from (two per kind for hook/workflow, three for agent, four for tool, six for skill: e.g. a tool's `api-wrapper`/`cli-wrapper`/`node-tool`/`node-ts-tool`, a workflow's `research-then-act`/`fetch-then-review`, a skill's `pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's PowerPoint/Excel skills, or `node-skill`/`node-ts-skill`/`node-tool`/`node-ts-tool` for a Node.js or TypeScript implementation instead of the Python default -- the TypeScript variants bundle with esbuild via a `build:` command). Pass a kind to filter. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |
 | `agentworks validate [path]` | Parse and validate one artifact or the whole project. Beyond the generic checks (name/description/kind), also catches export-readiness gaps per kind: a workflow's `steps:` must resolve to real artifacts, a hook's `events`/`command` must be set together, and a tool declaring `auth` must also declare `command`. Also lints description quality — too long (over the [Agent Skills spec](https://agentskills.io/specification)'s 1024-character limit), too short/vague, redundant with the name, or overlapping heavily with another same-kind artifact's description (checked project-wide) — and flags a hook/tool `command` that will run arbitrary shell code (see "Drift and supply-chain safety") — all printed as warnings that don't fail the command unless `--strict` is passed. |
 | `agentworks build [path]` | Run the `build:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it, e.g. installing dependencies, compiling, or bundling before the artifact can run or be exported). With no path, runs every artifact that declares one. |
