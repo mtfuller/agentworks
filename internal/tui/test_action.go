@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,7 +27,7 @@ func (m Model) startTest() (tea.Model, tea.Cmd) {
 
 	testCommand := subject.ExtraString("test")
 	if testCommand == "" {
-		m.statusMsg = fmt.Sprintf("%s has no \"test:\" command declared", subject.Name)
+		m.setStatus(statusWarn, "%s has no \"test:\" command declared", subject.Name)
 		return m, nil
 	}
 
@@ -42,9 +41,9 @@ func (m Model) startTest() (tea.Model, tea.Cmd) {
 
 func (m Model) handleTestFinished(msg testFinishedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.statusMsg = fmt.Sprintf("%s: tests failed: %v", msg.name, msg.err)
+		m.setStatus(statusError, "%s: tests failed: %v", msg.name, msg.err)
 	} else {
-		m.statusMsg = fmt.Sprintf("%s: tests passed", msg.name)
+		m.setStatus(statusSuccess, "%s: tests passed", msg.name)
 	}
 	return m, nil
 }

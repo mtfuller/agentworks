@@ -5,17 +5,13 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/mtfuller/agentworks/internal/artifact"
 )
 
 func TestStartTestWithNoCommandReportsStatus(t *testing.T) {
 	m := newTestModel(t)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(Model)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
-	if m.pane != paneArtifacts {
-		t.Fatalf("pane = %v, want paneArtifacts", m.pane)
-	}
+	m = tabTo(m, artifact.KindSkill)
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	m = updated.(Model)
@@ -25,20 +21,20 @@ func TestStartTestWithNoCommandReportsStatus(t *testing.T) {
 	if m.statusMsg == "" {
 		t.Fatal("expected a statusMsg reporting no test: command")
 	}
+	if m.statusLevel != statusWarn {
+		t.Errorf("statusLevel = %v, want statusWarn", m.statusLevel)
+	}
 	// Pane must not change -- unlike "n"/"e", "t" never enters paneForm.
-	if m.pane != paneArtifacts {
-		t.Errorf("pane after 't' with no test command = %v, want unchanged paneArtifacts", m.pane)
+	if m.pane != paneBrowse {
+		t.Errorf("pane after 't' with no test command = %v, want unchanged paneBrowse", m.pane)
 	}
 }
 
 func TestStartTestWithCommandReturnsExecCmd(t *testing.T) {
 	m := newTestModel(t)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(Model)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
+	m = tabTo(m, artifact.KindSkill)
 
-	item, ok := m.artifactList.SelectedItem().(artifactItem)
+	item, ok := m.artifactLists[artifact.KindSkill].SelectedItem().(artifactItem)
 	if !ok {
 		t.Fatal("no artifact selected")
 	}
@@ -67,25 +63,33 @@ func TestHandleTestFinishedReportsPassOrFail(t *testing.T) {
 	if m.statusMsg == "" {
 		t.Fatal("expected a statusMsg reporting a passing test")
 	}
+	if m.statusLevel != statusSuccess {
+		t.Errorf("statusLevel = %v, want statusSuccess", m.statusLevel)
+	}
 
 	updated, _ = m.handleTestFinished(testFinishedMsg{name: "demo", err: errBoom})
 	m = updated.(Model)
 	if m.statusMsg == "" {
 		t.Fatal("expected a statusMsg reporting a failing test")
 	}
+	if m.statusLevel != statusError {
+		t.Errorf("statusLevel = %v, want statusError", m.statusLevel)
+	}
 }
 
 // errBoom is a stand-in error for TestHandleTestFinishedReportsPassOrFail.
 var errBoom = fmt.Errorf("boom")
 
-func TestTIsNoOpFromKindsPane(t *testing.T) {
+func TestTIsNoOpFromMarketplace(t *testing.T) {
 	m := newTestModel(t)
+	m.pane = paneMarketplace
+
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	m = updated.(Model)
-	if m.pane != paneKinds {
-		t.Fatalf("pane = %v, want unchanged paneKinds", m.pane)
+	if m.pane != paneMarketplace {
+		t.Fatalf("pane = %v, want unchanged paneMarketplace", m.pane)
 	}
 	if cmd != nil {
-		t.Error("expected no cmd for 't' from paneKinds")
+		t.Error("expected no cmd for 't' from paneMarketplace")
 	}
 }

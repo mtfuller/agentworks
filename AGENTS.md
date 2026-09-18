@@ -206,9 +206,9 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   (`logpane.go`/`history.go`) — the actual debugging payoff over a plain REPL, reachable
   even from the connection-failure screen so the real cause (e.g. a missing Python
   package) isn't hidden behind a generic protocol error. A separate package from
-  `internal/tui` rather than another pane in its drill-down browser: this is a
-  different lifecycle (connect once, then browse/call/inspect until quit), not another
-  step in kind → artifact → detail.
+  `internal/tui` rather than another pane in its browser: this is a different
+  lifecycle (connect once, then browse/call/inspect until quit), not another step in
+  its tabbed kind → detail flow.
 - **`internal/{logger,color,spinner,version}`** — CLI-support code inherited from the
   starter template (leveled logging, ANSI output helpers, a progress spinner, build
   metadata via ldflags).
@@ -446,6 +446,39 @@ both, ran `npm install && agentworks build`, confirmed the bundled output runs (
 throws the placeholder's error as expected) and `npm test`
 (`node --experimental-strip-types --test`) passes, and confirmed
 `agentworks export` on the tool ships `dist/index.js` but never `node_modules`.
+
+Also done as of this pass: `internal/tui`'s browser gained tabs, replacing its old
+two-pane kind → artifact drill-down with one `paneBrowse` pane -- a tab per
+`artifact.Kind` (`tab`/`shift+tab` to switch, a small hand-rolled `tabBar` in the new
+`tabs.go`, since `bubbles` has no tab widget of its own) showing that kind's artifacts
+directly, no separate "pick a kind" step first. The templates pane (`b`) got the same
+treatment: one `list.Model` per kind instead of a single list mixing all 17 templates
+with the kind only visible in each row's description; pressing `b` also now carries
+the browse pane's current tab into templates, so looking at "skills" and pressing `b`
+lands on the "skill" tab rather than always the first kind. Alongside this: a project's
+`agentworks.yaml` `targets:` default (already written by `agentworks init --target`,
+and already used as a fallback by `cmd/new.go`'s non-interactive path) now actually
+reaches every *interactive* creation flow too -- `agentworks new`'s wizard, the TUI's
+`n`, and the TUI's create-from-template -- which previously always opened Targets as a
+blank multi-select regardless of what the project already declared. Fixed by pre-
+filling `NewArtifactAnswers.Targets` before the form is built rather than falling back
+to it afterward (confirmed against `huh`'s own source, `field_multiselect.go`, that a
+pre-populated bound slice is genuinely sufficient to pre-check matching options -- no
+library gap, just three wiring gaps). `agentworks init` itself gained a matching
+interactive prompt (`huh.NewMultiSelect`, same options `internal/tui/wizard.go` already
+builds from `targets.All()`) for when `--target` isn't passed in a real terminal,
+mirroring `new`'s existing "flags for scripts, wizard for terminal" split. Also, since
+color had never really been used in this package (`titleStyle`/`helpStyle`/
+`statusStyle` were `Bold`/`Faint`/`Padding` only, no `Foreground` anywhere): a small
+semantic palette in the new `styles.go` (`accentColor`/`mutedColor`/`success`/`error`/
+`warn`/`infoColor`, `AdaptiveColor` for light/dark terminals), used by the tab bar, a
+`statusLevel` paired with `statusMsg` so the footer status line is actually colored by
+outcome instead of every message looking identical, the help footer's keys rendered
+distinctly from their descriptions, and `renderArtifact`'s metadata block given muted
+labels. Deliberately not built: swapping the hand-rolled help line for `bubbles/help`
+(a bigger structural change for a handful of static hints, not clearly worth it) or any
+per-project/per-user theme configuration (a fixed palette is enough until someone
+actually asks for a different one).
 
 Also done as of this pass: BRAINSTORM.md's "Tool development experience" section,
 both items. `agentworks doctor [path]` (`cmd/doctor.go`) is a static, side-effect-free

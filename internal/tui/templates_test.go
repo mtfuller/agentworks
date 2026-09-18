@@ -25,16 +25,17 @@ func TestTemplateItems(t *testing.T) {
 	if item.Title() != templates[0].Title {
 		t.Errorf("Title() = %q, want %q", item.Title(), templates[0].Title)
 	}
-	if !strings.Contains(item.Description(), string(templates[0].Kind)) {
-		t.Errorf("Description() = %q, want it to mention the kind", item.Description())
+	if item.Description() != templates[0].Description {
+		t.Errorf("Description() = %q, want %q (the templates pane is tabbed by kind, so the kind isn't repeated per row)", item.Description(), templates[0].Description)
 	}
 	if !strings.Contains(item.FilterValue(), templates[0].Title) {
 		t.Errorf("FilterValue() = %q, want it to contain the title", item.FilterValue())
 	}
 }
 
-func TestBFromKindsOpensTemplatesPane(t *testing.T) {
+func TestBFromBrowseOpensTemplatesPaneOnTheSameKindTab(t *testing.T) {
 	m := newTestModel(t)
+	m = tabTo(m, artifact.KindTool)
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	m = updated.(Model)
@@ -44,8 +45,11 @@ func TestBFromKindsOpensTemplatesPane(t *testing.T) {
 	if cmd != nil {
 		t.Error("startTemplates() returned a non-nil cmd, want nil (no fetch needed for local data)")
 	}
-	if len(m.templateList.Items()) != len(scaffold.Templates()) {
-		t.Errorf("templateList has %d items, want %d", len(m.templateList.Items()), len(scaffold.Templates()))
+	if m.currentTemplateKind() != artifact.KindTool {
+		t.Errorf("currentTemplateKind() = %v, want tool (carried over from the browse pane's tab)", m.currentTemplateKind())
+	}
+	if got := len(m.templateLists[artifact.KindTool].Items()); got != len(scaffold.TemplatesForKind(artifact.KindTool)) {
+		t.Errorf("tool template list has %d items, want %d", got, len(scaffold.TemplatesForKind(artifact.KindTool)))
 	}
 }
 
@@ -62,21 +66,13 @@ func TestBIsIgnoredFromDetail(t *testing.T) {
 
 func TestEnterFromTemplatesOpensPrefilledCreateForm(t *testing.T) {
 	m := newTestModel(t)
+	m = tabTo(m, artifact.KindTool)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	m = updated.(Model)
 
-	// Select the first tool template deterministically rather than relying
-	// on whatever sorts first in the full mixed-kind list.
-	var want scaffold.Template
-	for i, it := range m.templateList.Items() {
-		if ti, ok := it.(templateItem); ok && ti.t.Kind == artifact.KindTool {
-			want = ti.t
-			m.templateList.Select(i)
-			break
-		}
-	}
-	if want.ID == "" {
-		t.Fatal("expected at least one tool template in the list")
+	want, ok := m.templateLists[artifact.KindTool].SelectedItem().(templateItem)
+	if !ok {
+		t.Fatal("expected a selected item in the tool template list")
 	}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -93,11 +89,11 @@ func TestEnterFromTemplatesOpensPrefilledCreateForm(t *testing.T) {
 	if m.newAnswers.Kind != string(artifact.KindTool) {
 		t.Errorf("newAnswers.Kind = %q, want tool", m.newAnswers.Kind)
 	}
-	if m.newAnswers.Template != want.ID {
-		t.Errorf("newAnswers.Template = %q, want %q", m.newAnswers.Template, want.ID)
+	if m.newAnswers.Template != want.t.ID {
+		t.Errorf("newAnswers.Template = %q, want %q", m.newAnswers.Template, want.t.ID)
 	}
-	if m.newAnswers.Description != want.Description {
-		t.Errorf("newAnswers.Description = %q, want %q", m.newAnswers.Description, want.Description)
+	if m.newAnswers.Description != want.t.Description {
+		t.Errorf("newAnswers.Description = %q, want %q", m.newAnswers.Description, want.t.Description)
 	}
 	if m.formReturnPane != paneTemplates {
 		t.Errorf("formReturnPane = %v, want paneTemplates", m.formReturnPane)

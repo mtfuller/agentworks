@@ -16,7 +16,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/project"
@@ -27,28 +26,15 @@ import (
 type pane int
 
 const (
-	paneKinds pane = iota
-	paneArtifacts
+	// paneBrowse is the top-level screen: a tab per artifact.Kind (see
+	// tabs.go), each tab showing that kind's artifacts directly -- no
+	// separate "pick a kind, then see its artifacts" step.
+	paneBrowse pane = iota
 	paneDetail
 	paneForm        // a huh.Form (create or export) is active; see actions.go
 	paneMarketplace // marketplace search/import is active; see marketplace.go
 	paneTemplates   // browsing built-in starter templates; see templates.go
 )
-
-var (
-	titleStyle  = lipgloss.NewStyle().Bold(true).Padding(0, 1)
-	helpStyle   = lipgloss.NewStyle().Faint(true)
-	statusStyle = lipgloss.NewStyle().Bold(true)
-)
-
-type kindItem struct {
-	kind  artifact.Kind
-	count int
-}
-
-func (i kindItem) Title() string       { return i.kind.DirName() }
-func (i kindItem) Description() string { return fmt.Sprintf("%d artifact(s)", i.count) }
-func (i kindItem) FilterValue() string { return string(i.kind) }
 
 type artifactItem struct {
 	a *artifact.Artifact
@@ -58,26 +44,37 @@ func (i artifactItem) Title() string       { return i.a.Name }
 func (i artifactItem) Description() string { return i.a.Description }
 func (i artifactItem) FilterValue() string { return i.a.Name }
 
-// Model is the root Bubble Tea model for `agentworks tui`: a drill-down
-// browser from artifact kinds, to that kind's artifacts, to one artifact's
-// rendered frontmatter + body -- plus, from the right pane, creating a new
-// artifact ("n") or exporting the current one ("e"). See actions.go for
-// both of those.
+// Model is the root Bubble Tea model for `agentworks tui`: a tabbed
+// browser from artifact kind to that kind's artifacts, to one artifact's
+// rendered frontmatter + body -- plus, from the browse pane, creating a
+// new artifact ("n") or exporting/testing the current one ("e"/"t"). See
+// actions.go for those.
 type Model struct {
 	root string
 	pane pane
 
-	kindList        list.Model
-	artifactList    list.Model
+	// browseTabs/artifactLists back paneBrowse: one tab and one list.Model
+	// per artifact.Kind (in artifact.Kinds() order, so browseTabs.active
+	// doubles as an index into that slice -- see currentKind).
+	browseTabs    tabBar
+	artifactLists map[artifact.Kind]list.Model
+
+	// templateTabs/templateLists are the same shape, backing paneTemplates.
+	templateTabs  tabBar
+	templateLists map[artifact.Kind]list.Model
+
 	marketplaceList list.Model
-	templateList    list.Model
 	viewport        viewport.Model
 
-	// currentKind/currentArtifact track what's in view in paneArtifacts/
-	// paneDetail, so "n"/"e" know what kind to scaffold into or which
-	// artifact to export without re-deriving it from the list widgets.
-	currentKind     artifact.Kind
+	// currentArtifact tracks what's in view in paneDetail, so "e"/"t" know
+	// which artifact to act on without re-deriving it from a list widget.
 	currentArtifact *artifact.Artifact
+
+	// defaultTargets is the project's agentworks.yaml "targets:", loaded
+	// once here so every create flow (startCreateForm, template-based
+	// creation, and cmd/new.go's own wizard call) can pre-fill a new
+	// artifact's Targets field instead of asking from scratch every time.
+	defaultTargets []string
 
 	// Form state for the active create/export action, if any -- see
 	// actions.go's startCreateForm/startExportForm/updateForm/finishForm.
@@ -88,9 +85,11 @@ type Model struct {
 	exportAnswers  *ExportAnswers
 	exportSubject  *artifact.Artifact
 
-	// statusMsg reports the outcome of the last create/export action,
-	// shown in the footer until the next one replaces it.
-	statusMsg string
+	// statusMsg/statusLevel report the outcome of the last create/export/
+	// test/import action, shown in the footer (colored by level) until the
+	// next one replaces it. See styles.go's setStatus/clearStatus.
+	statusMsg   string
+	statusLevel statusLevel
 
 	width, height int
 	err           error
@@ -106,40 +105,78 @@ type Model struct {
 
 // New builds a browser Model rooted at an AgentWorks project directory.
 func New(root string) (Model, error) {
-	items := make([]list.Item, 0, len(artifact.Kinds()))
-	for _, k := range artifact.Kinds() {
+	kinds := artifact.Kinds()
+
+	browseLabels := make([]string, len(kinds))
+	templateLabels := make([]string, len(kinds))
+	artifactLists := make(map[artifact.Kind]list.Model, len(kinds))
+	templateLists := make(map[artifact.Kind]list.Model, len(kinds))
+
+	for i, k := range kinds {
 		found, errs := project.Discover(root, k)
 		if len(errs) > 0 {
 			return Model{}, errs[0]
 		}
-		items = append(items, kindItem{kind: k, count: len(found)})
+		browseLabels[i] = fmt.Sprintf("%s (%d)", k.DirName(), len(found))
+
+		items := make([]list.Item, len(found))
+		for j, a := range found {
+			items[j] = artifactItem{a: a}
+		}
+		al := list.New(items, list.NewDefaultDelegate(), 0, 0)
+		al.SetShowTitle(false)
+		artifactLists[k] = al
+
+		tmpls := scaffold.TemplatesForKind(k)
+		templateLabels[i] = fmt.Sprintf("%s (%d)", k.DirName(), len(tmpls))
+		tl := list.New(templateItems(tmpls), list.NewDefaultDelegate(), 0, 0)
+		tl.SetShowTitle(false)
+		templateLists[k] = tl
 	}
 
-	kindList := list.New(items, list.NewDefaultDelegate(), 0, 0)
-	kindList.Title = "AgentWorks"
-
-	// artifactList and marketplaceList start empty and are populated by
-	// drillIn() / startMarketplace() respectively; they still need to exist
-	// so an early WindowSizeMsg can size them safely.
-	artifactList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	// marketplaceList starts empty and is populated by startMarketplace();
+	// it still needs to exist so an early WindowSizeMsg can size it safely.
 	marketplaceList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	marketplaceList.Title = "Search skills & plugins"
 
-	// Unlike artifactList/marketplaceList, templateList's data is local and
-	// static -- there's nothing to fetch, so it's populated immediately
-	// rather than lazily on first entering the pane.
-	templateList := list.New(templateItems(scaffold.Templates()), list.NewDefaultDelegate(), 0, 0)
-	templateList.Title = "Browse templates"
+	var defaultTargets []string
+	if m, err := project.Load(root); err == nil {
+		defaultTargets = m.Targets
+	}
 
 	return Model{
 		root:            root,
-		pane:            paneKinds,
-		kindList:        kindList,
-		artifactList:    artifactList,
+		pane:            paneBrowse,
+		browseTabs:      newTabBar(browseLabels),
+		artifactLists:   artifactLists,
+		templateTabs:    newTabBar(templateLabels),
+		templateLists:   templateLists,
 		marketplaceList: marketplaceList,
-		templateList:    templateList,
 		viewport:        viewport.New(0, 0),
+		defaultTargets:  defaultTargets,
 	}, nil
+}
+
+// currentKind is whichever kind's tab is active in paneBrowse.
+func (m Model) currentKind() artifact.Kind {
+	return artifact.Kinds()[m.browseTabs.active]
+}
+
+// currentTemplateKind is whichever kind's tab is active in paneTemplates.
+func (m Model) currentTemplateKind() artifact.Kind {
+	return artifact.Kinds()[m.templateTabs.active]
+}
+
+// kindIndex returns k's position in artifact.Kinds(), so a tab bar's
+// active index can be set to match a specific kind (e.g. after creating an
+// artifact, or when "b" carries the browse tab's kind into templates).
+func kindIndex(k artifact.Kind) int {
+	for i, kk := range artifact.Kinds() {
+		if kk == k {
+			return i
+		}
+	}
+	return 0
 }
 
 func (m Model) Init() tea.Cmd {
@@ -159,13 +196,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		listHeight := msg.Height - 2
-		m.kindList.SetSize(msg.Width, listHeight)
-		m.artifactList.SetSize(msg.Width, listHeight)
-		m.marketplaceList.SetSize(msg.Width, listHeight)
-		m.templateList.SetSize(msg.Width, listHeight)
+		footerHeight := 2
+		tabbedListHeight := msg.Height - footerHeight - tabBarHeight
+		for _, k := range artifact.Kinds() {
+			al := m.artifactLists[k]
+			al.SetSize(msg.Width, tabbedListHeight)
+			m.artifactLists[k] = al
+
+			tl := m.templateLists[k]
+			tl.SetSize(msg.Width, tabbedListHeight)
+			m.templateLists[k] = tl
+		}
+		m.marketplaceList.SetSize(msg.Width, msg.Height-footerHeight)
 		m.viewport.Width = msg.Width
-		m.viewport.Height = listHeight
+		m.viewport.Height = msg.Height - footerHeight
 		return m, nil
 
 	case testFinishedMsg:
@@ -188,19 +232,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				return m.drillIn()
 			case "n":
-				if m.pane == paneKinds || m.pane == paneArtifacts {
+				if m.pane == paneBrowse {
 					return m.startCreateForm()
 				}
 			case "e":
-				if m.pane == paneArtifacts || m.pane == paneDetail {
+				if m.pane == paneBrowse || m.pane == paneDetail {
 					return m.startExportForm()
 				}
 			case "t":
-				if m.pane == paneArtifacts || m.pane == paneDetail {
+				if m.pane == paneBrowse || m.pane == paneDetail {
 					return m.startTest()
 				}
 			case "a":
-				if m.pane == paneKinds || m.pane == paneArtifacts {
+				if m.pane == paneBrowse {
 					return m.startMarketplace()
 				}
 			case "r":
@@ -208,8 +252,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m.startMarketplace()
 				}
 			case "b":
-				if m.pane == paneKinds || m.pane == paneArtifacts {
+				if m.pane == paneBrowse {
 					return m.startTemplates()
+				}
+			case "tab":
+				switch m.pane {
+				case paneBrowse:
+					m.browseTabs.next()
+					return m, nil
+				case paneTemplates:
+					m.templateTabs.next()
+					return m, nil
+				}
+			case "shift+tab":
+				switch m.pane {
+				case paneBrowse:
+					m.browseTabs.prev()
+					return m, nil
+				case paneTemplates:
+					m.templateTabs.prev()
+					return m, nil
 				}
 			}
 		}
@@ -217,30 +279,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	switch m.pane {
-	case paneKinds:
-		m.kindList, cmd = m.kindList.Update(msg)
-	case paneArtifacts:
-		m.artifactList, cmd = m.artifactList.Update(msg)
+	case paneBrowse:
+		k := m.currentKind()
+		al := m.artifactLists[k]
+		al, cmd = al.Update(msg)
+		m.artifactLists[k] = al
 	case paneDetail:
 		m.viewport, cmd = m.viewport.Update(msg)
 	case paneMarketplace:
 		m.marketplaceList, cmd = m.marketplaceList.Update(msg)
 	case paneTemplates:
-		m.templateList, cmd = m.templateList.Update(msg)
+		k := m.currentTemplateKind()
+		tl := m.templateLists[k]
+		tl, cmd = tl.Update(msg)
+		m.templateLists[k] = tl
 	}
 	return m, cmd
 }
 
 func (m Model) isFiltering() bool {
 	switch m.pane {
-	case paneKinds:
-		return m.kindList.FilterState() == list.Filtering
-	case paneArtifacts:
-		return m.artifactList.FilterState() == list.Filtering
+	case paneBrowse:
+		return m.artifactLists[m.currentKind()].FilterState() == list.Filtering
 	case paneMarketplace:
 		return m.marketplaceList.FilterState() == list.Filtering
 	case paneTemplates:
-		return m.templateList.FilterState() == list.Filtering
+		return m.templateLists[m.currentTemplateKind()].FilterState() == list.Filtering
 	default:
 		return false
 	}
@@ -250,46 +314,21 @@ func (m Model) isFiltering() bool {
 // one level, the same convention as `less`/`man` pagers.
 func (m Model) goBack() (tea.Model, tea.Cmd) {
 	switch m.pane {
-	case paneKinds:
+	case paneBrowse:
 		return m, tea.Quit
-	case paneArtifacts:
-		m.pane = paneKinds
-	case paneDetail:
-		m.pane = paneArtifacts
-	case paneMarketplace:
-		m.pane = paneKinds
-	case paneTemplates:
-		m.pane = paneKinds
+	case paneDetail, paneMarketplace, paneTemplates:
+		m.pane = paneBrowse
 	}
 	return m, nil
 }
 
-// drillIn handles "enter": kinds -> that kind's artifacts -> one artifact's
-// detail view.
+// drillIn handles "enter": the current tab's artifact list -> its detail
+// view, a marketplace result -> import, or a template -> the pre-filled
+// create form.
 func (m Model) drillIn() (tea.Model, tea.Cmd) {
 	switch m.pane {
-	case paneKinds:
-		item, ok := m.kindList.SelectedItem().(kindItem)
-		if !ok {
-			return m, nil
-		}
-		found, errs := project.Discover(m.root, item.kind)
-		if len(errs) > 0 {
-			m.err = errs[0]
-			return m, nil
-		}
-		items := make([]list.Item, len(found))
-		for i, a := range found {
-			items[i] = artifactItem{a: a}
-		}
-		m.artifactList = list.New(items, list.NewDefaultDelegate(), m.width, m.height-2)
-		m.artifactList.Title = item.Title()
-		m.currentKind = item.kind
-		m.pane = paneArtifacts
-		return m, nil
-
-	case paneArtifacts:
-		item, ok := m.artifactList.SelectedItem().(artifactItem)
+	case paneBrowse:
+		item, ok := m.artifactLists[m.currentKind()].SelectedItem().(artifactItem)
 		if !ok {
 			return m, nil
 		}
@@ -315,55 +354,64 @@ func (m Model) View() string {
 
 	var body string
 	switch m.pane {
-	case paneKinds:
-		body = m.kindList.View()
-	case paneArtifacts:
-		body = m.artifactList.View()
+	case paneBrowse:
+		body = m.browseTabs.View(m.width) + "\n" + m.artifactLists[m.currentKind()].View()
 	case paneDetail:
 		body = m.viewport.View()
 	case paneMarketplace:
 		body = m.marketplaceList.View()
 	case paneTemplates:
-		body = m.templateList.View()
+		body = m.templateTabs.View(m.width) + "\n" + m.templateLists[m.currentTemplateKind()].View()
 	}
 
-	out := body + "\n" + helpStyle.Render(m.helpText())
+	out := body + "\n" + renderHelp(m.helpEntries())
 	if m.statusMsg != "" {
-		out += "\n" + statusStyle.Render(m.statusMsg)
+		out += "\n" + m.statusLevel.style().Render(m.statusMsg)
 	}
 	return out
 }
 
-// helpText is the footer hint line, tailored to what's actually available
-// from the current pane.
-func (m Model) helpText() string {
+// helpEntries is the footer hint line's content, tailored to what's
+// actually available from the current pane.
+func (m Model) helpEntries() []helpEntry {
 	switch m.pane {
-	case paneKinds:
-		return "enter: open  •  n: new  •  a: add  •  b: templates  •  q: quit"
-	case paneArtifacts:
-		return "enter: open  •  n: new  •  e: export  •  t: test  •  a: add  •  b: templates  •  esc: back"
+	case paneBrowse:
+		return []helpEntry{
+			{"enter", "open"}, {"n", "new"}, {"e", "export"}, {"t", "test"},
+			{"a", "add"}, {"b", "templates"}, {"tab/shift+tab", "switch kind"}, {"q", "quit"},
+		}
 	case paneDetail:
-		return "e: export  •  t: test  •  esc: back"
+		return []helpEntry{{"e", "export"}, {"t", "test"}, {"esc", "back"}}
 	case paneMarketplace:
-		return "enter: import  •  /: filter loaded results  •  r: refresh  •  esc: back"
+		return []helpEntry{{"enter", "import"}, {"/", "filter loaded results"}, {"r", "refresh"}, {"esc", "back"}}
 	case paneTemplates:
-		return "enter: create from this template  •  /: filter  •  esc: back"
+		return []helpEntry{
+			{"enter", "create from this template"}, {"/", "filter"},
+			{"tab/shift+tab", "switch kind"}, {"esc", "back"},
+		}
 	default:
-		return "esc: back  •  ctrl+c: quit"
+		return []helpEntry{{"esc", "back"}, {"ctrl+c", "quit"}}
 	}
+}
+
+// metaLine renders one label/value row of renderArtifact's metadata block,
+// the label muted and padded so values line up in a column.
+func metaLine(label, value string) string {
+	return metaLabelStyle.Render(fmt.Sprintf("%-13s", label)) + value + "\n"
 }
 
 func renderArtifact(a *artifact.Artifact) string {
 	header := titleStyle.Render(fmt.Sprintf("%s (%s)", a.Name, a.Kind))
-	var meta strings.Builder
-	fmt.Fprintf(&meta, "Description: %s\n", a.Description)
+
+	var meta string
+	meta += metaLine("Description:", a.Description)
 	if a.Version != "" {
-		fmt.Fprintf(&meta, "Version:     %s\n", a.Version)
+		meta += metaLine("Version:", a.Version)
 	}
 	if len(a.Targets) > 0 {
-		fmt.Fprintf(&meta, "Targets:     %s\n", strings.Join(a.Targets, ", "))
+		meta += metaLine("Targets:", strings.Join(a.Targets, ", "))
 	}
-	fmt.Fprintf(&meta, "Path:        %s\n", a.Dir)
+	meta += metaLine("Path:", a.Dir)
 
-	return header + "\n\n" + meta.String() + "\n" + a.Body
+	return header + "\n\n" + meta + "\n" + a.Body
 }

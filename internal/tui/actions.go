@@ -25,17 +25,14 @@ const (
 )
 
 // startCreateForm opens the create-artifact wizard (the same one
-// `agentworks new` uses -- see wizard.go), pre-filling Kind from whatever's
-// currently in view.
+// `agentworks new` uses -- see wizard.go), pre-filling Kind from the
+// active tab and Targets from the project's own default (agentworks.yaml
+// "targets:") so accepting the form as-is just works, instead of forcing
+// every artifact to re-pick the same targets from a blank multi-select.
 func (m Model) startCreateForm() (tea.Model, tea.Cmd) {
-	var defaults NewArtifactAnswers
-	switch m.pane {
-	case paneArtifacts:
-		defaults.Kind = string(m.currentKind)
-	case paneKinds:
-		if item, ok := m.kindList.SelectedItem().(kindItem); ok {
-			defaults.Kind = string(item.kind)
-		}
+	defaults := NewArtifactAnswers{
+		Kind:    string(m.currentKind()),
+		Targets: append([]string(nil), m.defaultTargets...),
 	}
 
 	form, answers := newArtifactForm(defaults)
@@ -43,17 +40,17 @@ func (m Model) startCreateForm() (tea.Model, tea.Cmd) {
 	m.formPurpose = formCreate
 	m.formReturnPane = m.pane
 	m.activeForm = m.sizeForm(form)
-	m.statusMsg = ""
+	m.clearStatus()
 	m.pane = paneForm
 	return m, m.activeForm.Init()
 }
 
 // selectedArtifact is whichever artifact is currently selected (in
-// paneArtifacts) or being viewed (in paneDetail) -- what "e"/"t" act on.
+// paneBrowse) or being viewed (in paneDetail) -- what "e"/"t" act on.
 func (m Model) selectedArtifact() *artifact.Artifact {
 	switch m.pane {
-	case paneArtifacts:
-		if item, ok := m.artifactList.SelectedItem().(artifactItem); ok {
+	case paneBrowse:
+		if item, ok := m.artifactLists[m.currentKind()].SelectedItem().(artifactItem); ok {
 			return item.a
 		}
 	case paneDetail:
@@ -73,7 +70,7 @@ func (m Model) startExportForm() (tea.Model, tea.Cmd) {
 
 	form, answers := exportForm(subject)
 	if form == nil {
-		m.statusMsg = fmt.Sprintf("no registered target supports %s artifacts yet", subject.Kind)
+		m.setStatus(statusWarn, "no registered target supports %s artifacts yet", subject.Kind)
 		return m, nil
 	}
 
@@ -82,7 +79,7 @@ func (m Model) startExportForm() (tea.Model, tea.Cmd) {
 	m.formPurpose = formExport
 	m.formReturnPane = m.pane
 	m.activeForm = m.sizeForm(form)
-	m.statusMsg = ""
+	m.clearStatus()
 	m.pane = paneForm
 	return m, m.activeForm.Init()
 }
@@ -144,67 +141,59 @@ func (m Model) finishForm(completed bool) (tea.Model, tea.Cmd) {
 }
 
 // commitCreate mirrors cmd/new.go's own flow exactly: resolve the kind,
-// fall back to the project's default targets when none were chosen, then
-// scaffold.New -- the CLI and TUI never disagree about what "new" does.
+// then scaffold.New -- the CLI and TUI never disagree about what "new"
+// does. Unlike before, there's no post-hoc "fall back to project defaults
+// if Targets is empty" step here: startCreateForm already pre-filled
+// Targets from the project's defaults before the form ever opened, so an
+// empty answers.Targets now means the user deliberately cleared it, not
+// that nothing was chosen.
 func (m Model) commitCreate() (tea.Model, tea.Cmd) {
 	answers := m.newAnswers
 	m.newAnswers = nil
 
 	kind, err := artifact.ParseKind(answers.Kind)
 	if err != nil {
-		m.statusMsg = err.Error()
+		m.setStatus(statusError, "%v", err)
 		return m, nil
-	}
-
-	targetList := answers.Targets
-	if len(targetList) == 0 {
-		if pm, err := project.Load(m.root); err == nil {
-			targetList = pm.Targets
-		}
 	}
 
 	a, err := scaffold.New(m.root, kind, answers.Name, scaffold.Options{
 		Description: answers.Description,
-		Targets:     targetList,
+		Targets:     answers.Targets,
 		Template:    answers.Template,
 	})
 	if err != nil {
-		m.statusMsg = err.Error()
+		m.setStatus(statusError, "%v", err)
 		return m, nil
 	}
 
-	m.statusMsg = fmt.Sprintf("Created %s %q", kind, a.Name)
+	m.setStatus(statusSuccess, "Created %s %q", kind, a.Name)
 	return m.refreshAfterCreate(kind)
 }
 
-// refreshAfterCreate rebuilds the kind list's counts and drills straight
-// into the newly-created artifact's kind, so the browser shows it
-// immediately instead of a stale list.
+// refreshAfterCreate rebuilds the given kind's artifact list (and its tab
+// label's count) and switches the browse pane to that kind's tab, so the
+// browser shows the newly-created (or imported) artifact immediately
+// instead of a stale list.
 func (m Model) refreshAfterCreate(kind artifact.Kind) (tea.Model, tea.Cmd) {
-	items := make([]list.Item, 0, len(artifact.Kinds()))
-	for _, k := range artifact.Kinds() {
-		found, errs := project.Discover(m.root, k)
-		if len(errs) > 0 {
-			m.err = errs[0]
-			continue
-		}
-		items = append(items, kindItem{kind: k, count: len(found)})
-	}
-	m.kindList.SetItems(items)
-
 	found, errs := project.Discover(m.root, kind)
 	if len(errs) > 0 {
 		m.err = errs[0]
 		return m, nil
 	}
-	artifactItems := make([]list.Item, len(found))
+	items := make([]list.Item, len(found))
 	for i, a := range found {
-		artifactItems[i] = artifactItem{a: a}
+		items[i] = artifactItem{a: a}
 	}
-	m.artifactList = list.New(artifactItems, list.NewDefaultDelegate(), m.width, m.height-2)
-	m.artifactList.Title = kind.DirName()
-	m.currentKind = kind
-	m.pane = paneArtifacts
+
+	al := m.artifactLists[kind]
+	al.SetItems(items)
+	m.artifactLists[kind] = al
+
+	idx := kindIndex(kind)
+	m.browseTabs.labels[idx] = fmt.Sprintf("%s (%d)", kind.DirName(), len(found))
+	m.browseTabs.active = idx
+	m.pane = paneBrowse
 	return m, nil
 }
 
@@ -218,7 +207,7 @@ func (m Model) commitExport() (tea.Model, tea.Cmd) {
 
 	exporter, err := targets.GetExporter(answers.Target)
 	if err != nil {
-		m.statusMsg = err.Error()
+		m.setStatus(statusError, "%v", err)
 		return m, nil
 	}
 
@@ -229,10 +218,10 @@ func (m Model) commitExport() (tea.Model, tea.Cmd) {
 	outDir := filepath.Join(m.root, "dist")
 	dest, err := exporter.Export(subject, outDir, targets.ExportOptions{Zip: answers.Zip})
 	if err != nil {
-		m.statusMsg = fmt.Sprintf("export failed: %v", err)
+		m.setStatus(statusError, "export failed: %v", err)
 		return m, nil
 	}
 
-	m.statusMsg = fmt.Sprintf("Exported %s to %s for %s", subject.Name, dest, answers.Target)
+	m.setStatus(statusSuccess, "Exported %s to %s for %s", subject.Name, dest, answers.Target)
 	return m, nil
 }

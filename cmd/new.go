@@ -51,11 +51,21 @@ interactive terminal and a short wizard fills in the rest.`),
 		}
 		description := newDescription
 		targetList := newTargetsFlag
+		if len(targetList) == 0 {
+			if m, err := project.Load(root); err == nil {
+				targetList = m.Targets
+			}
+		}
 
 		if needsInteractiveWizard(kindStr, name, description, newFromTemplate) {
 			if !isInteractive() {
 				return fmt.Errorf("kind, name, and --description are required (or run this command interactively)")
 			}
+			// targetList is already the project's default at this point
+			// (unless --target overrode it above), so the wizard's Targets
+			// field opens pre-checked instead of blank -- accepting the
+			// form as-is just uses the project's default, no need to
+			// re-pick it for every artifact.
 			answers, err := tui.RunNewArtifactWizard(tui.NewArtifactAnswers{
 				Kind:        kindStr,
 				Name:        name,
@@ -75,12 +85,6 @@ interactive terminal and a short wizard fills in the rest.`),
 		}
 
 		description = resolveDescription(description, kind, newFromTemplate)
-
-		if len(targetList) == 0 {
-			if m, err := project.Load(root); err == nil {
-				targetList = m.Targets
-			}
-		}
 
 		a, err := scaffold.New(root, kind, name, scaffold.Options{
 			Description: description,

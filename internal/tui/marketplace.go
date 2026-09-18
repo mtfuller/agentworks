@@ -62,7 +62,7 @@ type marketplaceImportedMsg struct {
 // call happens inside the returned tea.Cmd, on Bubble Tea's own goroutine,
 // not here.
 func (m Model) startMarketplace() (tea.Model, tea.Cmd) {
-	m.statusMsg = ""
+	m.clearStatus()
 	m.pane = paneMarketplace
 	spinnerCmd := m.marketplaceList.StartSpinner()
 	return m, tea.Batch(spinnerCmd, searchMarketplaceCmd(""))
@@ -83,7 +83,7 @@ func (m Model) handleMarketplaceResults(msg marketplaceResultsMsg) (tea.Model, t
 	m.marketplaceList.StopSpinner()
 	m.marketplaceList.SetItems(marketplaceItems(msg.results))
 	if len(msg.errs) > 0 {
-		m.statusMsg = fmt.Sprintf("%d source(s) unavailable (%v) -- showing what did come back", len(msg.errs), msg.errs[0])
+		m.setStatus(statusWarn, "%d source(s) unavailable (%v) -- showing what did come back", len(msg.errs), msg.errs[0])
 	}
 	return m, nil
 }
@@ -97,7 +97,7 @@ func (m Model) importSelected() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	root, src := m.root, item.r.Source
-	m.statusMsg = fmt.Sprintf("Importing %s...", item.r.Name)
+	m.setStatus(statusInfo, "Importing %s...", item.r.Name)
 
 	return m, func() tea.Msg {
 		plan, err := importer.Prepare(context.Background(), root, src, importer.Options{})
@@ -132,21 +132,24 @@ func (m Model) importSelected() (tea.Model, tea.Cmd) {
 // immediately instead of leaving the user in a stale marketplace list.
 func (m Model) handleMarketplaceImported(msg marketplaceImportedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.statusMsg = fmt.Sprintf("import failed: %v", msg.err)
+		m.setStatus(statusError, "import failed: %v", msg.err)
 		return m, nil
 	}
 	if len(msg.plan.Artifacts) == 0 {
-		m.statusMsg = "nothing importable was found there"
+		m.setStatus(statusWarn, "nothing importable was found there")
 		return m, nil
 	}
 
 	kind := msg.plan.Artifacts[0].Kind
-	m.statusMsg = fmt.Sprintf("Imported %d artifact(s)", len(msg.plan.Artifacts))
+	level := statusSuccess
+	text := fmt.Sprintf("Imported %d artifact(s)", len(msg.plan.Artifacts))
 	for _, u := range msg.plan.Unsupported {
-		m.statusMsg += "; " + u
+		text += "; " + u
 	}
 	if len(msg.securityWarnings) > 0 {
-		m.statusMsg += fmt.Sprintf("; ⚠ %s", strings.Join(msg.securityWarnings, "; "))
+		level = statusWarn
+		text += fmt.Sprintf("; ⚠ %s", strings.Join(msg.securityWarnings, "; "))
 	}
+	m.setStatus(level, "%s", text)
 	return m.refreshAfterCreate(kind)
 }
