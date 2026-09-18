@@ -12,7 +12,7 @@ import (
 )
 
 func TestTemplateItems(t *testing.T) {
-	templates := scaffold.TemplatesForKind(artifact.KindTool)
+	templates := scaffold.TemplatesForKind(artifact.KindMCP)
 	items := templateItems(templates)
 	if len(items) != len(templates) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(templates))
@@ -35,7 +35,7 @@ func TestTemplateItems(t *testing.T) {
 
 func TestBFromBrowseOpensTemplatesPaneOnTheSameKindTab(t *testing.T) {
 	m := newTestModel(t)
-	m = tabTo(m, artifact.KindTool)
+	m = tabTo(m, artifact.KindMCP)
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	m = updated.(Model)
@@ -45,11 +45,11 @@ func TestBFromBrowseOpensTemplatesPaneOnTheSameKindTab(t *testing.T) {
 	if cmd != nil {
 		t.Error("startTemplates() returned a non-nil cmd, want nil (no fetch needed for local data)")
 	}
-	if m.currentTemplateKind() != artifact.KindTool {
+	if m.currentTemplateKind() != artifact.KindMCP {
 		t.Errorf("currentTemplateKind() = %v, want tool (carried over from the browse pane's tab)", m.currentTemplateKind())
 	}
-	if got := len(m.templateLists[artifact.KindTool].Items()); got != len(scaffold.TemplatesForKind(artifact.KindTool)) {
-		t.Errorf("tool template list has %d items, want %d", got, len(scaffold.TemplatesForKind(artifact.KindTool)))
+	if got := len(m.templateLists[artifact.KindMCP].Items()); got != len(scaffold.TemplatesForKind(artifact.KindMCP)) {
+		t.Errorf("tool template list has %d items, want %d", got, len(scaffold.TemplatesForKind(artifact.KindMCP)))
 	}
 }
 
@@ -66,11 +66,11 @@ func TestBIsIgnoredFromDetail(t *testing.T) {
 
 func TestEnterFromTemplatesOpensPrefilledCreateForm(t *testing.T) {
 	m := newTestModel(t)
-	m = tabTo(m, artifact.KindTool)
+	m = tabTo(m, artifact.KindMCP)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	m = updated.(Model)
 
-	want, ok := m.templateLists[artifact.KindTool].SelectedItem().(templateItem)
+	want, ok := m.templateLists[artifact.KindMCP].SelectedItem().(templateItem)
 	if !ok {
 		t.Fatal("expected a selected item in the tool template list")
 	}
@@ -86,7 +86,7 @@ func TestEnterFromTemplatesOpensPrefilledCreateForm(t *testing.T) {
 	if m.newAnswers == nil {
 		t.Fatal("newAnswers is nil, want it prefilled")
 	}
-	if m.newAnswers.Kind != string(artifact.KindTool) {
+	if m.newAnswers.Kind != string(artifact.KindMCP) {
 		t.Errorf("newAnswers.Kind = %q, want tool", m.newAnswers.Kind)
 	}
 	if m.newAnswers.Template != want.t.ID {
@@ -109,13 +109,13 @@ func TestEnterFromTemplatesOpensPrefilledCreateForm(t *testing.T) {
 // just that it doesn't error.
 func TestCommitCreateFromTemplateMatchesDirectScaffold(t *testing.T) {
 	m := newTestModel(t)
-	tmpl, ok := scaffold.GetTemplate(artifact.KindTool, "api-wrapper")
+	tmpl, ok := scaffold.GetTemplate(artifact.KindMCP, "api-wrapper")
 	if !ok {
 		t.Fatal("expected the api-wrapper tool template to exist")
 	}
 
 	m.newAnswers = &NewArtifactAnswers{
-		Kind:        string(artifact.KindTool),
+		Kind:        string(artifact.KindMCP),
 		Name:        "my-wrapper",
 		Description: tmpl.Description,
 		Template:    tmpl.ID,
@@ -126,7 +126,7 @@ func TestCommitCreateFromTemplateMatchesDirectScaffold(t *testing.T) {
 		t.Fatalf("commitCreate() statusMsg = %q, want a success message", m.statusMsg)
 	}
 
-	got, err := artifact.Load(filepath.Join(m.root, "tools", "my-wrapper"), artifact.KindTool)
+	got, err := artifact.Load(filepath.Join(m.root, "mcp", "my-wrapper"), artifact.KindMCP)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}

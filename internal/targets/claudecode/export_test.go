@@ -125,7 +125,7 @@ func TestExportRejectsUnknownKind(t *testing.T) {
 func newTestTool(t *testing.T) *artifact.Artifact {
 	t.Helper()
 	root := t.TempDir()
-	a, err := scaffold.New(root, artifact.KindTool, "jira-fetch", scaffold.Options{
+	a, err := scaffold.New(root, artifact.KindMCP, "jira-fetch", scaffold.Options{
 		Description: "Fetch a Jira ticket.",
 	})
 	if err != nil {
@@ -139,7 +139,7 @@ func newTestTool(t *testing.T) *artifact.Artifact {
 	if err := os.WriteFile(filepath.Join(a.Dir, "src", "main.py"), []byte("# jira-fetch\n"), 0o644); err != nil {
 		t.Fatalf("writing src/main.py: %v", err)
 	}
-	reloaded, err := artifact.Load(a.Dir, artifact.KindTool)
+	reloaded, err := artifact.Load(a.Dir, artifact.KindMCP)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -181,12 +181,13 @@ func TestExportTool(t *testing.T) {
 	}
 }
 
-func TestExportToolRequiresCommand(t *testing.T) {
+func TestExportMCPRequiresCommand(t *testing.T) {
 	root := t.TempDir()
-	a, err := scaffold.New(root, artifact.KindTool, "jira-fetch", scaffold.Options{Description: "x"})
+	a, err := scaffold.New(root, artifact.KindMCP, "jira-fetch", scaffold.Options{Description: "x"})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)
 	}
+	a.Extra["command"] = "" // the default scaffold is runnable; simulate an author who cleared it
 	if _, err := (exporter{}).Export(a, t.TempDir(), targets.ExportOptions{}); err == nil {
 		t.Fatal("Export() with no command set expected error, got nil")
 	}

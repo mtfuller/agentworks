@@ -80,3 +80,42 @@ func TestExportHookRequiresEventsAndCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestExportHookMergesIntoOneFile(t *testing.T) {
+	outDir := t.TempDir()
+	mk := func(name, command string, events ...string) *artifact.Artifact {
+		a, err := scaffold.New(t.TempDir(), artifact.KindHook, name, scaffold.Options{Description: "x"})
+		if err != nil {
+			t.Fatalf("scaffold.New() error = %v", err)
+		}
+		list := make([]any, len(events))
+		for i, e := range events {
+			list[i] = e
+		}
+		a.Extra["events"] = list
+		a.Extra["command"] = command
+		return a
+	}
+	first := mk("one", "lint.sh", "BeforeTool")
+	second := mk("two", "fmt.sh", "BeforeTool", "SessionStart")
+	for _, h := range []*artifact.Artifact{first, second, first} {
+		if _, err := exportHook(h, outDir); err != nil {
+			t.Fatalf("exportHook() error = %v", err)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, ".gemini", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frag settingsFragment
+	if err := json.Unmarshal(data, &frag); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(frag.Hooks["BeforeTool"]); got != 2 {
+		t.Errorf("BeforeTool has %d groups, want 2 (no duplicate of the re-exported hook): %s", got, data)
+	}
+	if got := len(frag.Hooks["SessionStart"]); got != 1 {
+		t.Errorf("SessionStart has %d groups, want 1: %s", got, data)
+	}
+}

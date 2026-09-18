@@ -101,18 +101,23 @@ func TestNewSkillCreatesSupportingFiles(t *testing.T) {
 	}
 }
 
-func TestNewToolHasCommandAndAuthFields(t *testing.T) {
+func TestNewMCPIsAWorkingServerByDefault(t *testing.T) {
 	root := t.TempDir()
-	a, err := New(root, artifact.KindTool, "jira-fetch", Options{Description: "x"})
+	a, err := New(root, artifact.KindMCP, "jira-fetch", Options{Description: "x"})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	// Empty by default -- AgentWorks can't guess how to run the tool -- but
-	// present so exporters and authors both know the fields exist.
-	if got := a.ExtraString("command"); got != "" {
-		t.Errorf("command = %q, want empty default", got)
+	// The default scaffold is a runnable stdio server, so `agentworks test`
+	// and `agentworks run` work before the author writes anything.
+	if got := a.ExtraString("command"); got != "python3 src/server.py" {
+		t.Errorf("command = %q, want the default server's launch command", got)
 	}
 	if _, ok := a.Extra["auth"]; !ok {
 		t.Error("expected an \"auth\" key in Extra by default")
+	}
+	for _, rel := range []string{"src/server.py", "tests/test_server.py"} {
+		if _, err := os.Stat(filepath.Join(a.Dir, rel)); err != nil {
+			t.Errorf("expected %s to exist: %v", rel, err)
+		}
 	}
 }

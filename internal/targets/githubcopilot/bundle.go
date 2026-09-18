@@ -12,14 +12,14 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 )
 
-// ExportBundle packages a set of agent/skill/tool/hook artifacts into one
+// ExportBundle packages a set of agent/skill/mcp/hook artifacts into one
 // Agent Plugin -- the "ship a cohesive toolkit" counterpart to a workflow's
 // ordered orchestration (internal/targets/githubcopilot/workflow.go), which
 // this mirrors the shape of: loop over members, accumulate what needs
 // merging (MCP servers, hook events), write the rest immediately. Unlike a
 // workflow, there's no generated orchestrator command -- a bundle just
 // makes its members available together, it doesn't sequence them -- and
-// members can be any of agent/skill/tool/hook, not just agent/tool.
+// members can be any of agent/skill/mcp/hook, not just agent/mcp.
 func (exporter) ExportBundle(name, description string, artifacts []*artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
 	pluginDir := filepath.Join(outDir, name)
 	if err := os.RemoveAll(pluginDir); err != nil {
@@ -44,17 +44,20 @@ func (exporter) ExportBundle(name, description string, artifacts []*artifact.Art
 			if err := writeCopilotAgentFile(path, m); err != nil {
 				return "", fmt.Errorf("bundling agent %q: %w", m.QualifiedName(), err)
 			}
-		case artifact.KindTool:
-			// Namespaced under tools/<qualified-name>/, not the plugin
-			// root: two tools' own src/ dirs would otherwise collide --
-			// including two same-named tools from different namespaces.
-			toolDir := filepath.Join("tools", m.QualifiedName())
-			if err := filecopy.CopyArtifactFiles(m, filepath.Join(pluginDir, toolDir)); err != nil {
-				return "", fmt.Errorf("bundling tool %q: %w", m.QualifiedName(), err)
+		case artifact.KindMCP:
+			// Namespaced under mcp/<qualified-name>/, not the plugin
+			// root: two servers' own src/ dirs would otherwise collide --
+			// including two same-named servers from different namespaces.
+			// A remote (http/sse) server has no files of its own to ship.
+			mcpDir := filepath.Join("mcp", m.QualifiedName())
+			if !mcpconfig.IsRemote(m) {
+				if err := filecopy.CopyArtifactFiles(m, filepath.Join(pluginDir, mcpDir)); err != nil {
+					return "", fmt.Errorf("bundling mcp server %q: %w", m.QualifiedName(), err)
+				}
 			}
-			server, err := mcpconfig.ServerForDir(m, toolDir)
+			server, err := mcpconfig.ServerForDir(m, mcpDir)
 			if err != nil {
-				return "", fmt.Errorf("bundling tool %q: %w", m.QualifiedName(), err)
+				return "", fmt.Errorf("bundling mcp server %q: %w", m.QualifiedName(), err)
 			}
 			mcpServers[m.QualifiedName()] = server
 		case artifact.KindHook:

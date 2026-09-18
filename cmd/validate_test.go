@@ -73,7 +73,7 @@ func TestValidateKindSpecificTool(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := newValidateTestArtifact(t, artifact.KindTool, map[string]any{
+			a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
 				"auth":    tt.auth,
 				"command": tt.command,
 			})

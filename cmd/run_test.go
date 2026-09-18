@@ -7,7 +7,7 @@ import (
 	"github.com/mtfuller/agentworks/internal/artifact"
 )
 
-// TestRunRejectsNonToolKind and TestRunRejectsMissingCommand exercise
+// TestRunRejectsNonMCPKind and TestRunRejectsMissingCommand exercise
 // runCmd's error paths directly (constructing the artifact the same way
 // loadArtifactAtPath would return it) rather than executing the built
 // binary, since a successful "run" launches a full-screen Bubble Tea
@@ -15,24 +15,24 @@ import (
 // terminal guard and a successful connect are covered by
 // tests/integration_test.go and internal/mcpclient/internal/inspector's
 // own tests, respectively.
-func TestRunRejectsNonToolKind(t *testing.T) {
+func TestRunRejectsNonMCPKind(t *testing.T) {
 	a := newValidateTestArtifact(t, artifact.KindSkill, nil)
 
-	if a.Kind == artifact.KindTool {
-		t.Fatal("test setup error: expected a non-tool artifact")
+	if a.Kind == artifact.KindMCP {
+		t.Fatal("test setup error: expected a non-mcp artifact")
 	}
 	// Mirrors runCmd.RunE's own check.
 	err := checkRunnable(a)
 	if err == nil {
 		t.Fatal("checkRunnable() on a skill, want an error")
 	}
-	if !strings.Contains(err.Error(), "not a tool") {
-		t.Errorf("checkRunnable() error = %v, want it to mention \"not a tool\"", err)
+	if !strings.Contains(err.Error(), "not an mcp server") {
+		t.Errorf("checkRunnable() error = %v, want it to mention \"not an mcp server\"", err)
 	}
 }
 
 func TestRunRejectsMissingCommand(t *testing.T) {
-	a := newValidateTestArtifact(t, artifact.KindTool, map[string]any{
+	a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
 		"command": "",
 	})
 
@@ -46,7 +46,7 @@ func TestRunRejectsMissingCommand(t *testing.T) {
 }
 
 func TestRunAcceptsToolWithCommand(t *testing.T) {
-	a := newValidateTestArtifact(t, artifact.KindTool, map[string]any{
+	a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
 		"command": "sh -c true",
 	})
 

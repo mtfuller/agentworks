@@ -34,7 +34,7 @@ func newTestBundleMembers(t *testing.T) []*artifact.Artifact {
 		t.Fatalf("scaffold.New(agent) error = %v", err)
 	}
 
-	tool, err := scaffold.New(root, artifact.KindTool, "t1", scaffold.Options{Description: "A tool."})
+	tool, err := scaffold.New(root, artifact.KindMCP, "t1", scaffold.Options{Description: "A tool."})
 	if err != nil {
 		t.Fatalf("scaffold.New(tool) error = %v", err)
 	}
@@ -42,7 +42,7 @@ func newTestBundleMembers(t *testing.T) []*artifact.Artifact {
 	if err := tool.Save(); err != nil {
 		t.Fatalf("Save(tool) error = %v", err)
 	}
-	tool, err = artifact.Load(tool.Dir, artifact.KindTool)
+	tool, err = artifact.Load(tool.Dir, artifact.KindMCP)
 	if err != nil {
 		t.Fatalf("Load(tool) error = %v", err)
 	}
@@ -128,11 +128,11 @@ func TestExportBundle(t *testing.T) {
 	if mcpFile.Schema != mcpSchema {
 		t.Errorf("mcp.json Schema = %q, want %q", mcpFile.Schema, mcpSchema)
 	}
-	if got := mcpFile.MCPServers["t1"].Args[1]; got != "cd 'tools/t1' && python3 src/main.py" {
+	if got := mcpFile.MCPServers["t1"].Args[1]; got != "cd 'mcp/t1' && python3 src/main.py" {
 		t.Errorf("mcp.json t1 command = %q, want cd-wrapped command", got)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "tools", "t1")); err != nil {
-		t.Errorf("tools/t1 dir not written: %v", err)
+	if _, err := os.Stat(filepath.Join(dest, "mcp", "t1")); err != nil {
+		t.Errorf("mcp/t1 dir not written: %v", err)
 	}
 
 	var doc copilotHooksDoc

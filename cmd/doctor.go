@@ -12,6 +12,7 @@ import (
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/color"
 	"github.com/mtfuller/agentworks/internal/project"
+	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 )
 
 var doctorStrict bool
@@ -138,12 +139,18 @@ func doctorChecks(a *artifact.Artifact, env []string) []doctorIssue {
 		}
 	}
 
-	if a.Kind == artifact.KindTool {
+	if a.Kind == artifact.KindMCP {
+		if p := mcpconfig.Placeholder(a); p != "" {
+			issues = append(issues, doctorIssue{
+				fatal:   true,
+				message: fmt.Sprintf("%q still contains a scaffold placeholder -- replace it before running or exporting", p),
+			})
+		}
 		for _, name := range a.ExtraStringSlice("auth") {
 			if !envHasValue(env, name) {
 				issues = append(issues, doctorIssue{
 					fatal:   false,
-					message: fmt.Sprintf("environment variable %q is not set -- calling this tool with 'agentworks run' will fail until it is", name),
+					message: fmt.Sprintf("environment variable %q is not set -- calling this server with 'agentworks run' will fail until it is", name),
 				})
 			}
 		}

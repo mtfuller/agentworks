@@ -64,34 +64,22 @@ command to this file's frontmatter once they exist, so ` + "`agentworks test`" +
 		},
 		extraDirs: []string{"samples", "evals"},
 	},
-	artifact.KindTool: {
+	artifact.KindMCP: {
 		extra: func(name string) map[string]any {
 			return map[string]any{
-				"entrypoint": "src/main",
-				"command":    "",
+				"entrypoint": "src/server.py",
+				"command":    "python3 src/server.py",
+				"test":       pythonMCPTestCommand,
 				"auth":       []string{},
 			}
 		},
-		bodyTmpl: `# {{.Title}}
-
-{{.Description}}
-
-## Interface
-
-Describe the tool's inputs/outputs (arguments, request/response shape, etc).
-
-## Implementation
-
-Add source under ` + "`src/`" + ` and tests under ` + "`tests/`" + `. Set a ` + "`test:`" + `
-command in this file's frontmatter once tests exist, so ` + "`agentworks test`" + ` can run them.
-
-## Running as an MCP server
-
-Set ` + "`command`" + ` in this file's frontmatter to the shell command that starts this
-tool, and list any required environment variables under ` + "`auth`" + `. Claude Code and
-GitHub Copilot both expose tools via MCP; ` + "`agentworks export ... --target claude-code`" + `
-or ` + "`--target github-copilot`" + ` uses these fields to generate the server registration.
-`,
+		bodyTmpl: mcpBodyTmpl("`src/server.py`", "python3 src/server.py"),
+		files: func(name string) []extraFile {
+			return []extraFile{
+				{"src/server.py", mcpSource(pythonMCPServer, name)},
+				{"tests/test_server.py", mcpSource(pythonMCPTest, name)},
+			}
+		},
 		extraDirs: []string{"src", "tests"},
 	},
 	artifact.KindAgent: {

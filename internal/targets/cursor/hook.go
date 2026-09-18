@@ -34,9 +34,24 @@ func exportHook(a *artifact.Artifact, outDir string) (string, error) {
 		return "", fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", a.Dir)
 	}
 
+	// .cursor/hooks.json is one file for every hook, so merge into an
+	// existing one rather than overwrite it, skipping an identical action so
+	// re-exporting the same hook doesn't duplicate it.
+	path := filepath.Join(outDir, ".cursor", "hooks.json")
 	doc := hooksDoc{Version: 1, Hooks: map[string][]hookAction{}}
+	if existing, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(existing, &doc); err != nil {
+			return "", fmt.Errorf("reading existing %s: %w", path, err)
+		}
+		if doc.Hooks == nil {
+			doc.Hooks = map[string][]hookAction{}
+		}
+	}
+	action := hookAction{Type: "command", Command: command}
 	for _, event := range events {
-		doc.Hooks[event] = append(doc.Hooks[event], hookAction{Type: "command", Command: command})
+		if !containsAction(doc.Hooks[event], action) {
+			doc.Hooks[event] = append(doc.Hooks[event], action)
+		}
 	}
 
 	data, err := json.MarshalIndent(doc, "", "  ")
@@ -44,13 +59,20 @@ func exportHook(a *artifact.Artifact, outDir string) (string, error) {
 		return "", fmt.Errorf("encoding hooks.json: %w", err)
 	}
 
-	dir := filepath.Join(outDir, ".cursor")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("creating %s: %w", dir, err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}
-	path := filepath.Join(dir, "hooks.json")
 	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		return "", fmt.Errorf("writing %s: %w", path, err)
 	}
 	return path, nil
+}
+
+func containsAction(actions []hookAction, want hookAction) bool {
+	for _, a := range actions {
+		if a == want {
+			return true
+		}
+	}
+	return false
 }

@@ -12,7 +12,7 @@ import (
 
 func TestCopyArtifactFilesSkipsManifest(t *testing.T) {
 	root := t.TempDir()
-	a, err := scaffold.New(root, artifact.KindTool, "demo", scaffold.Options{Description: "x"})
+	a, err := scaffold.New(root, artifact.KindMCP, "demo", scaffold.Options{Description: "x"})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)
 	}
@@ -35,7 +35,7 @@ func TestCopyArtifactFilesSkipsManifest(t *testing.T) {
 
 func TestCopyArtifactFilesSkipsNodeModules(t *testing.T) {
 	root := t.TempDir()
-	a, err := scaffold.New(root, artifact.KindTool, "demo-node", scaffold.Options{Description: "x"})
+	a, err := scaffold.New(root, artifact.KindMCP, "demo-node", scaffold.Options{Description: "x"})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)
 	}
@@ -104,7 +104,7 @@ func TestCopyDirExceptOnlyMatchesRootRelativePaths(t *testing.T) {
 
 func TestZipDir(t *testing.T) {
 	root := t.TempDir()
-	a, err := scaffold.New(root, artifact.KindTool, "demo", scaffold.Options{Description: "x"})
+	a, err := scaffold.New(root, artifact.KindMCP, "demo", scaffold.Options{Description: "x"})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)
 	}

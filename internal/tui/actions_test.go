@@ -138,7 +138,7 @@ func TestStartExportFormFromBrowseAndDetail(t *testing.T) {
 func TestCommitCreateScaffoldsAndRefreshesList(t *testing.T) {
 	m := newTestModel(t)
 	m.newAnswers = &NewArtifactAnswers{
-		Kind:        string(artifact.KindTool),
+		Kind:        string(artifact.KindMCP),
 		Name:        "new-tool",
 		Description: "A brand new tool.",
 	}
@@ -149,14 +149,14 @@ func TestCommitCreateScaffoldsAndRefreshesList(t *testing.T) {
 	if m.pane != paneBrowse {
 		t.Fatalf("pane = %v, want paneBrowse", m.pane)
 	}
-	if m.currentKind() != artifact.KindTool {
+	if m.currentKind() != artifact.KindMCP {
 		t.Fatalf("currentKind() = %v, want tool", m.currentKind())
 	}
-	if got := len(m.artifactLists[artifact.KindTool].Items()); got != 1 {
+	if got := len(m.artifactLists[artifact.KindMCP].Items()); got != 1 {
 		t.Fatalf("tool artifact list has %d items, want 1 (the new tool)", got)
 	}
-	if _, err := os.Stat(filepath.Join(m.root, "tools", "new-tool", "tool.md")); err != nil {
-		t.Errorf("expected tools/new-tool/tool.md to exist on disk: %v", err)
+	if _, err := os.Stat(filepath.Join(m.root, "mcp", "new-tool", "mcp.md")); err != nil {
+		t.Errorf("expected mcp/new-tool/mcp.md to exist on disk: %v", err)
 	}
 	if m.statusMsg == "" {
 		t.Error("expected a non-empty statusMsg reporting the creation")
@@ -165,10 +165,10 @@ func TestCommitCreateScaffoldsAndRefreshesList(t *testing.T) {
 		t.Errorf("statusLevel = %v, want statusSuccess", m.statusLevel)
 	}
 
-	// The tools tab's label should now reflect the new artifact's count.
-	wantLabel := "tools (1)"
-	if got := m.browseTabs.labels[kindIndex(artifact.KindTool)]; got != wantLabel {
-		t.Errorf("tools tab label = %q, want %q", got, wantLabel)
+	// The mcp tab's label should now reflect the new artifact's count.
+	wantLabel := "mcp (1)"
+	if got := m.browseTabs.labels[kindIndex(artifact.KindMCP)]; got != wantLabel {
+		t.Errorf("mcp tab label = %q, want %q", got, wantLabel)
 	}
 }
 
@@ -245,7 +245,7 @@ func TestFinishFormAbortRestoresReturnPaneWithoutCommitting(t *testing.T) {
 	m.pane = paneForm
 	m.formPurpose = formCreate
 	m.formReturnPane = paneBrowse
-	m.newAnswers = &NewArtifactAnswers{Kind: string(artifact.KindTool), Name: "should-not-exist", Description: "x"}
+	m.newAnswers = &NewArtifactAnswers{Kind: string(artifact.KindMCP), Name: "should-not-exist", Description: "x"}
 
 	updated, _ := m.finishForm(false)
 	m = updated.(Model)
@@ -256,7 +256,7 @@ func TestFinishFormAbortRestoresReturnPaneWithoutCommitting(t *testing.T) {
 	if m.newAnswers != nil {
 		t.Error("newAnswers should be cleared on abort")
 	}
-	if _, err := os.Stat(filepath.Join(m.root, "tools", "should-not-exist")); err == nil {
+	if _, err := os.Stat(filepath.Join(m.root, "mcp", "should-not-exist")); err == nil {
 		t.Error("aborting the form should not have scaffolded anything")
 	}
 }

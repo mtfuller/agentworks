@@ -42,19 +42,19 @@ var registry = []Target{
 	{
 		ID:       "github-copilot",
 		Name:     "GitHub Copilot",
-		Supports: []artifact.Kind{artifact.KindAgent, artifact.KindSkill, artifact.KindTool, artifact.KindHook},
+		Supports: []artifact.Kind{artifact.KindAgent, artifact.KindSkill, artifact.KindMCP, artifact.KindHook},
 		Notes:    "Every supported kind has a real exporter: skills, tools (MCP server via Agent Plugins' mcp.json), agents and hooks (com.github.copilot/ namespace).",
 	},
 	{
 		ID:       "cursor",
 		Name:     "Cursor",
-		Supports: []artifact.Kind{artifact.KindSkill, artifact.KindAgent, artifact.KindTool, artifact.KindHook},
+		Supports: []artifact.Kind{artifact.KindSkill, artifact.KindAgent, artifact.KindMCP, artifact.KindHook},
 		Notes:    "Every supported kind has a real exporter, but none are plugins -- Cursor has no bundle/plugin format, so each is a loose project-scoped file: skills as a project rule (.cursor/rules/<name>.mdc), agents as a real subagent file (.cursor/agents/<name>.md, name/description only -- see AGENTS.md), tools as .cursor/mcp.json, hooks as .cursor/hooks.json.",
 	},
 	{
 		ID:       "gemini-cli",
 		Name:     "Gemini CLI",
-		Supports: []artifact.Kind{artifact.KindSkill, artifact.KindAgent, artifact.KindTool, artifact.KindHook},
+		Supports: []artifact.Kind{artifact.KindSkill, artifact.KindAgent, artifact.KindMCP, artifact.KindHook},
 		Notes:    "Skills and tools export as a Gemini CLI extension (gemini-extension.json, + GEMINI.md and supporting files for a skill), agents as a real subagent file (.gemini/agents/<name>.md, with real tools:/model: mapping -- see AGENTS.md), hooks as a .gemini/settings.json fragment meant to be merged by hand (Gemini CLI hooks live only in settings.json, not an extension-scoped format).",
 	},
 }

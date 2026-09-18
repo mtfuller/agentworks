@@ -3,23 +3,25 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/spf13/cobra"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/inspector"
+	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 )
 
 var runCmd = &cobra.Command{
 	Use:   "run <path>",
-	Short: "Start a tool's MCP server and inspect it interactively",
-	Long: `Start a tool artifact's declared "command" as a real MCP server and open a
+	Short: "Start an mcp artifact's server and inspect it interactively",
+	Long: `Start an mcp artifact's declared "command" as a real MCP server and open a
 full-screen inspector: browse the tools it exposes, fill in and submit a call
 against one, and see the result -- the same way an agent actually would,
-instead of only unit-testing the tool's logic with mocked calls.
+instead of only unit-testing the server's logic with mocked calls.
 
-Only tool artifacts are MCP servers -- skills/agents/hooks/workflows aren't
-supported. Unlike 'agentworks export', this actually executes the command,
+Only mcp artifacts with a local (stdio) command are supported -- remote
+http/sse servers, skills, agents and hooks aren't. Unlike 'agentworks export', this actually executes the command,
 so it inherits the real environment (including any "auth:" variables already
 exported in your shell), not the "${VAR}" placeholders export generates.
 Run 'agentworks doctor' first if you're not sure the command/environment is
@@ -45,7 +47,7 @@ even set up to run.`,
 			}
 		}
 
-		return inspector.Run(a, a.ExtraString("command"), a.Dir, env, missingAuth)
+		return inspector.Run(a, mcpconfig.CommandLine(a), a.Dir, append(env, mcpEnvPairs(a)...), missingAuth)
 	},
 }
 
@@ -54,13 +56,28 @@ even set up to run.`,
 // inspector itself -- kept separate from RunE so it's unit-testable
 // without launching a full-screen Bubble Tea program (see cmd/run_test.go).
 func checkRunnable(a *artifact.Artifact) error {
-	if a.Kind != artifact.KindTool {
-		return fmt.Errorf("%s is a %s, not a tool -- agentworks run only supports tool artifacts (skills/agents/hooks/workflows aren't MCP servers)", a.Dir, a.Kind)
+	if a.Kind != artifact.KindMCP {
+		return fmt.Errorf("%s is a %s, not an mcp server -- agentworks run only supports mcp artifacts", a.Dir, a.Kind)
+	}
+	if mcpconfig.IsRemote(a) {
+		return fmt.Errorf("%s is a remote (%s) server -- agentworks run only starts local stdio servers", a.Dir, mcpconfig.TransportOf(a))
 	}
 	if a.ExtraString("command") == "" {
 		return fmt.Errorf("%s has no \"command\" set in its frontmatter -- add one describing how to run it before running it (see 'agentworks doctor')", a.Dir)
 	}
 	return nil
+}
+
+// mcpEnvPairs renders an mcp artifact's literal `env:` block as KEY=value
+// pairs to append to the process environment. (`auth:` variables are read
+// from the caller's real environment instead, never from frontmatter.)
+func mcpEnvPairs(a *artifact.Artifact) []string {
+	var pairs []string
+	for k, v := range a.ExtraStringMap("env") {
+		pairs = append(pairs, k+"="+v)
+	}
+	sort.Strings(pairs)
+	return pairs
 }
 
 func init() {

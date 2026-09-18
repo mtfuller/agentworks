@@ -82,3 +82,29 @@ func TestExportHookRequiresEventsAndCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestExportHookMergesIntoOneFile(t *testing.T) {
+	outDir := t.TempDir()
+	first := newTestHook(t, []string{"beforeShellExecution"}, "lint.sh")
+	second := newTestHook(t, []string{"beforeShellExecution", "afterFileEdit"}, "fmt.sh")
+	for _, h := range []*artifact.Artifact{first, second, first} { // first again: must not duplicate
+		if _, err := exportHook(h, outDir); err != nil {
+			t.Fatalf("exportHook() error = %v", err)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, ".cursor", "hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc hooksDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(doc.Hooks["beforeShellExecution"]); got != 2 {
+		t.Errorf("beforeShellExecution has %d actions, want 2 (lint + fmt, no duplicate): %s", got, data)
+	}
+	if got := len(doc.Hooks["afterFileEdit"]); got != 1 {
+		t.Errorf("afterFileEdit has %d actions, want 1: %s", got, data)
+	}
+}

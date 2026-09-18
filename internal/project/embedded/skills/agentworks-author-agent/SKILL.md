@@ -10,7 +10,7 @@ description: >
 
 An agent is a persona with its own instructions, delegated to for a class of tasks. It
 exports to each vendor's native agent format (Claude Code subagents, Copilot `.agent.md`,
-Gemini CLI, Cursor, M365 declarative agents).
+Gemini CLI, Cursor).
 
 ## Create it
 
@@ -67,5 +67,4 @@ just what it is, and keep it distinct from other agents' descriptions.
 
 1. `agentworks validate` (tools/model values, description warnings).
 2. Add `evals/` cases (see `agentworks-evals`).
-3. If a workflow uses this agent, it references it by name (see `agentworks-author-workflow`).
-4. `agentworks export`.
+3. `agentworks export`.

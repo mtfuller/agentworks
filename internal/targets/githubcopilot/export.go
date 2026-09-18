@@ -38,8 +38,8 @@ func (exporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportO
 	switch a.Kind {
 	case artifact.KindSkill:
 		return exportSkill(a, outDir, opts)
-	case artifact.KindTool:
-		return exportTool(a, outDir, opts)
+	case artifact.KindMCP:
+		return exportMCP(a, outDir, opts)
 	case artifact.KindAgent:
 		return exportAgent(a, outDir, opts)
 	case artifact.KindHook:
@@ -69,7 +69,7 @@ func exportSkill(a *artifact.Artifact, outDir string, opts targets.ExportOptions
 	return pluginDir, nil
 }
 
-func exportTool(a *artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
+func exportMCP(a *artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
 	server, err := mcpconfig.ServerFor(a)
 	if err != nil {
 		return "", err

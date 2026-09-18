@@ -21,7 +21,7 @@ var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$`)
 
 // Frontmatter is the structured metadata at the top of a <kind>.md file.
 // Fields common to every kind are named explicitly; kind-specific fields
-// (e.g. a tool's "entrypoint", a hook's "events") round-trip through Extra
+// (e.g. an mcp server's "entrypoint", a hook's "events") round-trip through Extra
 // so the parser doesn't need a separate struct per kind.
 type Frontmatter struct {
 	Kind        Kind   `yaml:"kind"`
@@ -59,7 +59,23 @@ func (f Frontmatter) ExtraStringSlice(key string) []string {
 	return out
 }
 
-// Artifact is a fully loaded agent, skill, tool, hook, or workflow: its
+// ExtraStringMap returns Extra[key] as a map[string]string, or nil if
+// unset/not a string-to-string mapping. Non-string values are skipped.
+func (f Frontmatter) ExtraStringMap(key string) map[string]string {
+	raw, ok := f.Extra[key].(map[string]any)
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
+// Artifact is a fully loaded agent, skill, mcp server, or hook: its
 // frontmatter, its Markdown body, and where it lives on disk.
 type Artifact struct {
 	Frontmatter `yaml:",inline"`

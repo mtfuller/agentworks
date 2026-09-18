@@ -30,14 +30,14 @@ func TestNeedsInteractiveWizard(t *testing.T) {
 }
 
 func TestResolveDescription(t *testing.T) {
-	if got := resolveDescription("explicit", artifact.KindTool, "api-wrapper"); got != "explicit" {
+	if got := resolveDescription("explicit", artifact.KindMCP, "api-wrapper"); got != "explicit" {
 		t.Errorf("resolveDescription() = %q, want the explicit description preserved", got)
 	}
-	if got := resolveDescription("", artifact.KindTool, ""); got != "" {
+	if got := resolveDescription("", artifact.KindMCP, ""); got != "" {
 		t.Errorf("resolveDescription() = %q, want empty (no template to fall back to)", got)
 	}
 
-	got := resolveDescription("", artifact.KindTool, "api-wrapper")
+	got := resolveDescription("", artifact.KindMCP, "api-wrapper")
 	if got == "" {
 		t.Error("resolveDescription() = empty, want the template's own description")
 	}
@@ -45,7 +45,7 @@ func TestResolveDescription(t *testing.T) {
 	// An unknown template is left for scaffold.New to reject with its own
 	// clear error -- resolveDescription shouldn't mask that by silently
 	// falling back to empty in a way that looks like success.
-	if got := resolveDescription("", artifact.KindTool, "does-not-exist"); got != "" {
+	if got := resolveDescription("", artifact.KindMCP, "does-not-exist"); got != "" {
 		t.Errorf("resolveDescription() = %q, want empty for an unknown template", got)
 	}
 }

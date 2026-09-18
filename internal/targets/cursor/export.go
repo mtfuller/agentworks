@@ -40,8 +40,8 @@ func (exporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportO
 		return exportSkill(a, outDir)
 	case artifact.KindAgent:
 		return exportAgent(a, outDir)
-	case artifact.KindTool:
-		return exportTool(a, outDir)
+	case artifact.KindMCP:
+		return exportMCP(a, outDir)
 	case artifact.KindHook:
 		return exportHook(a, outDir)
 	default:

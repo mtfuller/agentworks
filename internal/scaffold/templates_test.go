@@ -32,10 +32,10 @@ func TestEveryTemplateScaffoldsAndValidates(t *testing.T) {
 }
 
 func TestGetTemplate(t *testing.T) {
-	if _, ok := GetTemplate(artifact.KindTool, "api-wrapper"); !ok {
+	if _, ok := GetTemplate(artifact.KindMCP, "api-wrapper"); !ok {
 		t.Error("GetTemplate(tool, api-wrapper) = false, want true")
 	}
-	if _, ok := GetTemplate(artifact.KindTool, "does-not-exist"); ok {
+	if _, ok := GetTemplate(artifact.KindMCP, "does-not-exist"); ok {
 		t.Error("GetTemplate(tool, does-not-exist) = true, want false")
 	}
 	// A real ID under the wrong kind should also miss -- templates are
@@ -47,18 +47,18 @@ func TestGetTemplate(t *testing.T) {
 
 func TestNewRejectsUnknownTemplate(t *testing.T) {
 	root := t.TempDir()
-	if _, err := New(root, artifact.KindTool, "demo", Options{Description: "x", Template: "does-not-exist"}); err == nil {
+	if _, err := New(root, artifact.KindMCP, "demo", Options{Description: "x", Template: "does-not-exist"}); err == nil {
 		t.Fatal("New() with an unknown template expected error, got nil")
 	}
 }
 
 func TestTemplatesForKind(t *testing.T) {
-	tools := TemplatesForKind(artifact.KindTool)
+	tools := TemplatesForKind(artifact.KindMCP)
 	if len(tools) == 0 {
 		t.Fatal("TemplatesForKind(tool) = 0, want at least 1")
 	}
 	for _, tmpl := range tools {
-		if tmpl.Kind != artifact.KindTool {
+		if tmpl.Kind != artifact.KindMCP {
 			t.Errorf("TemplatesForKind(tool) returned a %s template: %+v", tmpl.Kind, tmpl)
 		}
 	}

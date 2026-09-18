@@ -15,10 +15,33 @@ import (
 // (contextFileName, excludeTools, settings, themes, ...) are left for a
 // project to hand-edit if it needs them.
 type manifest struct {
-	Name        string                      `json:"name"`
-	Version     string                      `json:"version,omitempty"`
-	Description string                      `json:"description,omitempty"`
-	MCPServers  map[string]mcpconfig.Server `json:"mcpServers,omitempty"`
+	Name        string            `json:"name"`
+	Version     string            `json:"version,omitempty"`
+	Description string            `json:"description,omitempty"`
+	MCPServers  map[string]server `json:"mcpServers,omitempty"`
+}
+
+// server is Gemini CLI's mcpServers entry. It differs from the shared
+// mcpconfig.Server for remote servers: Gemini keys streamable-HTTP off
+// "httpUrl" and SSE off "url", and has no "type" discriminator.
+type server struct {
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	HTTPURL string            `json:"httpUrl,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+func serverFrom(s mcpconfig.Server) server {
+	out := server{Command: s.Command, Args: s.Args, Env: s.Env, Headers: s.Headers}
+	switch s.Type {
+	case mcpconfig.TransportHTTP:
+		out.HTTPURL = s.URL
+	case mcpconfig.TransportSSE:
+		out.URL = s.URL
+	}
+	return out
 }
 
 // writeManifest writes extDir/gemini-extension.json.

@@ -2,7 +2,7 @@
 name: agentworks-cli
 description: >
   How to scaffold, validate, build, test, run, export, import, and publish this project's
-  agents, skills, tools, hooks, and workflows with the agentworks CLI. Use whenever asked
+  agents, skills, MCP servers, and hooks with the agentworks CLI. Use whenever asked
   to add, change, check, ship, or import an artifact in this project.
 ---
 
@@ -10,30 +10,31 @@ description: >
 
 This project is managed by [AgentWorks](https://github.com/mtfuller/agentworks). Prefer
 these commands over hand-writing or hand-editing files under `agents/`, `skills/`,
-`tools/`, `hooks/`, or `workflows/` directly. For what to put *inside* each kind, load the
+`mcp/`, or `hooks/` directly. For what to put *inside* each kind, load the
 matching `agentworks-author-<kind>` skill.
 
 ## Authoring
 
 - `agentworks new <kind> [name] --description "..."` — scaffold an artifact (`kind` is
-  `agent`/`skill`/`tool`/`hook`/`workflow`). Omit `name`/`description` in an interactive
+  `agent`/`skill`/`mcp`/`hook`). Omit `name`/`description` in an interactive
   terminal to get a wizard. Flags: `--from-template <id>` (start from a built-in template),
   `--version <v>` (default `0.1.0`), `--target <id>` (repeatable). A namespaced name like
-  `team-a/csv-analyzer` lands at `<kind>s/team-a/csv-analyzer/`.
+  `team-a/csv-analyzer` lands at `skills/team-a/csv-analyzer/`.
 - `agentworks templates [kind]` — list built-in starter templates.
 - `agentworks list [kind]` — table of discovered artifacts.
 - `agentworks validate [path]` — structural checks (required fields, kind-specific rules,
-  workflow steps resolving, eval file syntax) plus description-quality warnings. `--strict`
+  eval file syntax) plus description-quality warnings. `--strict`
   makes warnings fail. Run after every hand edit.
 
 ## Verifying
 
 - `agentworks build [path]` — run the `build:` command an artifact declares.
-- `agentworks test [path]` — run the `test:` command an artifact declares.
+- `agentworks test [path]` — run the `test:` command an artifact declares. An mcp server
+  with no `test:` gets a smoke check (start it, MCP handshake, list tools).
 - `agentworks doctor [path]` — static preflight: are the declared `command:`/`test:`/
-  `build:`/`eval_runner:` binaries on PATH, does the `entrypoint:` exist, are a tool's
-  `auth:` env vars set. Never executes anything. `--strict` fails on missing env vars.
-- `agentworks run <tool-path>` — start a tool's MCP server and inspect it interactively
+  `build:`/`eval_runner:` binaries on PATH, does the `entrypoint:` exist, are an mcp
+  server's `auth:` env vars set. Never executes anything. `--strict` fails on missing env vars.
+- `agentworks run <mcp-path>` — start a local mcp server and inspect it interactively
   (interactive terminal only; actually executes the command).
 - `agentworks eval [path] [--case <name>]` — run behavior-eval cases under `evals/`. See
   the `agentworks-evals` skill.

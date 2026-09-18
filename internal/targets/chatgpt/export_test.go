@@ -37,7 +37,7 @@ func TestExportSkill(t *testing.T) {
 
 func TestExportRejectsNonSkill(t *testing.T) {
 	root := t.TempDir()
-	a, err := scaffold.New(root, artifact.KindTool, "jira-fetch", scaffold.Options{Description: "x"})
+	a, err := scaffold.New(root, artifact.KindMCP, "jira-fetch", scaffold.Options{Description: "x"})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)
 	}

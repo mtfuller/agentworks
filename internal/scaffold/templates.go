@@ -48,7 +48,7 @@ func GetTemplate(kind artifact.Kind, id string) (Template, bool) {
 }
 
 // nodePackageJSON is the starter package.json for a Node-based scaffold
-// (node-skill/node-tool). main is the entrypoint file its "start" script runs.
+// (node-skill/node-mcp). main is the entrypoint file its "start" script runs.
 func nodePackageJSON(name, main string) string {
 	return `{
   "name": "` + name + `",
@@ -94,7 +94,7 @@ test("placeholder", () => {
 }
 
 // nodeTSPackageJSON is the starter package.json for a TypeScript-based
-// scaffold (node-ts-skill/node-ts-tool). entryTS is the TypeScript
+// scaffold (node-ts-skill/node-ts-mcp). entryTS is the TypeScript
 // entrypoint the "build" script type-checks and bundles from; outJS is the
 // bundled file the "start" script runs -- tsc never emits here (see
 // nodeTSConfig), esbuild produces the actual runtime output.
@@ -132,6 +132,7 @@ func nodeTSConfig() string {
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   }
 }
@@ -416,244 +417,6 @@ file's frontmatter once they exist, so ` + "`agentworks test`" + ` can run them.
 				}
 			},
 			extraDirs: []string{"samples", "evals"},
-		},
-	},
-	{
-		ID: "api-wrapper", Kind: artifact.KindTool,
-		Title:       "API wrapper",
-		Description: "Wraps a REST API's endpoints as an MCP tool.",
-		spec: kindSpec{
-			extra: func(name string) map[string]any {
-				return map[string]any{
-					"entrypoint": "src/main.py",
-					"command":    "python3 src/main.py",
-					"auth":       []string{"API_BASE_URL", "API_TOKEN"},
-				}
-			},
-			bodyTmpl: `# {{.Title}}
-
-{{.Description}}
-
-## Interface
-
-List the endpoints this exposes and their inputs/outputs.
-
-## Implementation
-
-` + "`src/main.py`" + ` reads ` + "`API_BASE_URL`" + `/` + "`API_TOKEN`" + ` from the environment (see
-this file's ` + "`auth`" + ` list) and shows the request-calling shape -- wire it into
-whatever MCP server framework you're using for the actual stdio loop.
-
-## Running as an MCP server
-
-` + "`command`" + ` is already set to run this file directly. Claude Code and GitHub
-Copilot both expose tools via MCP; ` + "`agentworks export ... --target claude-code`" + `
-or ` + "`--target github-copilot`" + ` uses ` + "`command`" + `/` + "`auth`" + ` to generate the server
-registration, passing each ` + "`auth`" + ` entry through as an env var reference, never
-a literal secret.
-`,
-			files: func(name string) []extraFile {
-				return []extraFile{
-					{"src/main.py", `#!/usr/bin/env python3
-"""` + name + `: a thin wrapper around a REST API.
-
-Reads API_BASE_URL and API_TOKEN from the environment and exposes one
-function per endpoint you want to call. This shows the API-calling shape --
-wire it into a real MCP server loop for the actual protocol handling.
-"""
-
-import os
-import requests
-
-
-BASE_URL = os.environ["API_BASE_URL"]
-TOKEN = os.environ["API_TOKEN"]
-
-
-def _get(path: str, **params) -> dict:
-    resp = requests.get(
-        f"{BASE_URL}{path}",
-        headers={"Authorization": f"Bearer {TOKEN}"},
-        params=params,
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def main() -> None:
-    raise NotImplementedError("` + name + ` is not implemented yet -- replace main() with real endpoint calls")
-
-
-if __name__ == "__main__":
-    main()
-`},
-				}
-			},
-			extraDirs: []string{"tests"},
-		},
-	},
-	{
-		ID: "cli-wrapper", Kind: artifact.KindTool,
-		Title:       "CLI wrapper",
-		Description: "Wraps a local command-line tool as an MCP tool.",
-		spec: kindSpec{
-			extra: func(name string) map[string]any {
-				return map[string]any{
-					"entrypoint": "src/main.py",
-					"command":    "python3 src/main.py",
-					"auth":       []string{},
-				}
-			},
-			bodyTmpl: `# {{.Title}}
-
-{{.Description}}
-
-## Interface
-
-Name the underlying CLI this wraps and describe the arguments/flags this
-tool exposes to the agent.
-
-## Implementation
-
-` + "`src/main.py`" + ` shows the subprocess-calling shape -- wire it into whatever MCP
-server framework you're using for the actual stdio loop. Set ` + "`auth`" + ` in this
-file's frontmatter if the underlying CLI needs credentials via env vars.
-`,
-			files: func(name string) []extraFile {
-				return []extraFile{
-					{"src/main.py", `#!/usr/bin/env python3
-"""` + name + `: a thin wrapper around a local CLI tool.
-
-Shows the subprocess-calling shape -- wire it into a real MCP server loop
-for the actual protocol handling.
-"""
-
-import subprocess
-
-
-def run(*args: str) -> str:
-    result = subprocess.run(args, capture_output=True, text=True, check=True)
-    return result.stdout
-
-
-def main() -> None:
-    raise NotImplementedError("` + name + ` is not implemented yet -- replace main() with a real run(...) call")
-
-
-if __name__ == "__main__":
-    main()
-`},
-				}
-			},
-			extraDirs: []string{"tests"},
-		},
-	},
-	{
-		ID: "node-tool", Kind: artifact.KindTool,
-		Title:       "Node.js MCP tool",
-		Description: "Wraps custom Node.js logic as an MCP tool, for tools too complex for a quick script.",
-		spec: kindSpec{
-			extra: func(name string) map[string]any {
-				return map[string]any{
-					"entrypoint": "src/index.js",
-					"command":    "node src/index.js",
-					"auth":       []string{},
-				}
-			},
-			bodyTmpl: `# {{.Title}}
-
-{{.Description}}
-
-## Interface
-
-Describe the tool's inputs/outputs (arguments, request/response shape, etc).
-
-## Implementation
-
-` + "`src/index.js`" + ` shows the entrypoint shape -- wire it into whatever MCP
-server framework you're using for the actual stdio loop (e.g.
-` + "`@modelcontextprotocol/sdk`" + `, added to ` + "`package.json`" + `'s dependencies
-once you pick one). Run ` + "`npm install`" + ` in this directory before running or
-testing it, or wire it into a ` + "`build:`" + ` command in this file's frontmatter
-(` + "`agentworks build`" + `) if there's a compile/bundle step too -- ` + "`agentworks export`" + `
-never ships ` + "`node_modules`" + `, so anything the tool needs at runtime has to
-either be installed by whoever runs it or bundled in by ` + "`build:`" + `
-(` + "`agentworks export`" + ` runs it first, and stops if it fails). Add real
-tests under ` + "`tests/`" + ` and a ` + "`test:`" + ` command to this file's frontmatter
-once they exist, so ` + "`agentworks test`" + ` can run them.
-
-## Running as an MCP server
-
-` + "`command`" + ` is already set to run this file directly. Claude Code and GitHub
-Copilot both expose tools via MCP; ` + "`agentworks export ... --target claude-code`" + `
-or ` + "`--target github-copilot`" + ` uses ` + "`command`" + `/` + "`auth`" + ` to generate the server
-registration, passing each ` + "`auth`" + ` entry through as an env var reference, never
-a literal secret.
-`,
-			files: func(name string) []extraFile {
-				return []extraFile{
-					{"package.json", nodePackageJSON(name, "src/index.js")},
-					{"src/index.js", nodeEntrypointPlaceholder(name)},
-					{"tests/index.test.js", nodeTestPlaceholder(name)},
-				}
-			},
-		},
-	},
-	{
-		ID: "node-ts-tool", Kind: artifact.KindTool,
-		Title:       "TypeScript MCP tool",
-		Description: "Wraps custom TypeScript logic as an MCP tool, bundled with esbuild into a self-contained runtime output.",
-		spec: kindSpec{
-			extra: func(name string) map[string]any {
-				return map[string]any{
-					"entrypoint": "src/index.ts",
-					"command":    "node dist/index.js",
-					"build":      "npm install && npx tsc --noEmit && npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js",
-					"auth":       []string{},
-				}
-			},
-			bodyTmpl: `# {{.Title}}
-
-{{.Description}}
-
-## Interface
-
-Describe the tool's inputs/outputs (arguments, request/response shape, etc).
-
-## Implementation
-
-` + "`src/index.ts`" + ` shows the entrypoint shape -- wire it into whatever MCP
-server framework you're using for the actual stdio loop (e.g.
-` + "`@modelcontextprotocol/sdk`" + `, added to ` + "`package.json`" + `'s dependencies
-once you pick one). ` + "`build:`" + ` in this file's frontmatter (` + "`agentworks build`" + `)
-type-checks with ` + "`tsc`" + ` and bundles with ` + "`esbuild`" + ` into ` + "`dist/index.js`" + `
--- ` + "`command`" + ` above runs that bundled output, not the raw ` + "`.ts`" + ` source, so
-run ` + "`agentworks build`" + ` before ` + "`agentworks run`" + `/` + "`agentworks export`" + `.
-Bundling also means a shared local package (e.g. a ` + "`file:`" + ` dependency under a
-project-root ` + "`packages/`" + ` directory -- see README.md, "Sharing code between Node
-artifacts") ends up fully inlined instead of left as a symlink that wouldn't survive
-export. Add real tests under ` + "`tests/`" + ` (Node's built-in test runner can't execute
-` + "`.ts`" + ` directly -- see ` + "`package.json`" + `'s own ` + "`test`" + ` script) and a
-` + "`test:`" + ` command to this file's frontmatter once they exist, so
-` + "`agentworks test`" + ` can run them.
-
-## Running as an MCP server
-
-` + "`command`" + ` is already set to run the bundled output. Claude Code and GitHub
-Copilot both expose tools via MCP; ` + "`agentworks export ... --target claude-code`" + `
-or ` + "`--target github-copilot`" + ` uses ` + "`command`" + `/` + "`auth`" + ` to generate the server
-registration, passing each ` + "`auth`" + ` entry through as an env var reference, never
-a literal secret.
-`,
-			files: func(name string) []extraFile {
-				return []extraFile{
-					{"package.json", nodeTSPackageJSON(name, "src/index.ts", "dist/index.js")},
-					{"tsconfig.json", nodeTSConfig()},
-					{"src/index.ts", nodeTSEntrypointPlaceholder(name)},
-					{"tests/index.test.ts", nodeTSTestPlaceholder(name)},
-				}
-			},
 		},
 	},
 	{

@@ -78,7 +78,7 @@ func TestLintOverlapFlagsSameKindDuplicates(t *testing.T) {
 func TestLintOverlapIgnoresDifferentKinds(t *testing.T) {
 	artifacts := []*Artifact{
 		{Frontmatter: Frontmatter{Kind: KindSkill, Name: "csv-outliers", Description: "Analyze a CSV file and flag rows that stand out from the rest."}, Dir: "skills/csv-outliers"},
-		{Frontmatter: Frontmatter{Kind: KindTool, Name: "csv-anomalies", Description: "Analyze a CSV file and flag rows that stand out from the rest."}, Dir: "tools/csv-anomalies"},
+		{Frontmatter: Frontmatter{Kind: KindMCP, Name: "csv-anomalies", Description: "Analyze a CSV file and flag rows that stand out from the rest."}, Dir: "tools/csv-anomalies"},
 	}
 
 	if got := LintOverlap(artifacts); len(got) != 0 {

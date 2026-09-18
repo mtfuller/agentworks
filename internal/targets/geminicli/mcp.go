@@ -9,14 +9,14 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 )
 
-// exportTool writes a Gemini CLI extension directory at outDir/<name>/ with
+// exportMCP writes a Gemini CLI extension directory at outDir/<name>/ with
 // only gemini-extension.json's "mcpServers" field populated -- confirmed to
 // support the same server shape (command/args/env) internal/targets/mcpconfig
 // already builds for claudecode/githubcopilot/cursor, just nested one level
 // under the manifest instead of written as a bare top-level file. No
 // GEMINI.md is needed for a bare tool with no context to add.
-func exportTool(a *artifact.Artifact, outDir string) (string, error) {
-	server, err := mcpconfig.ServerFor(a)
+func exportMCP(a *artifact.Artifact, outDir string) (string, error) {
+	srv, err := mcpconfig.ServerFor(a)
 	if err != nil {
 		return "", err
 	}
@@ -30,7 +30,7 @@ func exportTool(a *artifact.Artifact, outDir string) (string, error) {
 		Name:        a.Name,
 		Version:     a.Version,
 		Description: a.Description,
-		MCPServers:  map[string]mcpconfig.Server{a.Name: server},
+		MCPServers:  map[string]server{a.Name: serverFrom(srv)},
 	}
 	if err := writeManifest(extDir, m); err != nil {
 		return "", err

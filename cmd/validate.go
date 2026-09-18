@@ -12,6 +12,7 @@ import (
 	"github.com/mtfuller/agentworks/internal/evalspec"
 	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/targets/agentcaps"
+	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 )
 
 var validateStrict bool
@@ -113,16 +114,14 @@ func validateKindSpecific(a *artifact.Artifact) error {
 		if (len(events) > 0) != (command != "") {
 			return fmt.Errorf("%s: \"events\" and \"command\" must be set together (a hook needs both to do anything)", a.Dir)
 		}
-	case artifact.KindTool:
-		auth := a.ExtraStringSlice("auth")
-		command := a.ExtraString("command")
-		if len(auth) > 0 && command == "" {
-			return fmt.Errorf("%s: declares \"auth\" but no \"command\" -- nothing will use those environment variables", a.Dir)
+	case artifact.KindMCP:
+		if err := mcpconfig.Validate(a); err != nil {
+			return err
 		}
 	}
 
 	// An "evals/" directory is valid for any kind (skills and agents are
-	// the common case, but nothing stops a tool from having one too), so
+	// the common case, but nothing stops an mcp server from having one too), so
 	// this isn't inside the switch above -- catches a malformed eval file
 	// at validate time rather than only when `agentworks eval` runs it.
 	if _, err := evalspec.LoadDir(filepath.Join(a.Dir, "evals")); err != nil {

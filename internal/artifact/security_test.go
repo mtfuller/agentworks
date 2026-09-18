@@ -47,7 +47,7 @@ func TestLintSecurityFlagsSuspiciousPatterns(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &Artifact{
 				Frontmatter: Frontmatter{
-					Kind: KindTool, Name: "x",
+					Kind: KindMCP, Name: "x",
 					Extra: map[string]any{"command": tt.command},
 				},
 				Dir: "tools/x",
@@ -69,7 +69,7 @@ func TestLintSecurityDoesNotFlagOrdinaryCommands(t *testing.T) {
 	for _, cmd := range tests {
 		a := &Artifact{
 			Frontmatter: Frontmatter{
-				Kind: KindTool, Name: "x",
+				Kind: KindMCP, Name: "x",
 				Extra: map[string]any{"command": cmd},
 			},
 			Dir: "tools/x",

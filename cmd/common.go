@@ -47,7 +47,7 @@ func loadArtifactAtPath(path string) (*artifact.Artifact, error) {
 			return artifact.Load(path, k)
 		}
 	}
-	return nil, fmt.Errorf("%s: no agent.md/skill.md/tool.md/hook.md/workflow.md found", path)
+	return nil, fmt.Errorf("%s: no agent.md/skill.md/mcp.md/hook.md found", path)
 }
 
 // confirmProceed asks a plain y/N question on stdin, defaulting to "no" on
@@ -85,7 +85,7 @@ func hashArtifactDirs(dirs []string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// securityGate scans artifacts for LintSecurity warnings (a hook/tool
+// securityGate scans artifacts for LintSecurity warnings (a hook/mcp
 // command that will run arbitrary shell code with the user's own
 // permissions) and enforces the write-time confirmation gate shared by
 // `agentworks add` and `agentworks update --apply`: print every warning,

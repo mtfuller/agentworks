@@ -44,11 +44,24 @@ func exportHook(a *artifact.Artifact, outDir string) (string, error) {
 		return "", fmt.Errorf("%s needs both \"events\" and \"command\" set in its frontmatter before exporting", a.Dir)
 	}
 
+	// The fragment is one file for every hook, so merge into an existing one
+	// rather than overwrite it, skipping an identical group so re-exporting
+	// the same hook doesn't duplicate it.
+	path := filepath.Join(outDir, ".gemini", "settings.json")
 	frag := settingsFragment{Hooks: map[string][]hookGroup{}}
+	if existing, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(existing, &frag); err != nil {
+			return "", fmt.Errorf("reading existing %s: %w", path, err)
+		}
+		if frag.Hooks == nil {
+			frag.Hooks = map[string][]hookGroup{}
+		}
+	}
+	group := hookGroup{Hooks: []hookAction{{Type: "command", Command: command}}}
 	for _, event := range events {
-		frag.Hooks[event] = append(frag.Hooks[event], hookGroup{
-			Hooks: []hookAction{{Type: "command", Command: command}},
-		})
+		if !containsGroup(frag.Hooks[event], group) {
+			frag.Hooks[event] = append(frag.Hooks[event], group)
+		}
 	}
 
 	data, err := json.MarshalIndent(frag, "", "  ")
@@ -56,13 +69,20 @@ func exportHook(a *artifact.Artifact, outDir string) (string, error) {
 		return "", fmt.Errorf("encoding settings.json fragment: %w", err)
 	}
 
-	dir := filepath.Join(outDir, ".gemini")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("creating %s: %w", dir, err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}
-	path := filepath.Join(dir, "settings.json")
 	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		return "", fmt.Errorf("writing %s: %w", path, err)
 	}
 	return path, nil
+}
+
+func containsGroup(groups []hookGroup, want hookGroup) bool {
+	for _, g := range groups {
+		if len(g.Hooks) == len(want.Hooks) && len(g.Hooks) == 1 && g.Hooks[0] == want.Hooks[0] {
+			return true
+		}
+	}
+	return false
 }

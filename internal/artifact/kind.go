@@ -1,5 +1,5 @@
 // Package artifact defines AgentWorks' vendor-agnostic artifact model: the
-// in-memory representation of an agent, skill, tool, or hook, and
+// in-memory representation of an agent, skill, mcp server, or hook, and
 // the on-disk <kind>.md (YAML frontmatter + Markdown body) format it's
 // loaded from and saved to.
 package artifact
@@ -12,13 +12,13 @@ type Kind string
 const (
 	KindAgent Kind = "agent"
 	KindSkill Kind = "skill"
-	KindTool  Kind = "tool"
+	KindMCP   Kind = "mcp"
 	KindHook  Kind = "hook"
 )
 
 // Kinds returns every known artifact kind, in a stable order.
 func Kinds() []Kind {
-	return []Kind{KindAgent, KindSkill, KindTool, KindHook}
+	return []Kind{KindAgent, KindSkill, KindMCP, KindHook}
 }
 
 // Valid reports whether k is one of the known kinds.
@@ -40,6 +40,9 @@ func (k Kind) FileName() string {
 // DirName is the project subdirectory that holds artifacts of this kind,
 // e.g. "skills" for a skill.
 func (k Kind) DirName() string {
+	if k == KindMCP {
+		return "mcp"
+	}
 	return string(k) + "s"
 }
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
@@ -46,7 +47,7 @@ func TestDoctorChecksMissingInterpreter(t *testing.T) {
 	// entrypoint is blanked out: the bare tool scaffold declares one
 	// ("src/main") without creating a backing file, which would otherwise
 	// add an unrelated second issue to these command-focused assertions.
-	a := newValidateTestArtifact(t, artifact.KindTool, map[string]any{
+	a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
 		"entrypoint": "",
 		"command":    "definitely-not-a-real-binary-xyz --flag",
 	})
@@ -61,7 +62,7 @@ func TestDoctorChecksMissingInterpreter(t *testing.T) {
 }
 
 func TestDoctorChecksInterpreterOnPath(t *testing.T) {
-	a := newValidateTestArtifact(t, artifact.KindTool, map[string]any{
+	a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
 		"entrypoint": "",
 		"command":    "sh -c true",
 	})
@@ -83,7 +84,7 @@ func TestDoctorChecksMissingEntrypoint(t *testing.T) {
 }
 
 func TestDoctorChecksMissingAuthIsWarningNotFatal(t *testing.T) {
-	a := newValidateTestArtifact(t, artifact.KindTool, map[string]any{
+	a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
 		"entrypoint": "",
 		"command":    "sh -c true",
 		"auth":       []string{"SOME_TOKEN"},
@@ -99,7 +100,7 @@ func TestDoctorChecksMissingAuthIsWarningNotFatal(t *testing.T) {
 }
 
 func TestDoctorChecksAuthPresentInEnv(t *testing.T) {
-	a := newValidateTestArtifact(t, artifact.KindTool, map[string]any{
+	a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
 		"entrypoint": "",
 		"command":    "sh -c true",
 		"auth":       []string{"SOME_TOKEN"},
@@ -120,5 +121,24 @@ func TestDoctorChecksAuthIgnoredForNonTools(t *testing.T) {
 
 	if issues := doctorChecks(a, nil); len(issues) != 0 {
 		t.Errorf("doctorChecks() = %v, want no issues (auth is ignored outside tool)", issues)
+	}
+}
+
+func TestDoctorFlagsScaffoldPlaceholder(t *testing.T) {
+	a := newValidateTestArtifact(t, artifact.KindMCP, map[string]any{
+		"command": "sh",
+		"args":    []any{"-y", "REPLACE-WITH-PACKAGE-NAME"},
+	})
+	var found bool
+	for _, issue := range doctorChecks(a, nil) {
+		if issue.fatal && strings.Contains(issue.message, "placeholder") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("doctorChecks() should fail an mcp artifact still holding a REPLACE-WITH- placeholder")
+	}
+	if smokeEligible(a) {
+		t.Error("smokeEligible() should be false while a placeholder remains, so `agentworks test` doesn't try to run it")
 	}
 }
