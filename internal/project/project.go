@@ -61,6 +61,20 @@ type Publisher struct {
 	AccentColor string `yaml:"accent_color,omitempty"`
 }
 
+// gitignoreTemplate is the .gitignore a new project starts with: regenerable
+// export output and dependency/cache directories. agentworks.lock is
+// deliberately not listed -- it pins imports and should be committed.
+const gitignoreTemplate = `# agentworks export output (regenerate with ` + "`agentworks export`" + `)
+dist/
+
+# dependencies and caches inside artifacts
+node_modules/
+__pycache__/
+.venv/
+
+.DS_Store
+`
+
 // Init scaffolds a new project at dir: agentworks.yaml plus one directory
 // per artifact kind. dir is created if it doesn't exist. It fails if dir
 // already contains a manifest.
@@ -80,6 +94,9 @@ func Init(dir, name string, targets []string) (*Manifest, error) {
 	}
 
 	if err := writeAgentDocs(dir, name); err != nil {
+		return nil, err
+	}
+	if err := writeIfAbsent(filepath.Join(dir, ".gitignore"), gitignoreTemplate); err != nil {
 		return nil, err
 	}
 

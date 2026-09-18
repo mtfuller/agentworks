@@ -253,3 +253,33 @@ func TestResolveArtifactDir(t *testing.T) {
 		t.Errorf("ResolveArtifactDir(qualified) = %q, want %q", got, want)
 	}
 }
+
+func TestInitWritesGitignoreWithoutClobbering(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Init(dir, "p", nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"dist/", "node_modules/", "__pycache__/", ".venv/", ".DS_Store"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf(".gitignore missing %s", want)
+		}
+	}
+	if strings.Contains(string(data), "agentworks.lock") {
+		t.Error("agentworks.lock must stay tracked")
+	}
+
+	existing := t.TempDir()
+	if err := os.WriteFile(filepath.Join(existing, ".gitignore"), []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Init(existing, "p", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(existing, ".gitignore")); string(got) != "mine\n" {
+		t.Errorf("existing .gitignore was overwritten: %q", got)
+	}
+}
