@@ -2,16 +2,17 @@ package tui
 
 import (
 	"fmt"
-	"path/filepath"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/export"
+	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/scaffold"
-	"github.com/mtfuller/agentworks/internal/targets"
 )
 
 // formPurpose records what an active paneForm is for, so finishForm knows
@@ -26,14 +27,10 @@ const (
 
 // startCreateForm opens the create-artifact wizard (the same one
 // `agentworks new` uses -- see wizard.go), pre-filling Kind from the
-// active tab and Targets from the project's own default (agentworks.yaml
-// "targets:") so accepting the form as-is just works, instead of forcing
-// every artifact to re-pick the same targets from a blank multi-select.
+// active tab. Targets aren't asked for here: they're a project-level
+// setting (agentworks.yaml "targets:"), not a per-artifact one.
 func (m Model) startCreateForm() (tea.Model, tea.Cmd) {
-	defaults := NewArtifactAnswers{
-		Kind:    string(m.currentKind()),
-		Targets: append([]string(nil), m.defaultTargets...),
-	}
+	defaults := NewArtifactAnswers{Kind: string(m.currentKind())}
 
 	form, answers := newArtifactForm(defaults)
 	m.newAnswers = answers
@@ -46,7 +43,7 @@ func (m Model) startCreateForm() (tea.Model, tea.Cmd) {
 }
 
 // selectedArtifact is whichever artifact is currently selected (in
-// paneBrowse) or being viewed (in paneDetail) -- what "e"/"t" act on.
+// paneBrowse) or being viewed (in paneDetail) -- what "t" acts on.
 func (m Model) selectedArtifact() *artifact.Artifact {
 	switch m.pane {
 	case paneBrowse:
@@ -59,22 +56,28 @@ func (m Model) selectedArtifact() *artifact.Artifact {
 	return nil
 }
 
-// startExportForm opens the export wizard for whichever artifact is
-// currently selected/viewed. If no registered target supports its kind,
-// it reports that in the footer instead of opening an empty form.
+// startExportForm opens the project-level export form: which shape the
+// export takes (see export.Format), which namespaces if it's per-namespace,
+// and whether to zip. Targets aren't asked -- they come from the project's
+// agentworks.yaml -- and it always exports the whole project, whichever
+// artifact happens to be highlighted.
 func (m Model) startExportForm() (tea.Model, tea.Cmd) {
-	subject := m.selectedArtifact()
-	if subject == nil {
+	manifest, err := project.Load(m.root)
+	if err != nil {
+		m.setStatus(statusError, "%v", err)
+		return m, nil
+	}
+	found, _ := project.Discover(m.root)
+	if len(found) == 0 {
+		m.setStatus(statusWarn, "nothing to export: the project has no artifacts")
 		return m, nil
 	}
 
-	form, answers := exportForm(subject)
+	form, answers := exportForm(manifest.Targets, export.Namespaces(found), found)
 	if form == nil {
-		m.setStatus(statusWarn, "no registered target supports %s artifacts yet", subject.Kind)
+		m.setStatus(statusWarn, "nothing to export yet: add a `targets:` list to agentworks.yaml, or create a skill")
 		return m, nil
 	}
-
-	m.exportSubject = subject
 	m.exportAnswers = answers
 	m.formPurpose = formExport
 	m.formReturnPane = m.pane
@@ -127,7 +130,6 @@ func (m Model) finishForm(completed bool) (tea.Model, tea.Cmd) {
 	if !completed {
 		m.newAnswers = nil
 		m.exportAnswers = nil
-		m.exportSubject = nil
 		return m, nil
 	}
 
@@ -142,11 +144,7 @@ func (m Model) finishForm(completed bool) (tea.Model, tea.Cmd) {
 
 // commitCreate mirrors cmd/new.go's own flow exactly: resolve the kind,
 // then scaffold.New -- the CLI and TUI never disagree about what "new"
-// does. Unlike before, there's no post-hoc "fall back to project defaults
-// if Targets is empty" step here: startCreateForm already pre-filled
-// Targets from the project's defaults before the form ever opened, so an
-// empty answers.Targets now means the user deliberately cleared it, not
-// that nothing was chosen.
+// does.
 func (m Model) commitCreate() (tea.Model, tea.Cmd) {
 	answers := m.newAnswers
 	m.newAnswers = nil
@@ -159,7 +157,6 @@ func (m Model) commitCreate() (tea.Model, tea.Cmd) {
 
 	a, err := scaffold.New(m.root, kind, answers.Name, scaffold.Options{
 		Description: answers.Description,
-		Targets:     answers.Targets,
 		Template:    answers.Template,
 	})
 	if err != nil {
@@ -197,31 +194,42 @@ func (m Model) refreshAfterCreate(kind artifact.Kind) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// commitExport mirrors cmd/export.go's own flow exactly (same Exporter
-// interface call, same default output directory).
+// commitExport runs the same export.Run `agentworks export` does, against
+// the project's own configured targets, and records it in agentworks.lock.
 func (m Model) commitExport() (tea.Model, tea.Cmd) {
-	subject := m.exportSubject
 	answers := m.exportAnswers
-	m.exportSubject = nil
 	m.exportAnswers = nil
 
-	exporter, err := targets.GetExporter(answers.Target)
+	manifest, err := project.Load(m.root)
 	if err != nil {
 		m.setStatus(statusError, "%v", err)
 		return m, nil
 	}
+	req := answers.request(m.root, manifest.Name)
+	if req.Format == export.FormatPlugin {
+		if req.Targets, err = export.ResolveTargets(m.root, nil); err != nil {
+			m.setStatus(statusError, "%v", err)
+			return m, nil
+		}
+	}
 
-	// Rooted at the project directory (not the process's cwd, which could
-	// be anywhere the browser happened to be launched from) -- matches
-	// cmd/export.go's own "dist" default, just anchored consistently with
-	// how the rest of the model already addresses everything via m.root.
-	outDir := filepath.Join(m.root, "dist")
-	dest, err := exporter.Export(subject, outDir, targets.ExportOptions{Zip: answers.Zip})
+	lf, err := lockfile.Load(m.root)
+	if err != nil {
+		m.setStatus(statusError, "%v", err)
+		return m, nil
+	}
+	res, err := export.Run(req, lf)
+	_ = lf.Save(m.root) // best effort: the export itself is what the user asked for
 	if err != nil {
 		m.setStatus(statusError, "export failed: %v", err)
 		return m, nil
 	}
 
-	m.setStatus(statusSuccess, "Exported %s to %s for %s", subject.Name, dest, answers.Target)
+	level, text := statusSuccess, fmt.Sprintf("Exported %d output(s) to %s", len(res.Outputs), req.OutDir)
+	if len(res.Warnings) > 0 {
+		level = statusWarn
+		text += fmt.Sprintf("; ⚠ %s", strings.Join(res.Warnings, "; "))
+	}
+	m.setStatus(level, "%s", text)
 	return m, nil
 }

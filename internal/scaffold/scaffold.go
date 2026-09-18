@@ -16,8 +16,7 @@ import (
 // Options customizes a scaffolded artifact.
 type Options struct {
 	Description string
-	Version     string   // defaults to "0.1.0" if empty
-	Targets     []string // defaults to none
+	Version     string // defaults to "0.1.0" if empty
 	// Template, if set, scaffolds from a built-in Template instead of the
 	// kind's generic default (see templates.go / GetTemplate).
 	Template string
@@ -204,7 +203,6 @@ func New(root string, kind artifact.Kind, ref string, opts Options) (*artifact.A
 			Namespace:   namespace,
 			Description: opts.Description,
 			Version:     version,
-			Targets:     opts.Targets,
 			Extra:       spec.extra(name),
 		},
 		Body: body,

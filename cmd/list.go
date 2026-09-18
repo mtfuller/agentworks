@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -43,9 +42,9 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "KIND\tNAME\tDESCRIPTION\tTARGETS")
+		fmt.Fprintln(w, "KIND\tNAME\tDESCRIPTION")
 		for _, a := range found {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", a.Kind, a.QualifiedName(), truncate(a.Description, 60), strings.Join(a.Targets, ", "))
+			fmt.Fprintf(w, "%s\t%s\t%s\n", a.Kind, a.DisplayName(), truncate(a.Description, 60))
 		}
 		return w.Flush()
 	},

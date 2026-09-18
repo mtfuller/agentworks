@@ -15,7 +15,6 @@ func TestNewEachKind(t *testing.T) {
 			root := t.TempDir()
 			a, err := New(root, k, "demo", Options{
 				Description: "A demo " + string(k) + ".",
-				Targets:     []string{"claude-code"},
 			})
 			if err != nil {
 				t.Fatalf("New(%s) error = %v", k, err)

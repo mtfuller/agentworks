@@ -58,11 +58,9 @@ workflows/ directories for a new project at path (default: current directory).`,
 }
 
 // promptProjectTargets asks (via the same huh-based prompting style as
-// `agentworks new`'s wizard) which vendor targets new artifacts in this
-// project should default to. Setting it once here, instead of leaving it
-// unset, means every later `agentworks new` -- CLI or TUI -- opens with
-// this project's targets already pre-selected rather than asking again
-// from scratch for every single artifact.
+// `agentworks new`'s wizard) which vendor targets this project exports to.
+// Targets are project-level, not per-artifact, so setting them once here
+// means a bare `agentworks export` (CLI or TUI) just works afterward.
 func promptProjectTargets() ([]string, error) {
 	options := make([]huh.Option[string], 0, len(targets.All()))
 	for _, t := range targets.All() {
@@ -73,8 +71,8 @@ func promptProjectTargets() ([]string, error) {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
-				Title("Default targets").
-				Description("which vendors should new artifacts support by default? (leave empty to decide per artifact)").
+				Title("Export targets").
+				Description("which vendors will this project export to? (leave empty to pass --target to each export)").
 				Options(options...).
 				Value(&selected),
 		),
@@ -88,5 +86,5 @@ func promptProjectTargets() ([]string, error) {
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVar(&initName, "name", "", "project name (default: the directory name)")
-	initCmd.Flags().StringSliceVar(&initTargets, "target", nil, "default vendor target(s) for new artifacts (repeatable)")
+	initCmd.Flags().StringSliceVar(&initTargets, "target", nil, "vendor target(s) this project exports to (repeatable)")
 }

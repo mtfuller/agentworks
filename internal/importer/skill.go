@@ -14,10 +14,14 @@ func planSkill(root string, src Source, contentDir string, opts Options) (*Plan,
 	if err != nil {
 		return nil, err
 	}
-	if err := finalizeArtifact(root, a, opts.Name, src); err != nil {
+	ns, err := resolveNamespace(src, opts.Namespace)
+	if err != nil {
 		return nil, err
 	}
-	a.Dir = filepath.Join(root, artifact.KindSkill.DirName(), a.Name)
+	if err := finalizeArtifact(a, opts.Name, ns, src); err != nil {
+		return nil, err
+	}
+	a.Dir = filepath.Join(root, artifact.KindSkill.DirName(), ns, a.Name)
 
 	return &Plan{
 		Source:      src,

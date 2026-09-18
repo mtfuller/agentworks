@@ -25,8 +25,9 @@ var ErrNotFound = errors.New("not inside an AgentWorks project (no agentworks.ya
 type Manifest struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description,omitempty"`
-	// Targets lists the vendor targets new artifacts default to when none
-	// are given explicitly.
+	// Targets lists the vendor targets this project exports to. It is the
+	// only place targets are configured -- artifacts don't carry their own
+	// -- and `agentworks export` falls back to it when --target isn't given.
 	Targets []string `yaml:"targets,omitempty"`
 	// Publisher is optional project-level publishing identity, currently
 	// read by the m365-copilot exporter for its app manifest's developer
@@ -63,7 +64,7 @@ type Publisher struct {
 // Init scaffolds a new project at dir: agentworks.yaml plus one directory
 // per artifact kind. dir is created if it doesn't exist. It fails if dir
 // already contains a manifest.
-func Init(dir, name string, defaultTargets []string) (*Manifest, error) {
+func Init(dir, name string, targets []string) (*Manifest, error) {
 	manifestPath := filepath.Join(dir, ManifestFile)
 	if _, err := os.Stat(manifestPath); err == nil {
 		return nil, fmt.Errorf("%s already exists", manifestPath)
@@ -82,7 +83,7 @@ func Init(dir, name string, defaultTargets []string) (*Manifest, error) {
 		return nil, err
 	}
 
-	m := &Manifest{Name: name, Targets: defaultTargets}
+	m := &Manifest{Name: name, Targets: targets}
 	if err := m.save(manifestPath); err != nil {
 		return nil, err
 	}

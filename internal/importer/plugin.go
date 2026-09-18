@@ -27,6 +27,11 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		return nil, err
 	}
 
+	ns, err := resolveNamespace(src, opts.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
 	plan := &Plan{
 		Source:      src,
 		PluginName:  pluginName,
@@ -47,10 +52,10 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", dir, err)
 		}
-		if err := finalizeArtifact(root, a, "", src); err != nil {
+		if err := finalizeArtifact(a, "", ns, src); err != nil {
 			return nil, err
 		}
-		a.Dir = filepath.Join(root, artifact.KindSkill.DirName(), a.Name)
+		a.Dir = filepath.Join(root, artifact.KindSkill.DirName(), ns, a.Name)
 		plan.Artifacts = append(plan.Artifacts, a)
 		plan.srcDirs[a.Dir] = dir
 		plan.HashSources[a.Dir] = dir
@@ -66,10 +71,10 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		if err := finalizeArtifact(root, a, "", src); err != nil {
+		if err := finalizeArtifact(a, "", ns, src); err != nil {
 			return nil, err
 		}
-		a.Dir = filepath.Join(root, artifact.KindAgent.DirName(), a.Name)
+		a.Dir = filepath.Join(root, artifact.KindAgent.DirName(), ns, a.Name)
 		plan.Artifacts = append(plan.Artifacts, a)
 		plan.HashSources[a.Dir] = path
 		plan.Subpaths[a.Dir] = subpathOf(contentDir, path)

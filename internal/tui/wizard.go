@@ -6,7 +6,6 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
-	"github.com/mtfuller/agentworks/internal/targets"
 )
 
 // NewArtifactAnswers is what RunNewArtifactWizard collects: enough to call
@@ -17,7 +16,6 @@ type NewArtifactAnswers struct {
 	Kind        string
 	Name        string
 	Description string
-	Targets     []string
 	// Template, if set, scaffolds from a built-in starter template (see
 	// internal/scaffold.GetTemplate) instead of the kind's generic default.
 	// Not its own form field -- it's chosen before the form opens (a CLI
@@ -48,11 +46,6 @@ func newArtifactForm(defaults NewArtifactAnswers) (*huh.Form, *NewArtifactAnswer
 		kindOptions = append(kindOptions, huh.NewOption(string(k), string(k)))
 	}
 
-	targetOptions := make([]huh.Option[string], 0, len(targets.All()))
-	for _, t := range targets.All() {
-		targetOptions = append(targetOptions, huh.NewOption(t.Name, t.ID))
-	}
-
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
@@ -78,11 +71,6 @@ func newArtifactForm(defaults NewArtifactAnswers) (*huh.Form, *NewArtifactAnswer
 					}
 					return nil
 				}),
-			huh.NewMultiSelect[string]().
-				Title("Targets").
-				Description("which vendors should be able to use this artifact").
-				Options(targetOptions...).
-				Value(&a.Targets),
 		),
 	)
 	return form, &a

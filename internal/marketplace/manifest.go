@@ -17,10 +17,44 @@ type manifestDoc struct {
 }
 
 type manifestEntry struct {
-	Name        string    `json:"name"`
-	DisplayName string    `json:"displayName"`
-	Description string    `json:"description"`
-	Source      rawSource `json:"source"`
+	Name        string     `json:"name"`
+	DisplayName string     `json:"displayName"`
+	Description string     `json:"description"`
+	Version     string     `json:"version"`
+	Category    string     `json:"category"`
+	Homepage    string     `json:"homepage"`
+	Keywords    []string   `json:"keywords"`
+	Tags        []string   `json:"tags"`
+	Author      flexString `json:"author"`
+	License     flexString `json:"license"`
+	Source      rawSource  `json:"source"`
+}
+
+// flexString decodes a JSON field that marketplaces write either as a bare
+// string ("MIT") or as an object ({"name": "MIT"} / {"type": "MIT"}) --
+// author and license both show up in both shapes in the wild.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*f = flexString(s)
+		return nil
+	}
+	var obj struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		*f = "" // an unrecognizable shape is "unknown", not a parse failure
+		return nil
+	}
+	if obj.Name != "" {
+		*f = flexString(obj.Name)
+	} else {
+		*f = flexString(obj.Type)
+	}
+	return nil
 }
 
 func (e manifestEntry) displayName() string {

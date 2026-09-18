@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mtfuller/agentworks/internal/importer"
@@ -31,6 +32,27 @@ type Result struct {
 	Name        string
 	Description string
 	Source      importer.Source
+
+	// Optional details, filled from the marketplace entry where it has them.
+	Author   string
+	Category string
+	Version  string
+	Homepage string
+	Keywords []string
+	// License is the SPDX id the plugin was verified to carry, or "" if it
+	// wasn't looked up (Options.CommercialOnly unset) or couldn't be found.
+	License string
+}
+
+// Options tunes a Search.
+type Options struct {
+	// CommercialOnly keeps only plugins whose license is verifiably
+	// permissive (see IsCommerciallySafe) -- either declared in the
+	// marketplace entry or read from the repo's LICENSE file. Anything
+	// whose license is missing or unrecognized is dropped, and
+	// agentskills.codes is skipped entirely: its API exposes neither a
+	// license nor a source repo to check one against.
+	CommercialOnly bool
 }
 
 // Search queries agentskills.codes (server-side, via its q parameter) and
@@ -39,15 +61,17 @@ type Result struct {
 // plus one error per source that didn't -- a dead source (an API 500, a
 // 404'd marketplace.json) must never blank the whole pane when the others
 // are fine.
-func Search(ctx context.Context, query string) ([]Result, []error) {
+func Search(ctx context.Context, query string, opts Options) ([]Result, []error) {
 	var results []Result
 	var errs []error
 
-	skills, err := searchAgentSkills(ctx, query)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("agentskills.codes: %w", err))
-	} else {
-		results = append(results, skills...)
+	if !opts.CommercialOnly {
+		skills, err := searchAgentSkills(ctx, query)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("agentskills.codes: %w", err))
+		} else {
+			results = append(results, skills...)
+		}
 	}
 
 	for _, m := range WellKnown {
@@ -56,10 +80,53 @@ func Search(ctx context.Context, query string) ([]Result, []error) {
 			errs = append(errs, fmt.Errorf("%s: %w", m.Name, err))
 			continue
 		}
+		if opts.CommercialOnly {
+			found = keepCommerciallySafe(ctx, found)
+		}
 		results = append(results, found...)
 	}
 
 	return results, errs
+}
+
+// licenseWorkers bounds concurrent LICENSE lookups -- a full marketplace is
+// a few hundred plugins across many repos.
+const licenseWorkers = 12
+
+// keepCommerciallySafe resolves each result's license (a declared one wins;
+// otherwise it's read from the repo) and drops everything that isn't
+// permissive. Survivors get License set to the id that qualified them.
+func keepCommerciallySafe(ctx context.Context, in []Result) []Result {
+	licenses := make([]string, len(in))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < licenseWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				if IsCommerciallySafe(in[i].License) {
+					licenses[i] = in[i].License
+				} else if in[i].License == "" {
+					licenses[i] = lookupLicense(ctx, in[i].Source)
+				}
+			}
+		}()
+	}
+	for i := range in {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	out := in[:0:0]
+	for i, r := range in {
+		if IsCommerciallySafe(licenses[i]) {
+			r.License = licenses[i]
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 type agentSkillsResponse struct {
@@ -153,7 +220,18 @@ func searchMarketplace(ctx context.Context, m Marketplace, query string) ([]Resu
 		if err != nil {
 			continue // this entry's source type isn't supported yet -- skip it, don't fail the whole marketplace
 		}
-		results = append(results, Result{Origin: m.Name, Name: e.displayName(), Description: e.Description, Source: src})
+		results = append(results, Result{
+			Origin:      m.Name,
+			Name:        e.displayName(),
+			Description: e.Description,
+			Source:      src,
+			Author:      string(e.Author),
+			Category:    e.Category,
+			Version:     e.Version,
+			Homepage:    e.Homepage,
+			Keywords:    append(append([]string(nil), e.Keywords...), e.Tags...),
+			License:     string(e.License),
+		})
 	}
 	return results, nil
 }

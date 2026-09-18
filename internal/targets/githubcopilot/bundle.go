@@ -36,16 +36,17 @@ func (exporter) ExportBundle(name, description string, artifacts []*artifact.Art
 	}
 
 	copilotDir := filepath.Join(pluginDir, "com.github.copilot")
+	flat := targets.FlatNames(artifacts)
 	var hooks []*artifact.Artifact
 	mcpServers := map[string]mcpconfig.Server{}
 	for _, m := range artifacts {
 		switch m.Kind {
 		case artifact.KindSkill:
-			if err := agentskills.Write(m, filepath.Join(pluginDir, "skills", m.QualifiedName())); err != nil {
+			if err := agentskills.Write(m, filepath.Join(pluginDir, "skills", flat[m])); err != nil {
 				return "", fmt.Errorf("bundling skill %q: %w", m.QualifiedName(), err)
 			}
 		case artifact.KindAgent:
-			path := filepath.Join(copilotDir, "agents", m.QualifiedName()+".agent.md")
+			path := filepath.Join(copilotDir, "agents", flat[m]+".agent.md")
 			if err := writeCopilotAgentFile(path, m); err != nil {
 				return "", fmt.Errorf("bundling agent %q: %w", m.QualifiedName(), err)
 			}

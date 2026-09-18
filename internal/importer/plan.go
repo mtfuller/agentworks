@@ -3,12 +3,12 @@ package importer
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/lockfile"
-	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/targets/agentskills"
 	"github.com/mtfuller/agentworks/internal/targets/claudecode"
 	"github.com/mtfuller/agentworks/internal/targets/filecopy"
@@ -20,6 +20,11 @@ type Options struct {
 	// when importing a single bare skill -- a multi-artifact plugin import
 	// can't apply one override name to N artifacts.
 	Name string
+	// Namespace overrides the namespace imported artifacts are filed under
+	// (see Source.DefaultNamespace for what it defaults to). Imports are
+	// always namespaced, so plugin-sourced artifacts stay distinguishable
+	// from ones the user wrote themselves.
+	Namespace string
 }
 
 // Plan is a fully-resolved, not-yet-written import: one or more artifacts
@@ -59,7 +64,7 @@ func (p *Plan) Describe() string {
 		fmt.Fprintf(&b, "From %s:\n", p.Source)
 	}
 	for _, a := range p.Artifacts {
-		fmt.Fprintf(&b, "  + %s %s -> %s\n", a.Kind, a.Name, a.Dir)
+		fmt.Fprintf(&b, "  + %s %s -> %s\n", a.Kind, a.DisplayName(), a.Dir)
 	}
 	for _, u := range p.Unsupported {
 		fmt.Fprintf(&b, "  ! %s\n", u)
@@ -165,6 +170,11 @@ func (p *Plan) Overwrite(a *artifact.Artifact, dir string) error {
 		return fmt.Errorf("clearing %s: %w", dir, err)
 	}
 	a.Dir = dir
+	// An artifact imported before imports were namespaced lives directly
+	// under its kind directory; keep it there rather than moving it.
+	if filepath.Base(filepath.Dir(dir)) == a.Kind.DirName() {
+		a.Namespace = ""
+	}
 	if err := a.Validate(); err != nil {
 		return err
 	}
@@ -185,7 +195,7 @@ func (p *Plan) Overwrite(a *artifact.Artifact, dir string) error {
 // through subdirectories.
 func detect(root string, src Source, contentDir string, opts Options) (*Plan, error) {
 	if claudecode.IsMarketplaceDir(contentDir) {
-		return nil, fmt.Errorf("%s is a plugin marketplace, not a single plugin -- browse it with `agentworks tui`'s marketplace search (press \"a\"), or point at one of its plugins directly", src)
+		return nil, fmt.Errorf("%s is a plugin marketplace, not a single plugin -- browse it with `agentworks tui`'s plugin browser (press \"p\"), or point at one of its plugins directly", src)
 	}
 	if claudecode.IsPluginDir(contentDir) {
 		return planPlugin(root, src, contentDir, opts)
@@ -196,12 +206,25 @@ func detect(root string, src Source, contentDir string, opts Options) (*Plan, er
 	return nil, fmt.Errorf("%s doesn't look like a skill (no SKILL.md) or a Claude Code plugin (no .claude-plugin/plugin.json) at its root", src)
 }
 
+// resolveNamespace picks the namespace an import is filed under: the
+// caller's override if given (slugified), else src's default.
+func resolveNamespace(src Source, override string) (string, error) {
+	if override == "" {
+		override = src.DefaultNamespace()
+	}
+	ns, err := slugify(strings.TrimPrefix(override, "@"))
+	if err != nil {
+		return "", fmt.Errorf("namespace for %s: %w", src, err)
+	}
+	return ns, nil
+}
+
 // finalizeArtifact fills in everything a freshly-Read artifact doesn't
 // have yet: a valid slug name (real marketplace names routinely violate
-// artifact.Validate's namePattern), a description fallback, this project's
-// default targets, and a source: provenance block recording where it came
-// from for a future `agentworks update`.
-func finalizeArtifact(root string, a *artifact.Artifact, nameOverride string, src Source) error {
+// artifact.Validate's namePattern), a description fallback, its namespace,
+// and a source: provenance block recording where it came from for a future
+// `agentworks update`.
+func finalizeArtifact(a *artifact.Artifact, nameOverride, namespace string, src Source) error {
 	original := a.Name
 	name := nameOverride
 	if name == "" {
@@ -216,11 +239,7 @@ func finalizeArtifact(root string, a *artifact.Artifact, nameOverride string, sr
 	if a.Description == "" {
 		a.Description = "Imported from " + src.String()
 	}
-	if len(a.Targets) == 0 {
-		if m, err := project.Load(root); err == nil {
-			a.Targets = m.Targets
-		}
-	}
+	a.Namespace = namespace
 
 	if a.Extra == nil {
 		a.Extra = map[string]any{}

@@ -3,6 +3,8 @@ package importer
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -72,7 +74,7 @@ func TestPlanBareSkill(t *testing.T) {
 	if a.Kind != artifact.KindSkill || a.Name != "csv-analyzer" {
 		t.Errorf("artifact = %s %q, want skill csv-analyzer", a.Kind, a.Name)
 	}
-	if a.Dir != filepath.Join(root, "skills", "csv-analyzer") {
+	if a.Dir != filepath.Join(root, "skills", "owner", "csv-analyzer") || a.Namespace != "owner" {
 		t.Errorf("Dir = %q", a.Dir)
 	}
 
@@ -126,9 +128,9 @@ func TestPlanPluginDecomposes(t *testing.T) {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	for _, want := range []string{
-		filepath.Join(root, "skills", "s1", "skill.md"),
-		filepath.Join(root, "skills", "s2", "skill.md"),
-		filepath.Join(root, "agents", "a1", "agent.md"),
+		filepath.Join(root, "skills", "owner", "s1", "skill.md"),
+		filepath.Join(root, "skills", "owner", "s2", "skill.md"),
+		filepath.Join(root, "agents", "owner", "a1", "agent.md"),
 	} {
 		if _, err := os.Stat(want); err != nil {
 			t.Errorf("expected %s to be written: %v", want, err)
@@ -398,9 +400,9 @@ func TestPlanRecordLockEntries(t *testing.T) {
 		t.Fatalf("RecordLockEntries() error = %v", err)
 	}
 
-	entry, ok := lf.Imports["skills/csv-analyzer"]
+	entry, ok := lf.Imports["skills/owner/csv-analyzer"]
 	if !ok {
-		t.Fatalf("Imports missing skills/csv-analyzer: %+v", lf.Imports)
+		t.Fatalf("Imports missing skills/owner/csv-analyzer: %+v", lf.Imports)
 	}
 	if entry.Source.Repo != "owner/csv-analyzer" || entry.Source.Ref != "main" {
 		t.Errorf("entry.Source = %+v, want repo=owner/csv-analyzer ref=main", entry.Source)
@@ -471,5 +473,96 @@ func TestPlanPluginRejectsNameOverride(t *testing.T) {
 	src := Source{Kind: SourceGitHub, Repo: "owner/demo-kit"}
 	if _, err := detect(root, src, fixture, Options{Name: "custom-name"}); err == nil {
 		t.Fatal("detect() of a plugin with --name expected error, got nil")
+	}
+}
+
+func TestDefaultNamespace(t *testing.T) {
+	tests := []struct {
+		src  Source
+		want string
+	}{
+		{Source{Kind: SourceGitHub, Repo: "obra/superpowers"}, "obra"},
+		{Source{Kind: SourceGitHub, Repo: "My_Org/x"}, "my-org"},
+		{Source{Kind: SourceArchive, URL: "https://www.agentskills.codes/api/skills/download/19"}, "agentskills"},
+		{Source{Kind: SourceArchive, URL: "%%%"}, "imported"},
+	}
+	for _, tt := range tests {
+		if got := tt.src.DefaultNamespace(); got != tt.want {
+			t.Errorf("DefaultNamespace(%+v) = %q, want %q", tt.src, got, tt.want)
+		}
+	}
+}
+
+func TestPlanNamespaceOverride(t *testing.T) {
+	root := newTestProject(t)
+	fixture := writePluginFixture(t)
+
+	plan, err := detect(root, Source{Kind: SourceGitHub, Repo: "owner/demo-kit"}, fixture, Options{Namespace: "@Acme Corp"})
+	if err != nil {
+		t.Fatalf("detect() error = %v", err)
+	}
+	for _, a := range plan.Artifacts {
+		if a.Namespace != "acme-corp" {
+			t.Errorf("%s namespace = %q, want acme-corp", a.Name, a.Namespace)
+		}
+		if got := filepath.Base(filepath.Dir(a.Dir)); got != "acme-corp" {
+			t.Errorf("%s dir = %s, want it under acme-corp/", a.Name, a.Dir)
+		}
+	}
+	if err := plan.Apply(); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+}
+
+// TestImportedArtifactsDiscoverAsNamespaced is the point of namespacing:
+// what an import writes must load back as "@owner/name", distinct from a
+// same-named artifact the user wrote themselves.
+func TestImportedArtifactsDiscoverAsNamespaced(t *testing.T) {
+	root := newTestProject(t)
+	mine := filepath.Join(root, "skills", "s1")
+	if err := os.MkdirAll(mine, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mine, "skill.md"), []byte("---\nkind: skill\nname: s1\ndescription: My own s1.\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := detect(root, Source{Kind: SourceGitHub, Repo: "owner/demo-kit"}, writePluginFixture(t), Options{})
+	if err != nil {
+		t.Fatalf("detect() error = %v", err)
+	}
+	if err := plan.Apply(); err != nil {
+		t.Fatalf("Apply() error = %v (a same-named local artifact must not collide)", err)
+	}
+
+	found, errs := project.Discover(root, artifact.KindSkill)
+	if len(errs) != 0 {
+		t.Fatalf("Discover() errs = %v", errs)
+	}
+	var names []string
+	for _, a := range found {
+		names = append(names, a.DisplayName())
+	}
+	sort.Strings(names)
+	if want := []string{"@owner/s1", "@owner/s2", "s1"}; !reflect.DeepEqual(names, want) {
+		t.Errorf("discovered %v, want %v", names, want)
+	}
+}
+
+// TestOverwriteKeepsLegacyFlatImportUnnamespaced covers `agentworks update`
+// on an artifact imported before imports were namespaced: it stays where
+// it is, un-namespaced, rather than failing validation.
+func TestOverwriteKeepsLegacyFlatImportUnnamespaced(t *testing.T) {
+	root := newTestProject(t)
+	plan, err := detect(root, Source{Kind: SourceGitHub, Repo: "owner/demo-kit"}, writePluginFixture(t), Options{})
+	if err != nil {
+		t.Fatalf("detect() error = %v", err)
+	}
+	legacy := filepath.Join(root, "skills", "s1")
+	if err := plan.Overwrite(plan.Artifacts[0], legacy); err != nil {
+		t.Fatalf("Overwrite() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "skill.md")); err != nil {
+		t.Errorf("legacy dir not rewritten in place: %v", err)
 	}
 }

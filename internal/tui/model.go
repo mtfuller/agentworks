@@ -10,7 +10,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -40,9 +39,9 @@ type artifactItem struct {
 	a *artifact.Artifact
 }
 
-func (i artifactItem) Title() string       { return i.a.Name }
+func (i artifactItem) Title() string       { return i.a.DisplayName() }
 func (i artifactItem) Description() string { return i.a.Description }
-func (i artifactItem) FilterValue() string { return i.a.Name }
+func (i artifactItem) FilterValue() string { return i.a.DisplayName() }
 
 // Model is the root Bubble Tea model for `agentworks tui`: a tabbed
 // browser from artifact kind to that kind's artifacts, to one artifact's
@@ -63,18 +62,21 @@ type Model struct {
 	templateTabs  tabBar
 	templateLists map[artifact.Kind]list.Model
 
-	marketplaceList list.Model
-	viewport        viewport.Model
+	// marketplaceList/marketplaceDetail back paneMarketplace: the list of
+	// plugins on the left, the highlighted one's details on the right.
+	// mpPreviews caches what each plugin would import (fetched lazily, see
+	// marketplace.go) keyed by its source, and mpShown is the key currently
+	// highlighted.
+	marketplaceList   list.Model
+	marketplaceDetail viewport.Model
+	mpPreviews        map[string]*previewState
+	mpShown           string
+
+	viewport viewport.Model
 
 	// currentArtifact tracks what's in view in paneDetail, so "e"/"t" know
 	// which artifact to act on without re-deriving it from a list widget.
 	currentArtifact *artifact.Artifact
-
-	// defaultTargets is the project's agentworks.yaml "targets:", loaded
-	// once here so every create flow (startCreateForm, template-based
-	// creation, and cmd/new.go's own wizard call) can pre-fill a new
-	// artifact's Targets field instead of asking from scratch every time.
-	defaultTargets []string
 
 	// Form state for the active create/export action, if any -- see
 	// actions.go's startCreateForm/startExportForm/updateForm/finishForm.
@@ -83,7 +85,6 @@ type Model struct {
 	formReturnPane pane
 	newAnswers     *NewArtifactAnswers
 	exportAnswers  *ExportAnswers
-	exportSubject  *artifact.Artifact
 
 	// statusMsg/statusLevel report the outcome of the last create/export/
 	// test/import action, shown in the footer (colored by level) until the
@@ -137,23 +138,20 @@ func New(root string) (Model, error) {
 	// marketplaceList starts empty and is populated by startMarketplace();
 	// it still needs to exist so an early WindowSizeMsg can size it safely.
 	marketplaceList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
-	marketplaceList.Title = "Search skills & plugins"
-
-	var defaultTargets []string
-	if m, err := project.Load(root); err == nil {
-		defaultTargets = m.Targets
-	}
+	marketplaceList.Title = "Browse plugins"
+	marketplaceList.SetShowHelp(false)
 
 	return Model{
-		root:            root,
-		pane:            paneBrowse,
-		browseTabs:      newTabBar(browseLabels),
-		artifactLists:   artifactLists,
-		templateTabs:    newTabBar(templateLabels),
-		templateLists:   templateLists,
-		marketplaceList: marketplaceList,
-		viewport:        viewport.New(0, 0),
-		defaultTargets:  defaultTargets,
+		root:              root,
+		pane:              paneBrowse,
+		browseTabs:        newTabBar(browseLabels),
+		artifactLists:     artifactLists,
+		templateTabs:      newTabBar(templateLabels),
+		templateLists:     templateLists,
+		marketplaceList:   marketplaceList,
+		marketplaceDetail: viewport.New(0, 0),
+		mpPreviews:        map[string]*previewState{},
+		viewport:          viewport.New(0, 0),
 	}, nil
 }
 
@@ -207,7 +205,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			tl.SetSize(msg.Width, tabbedListHeight)
 			m.templateLists[k] = tl
 		}
-		m.marketplaceList.SetSize(msg.Width, msg.Height-footerHeight)
+		listW, detailW := marketplaceWidths(msg.Width)
+		m.marketplaceList.SetSize(listW, msg.Height-footerHeight)
+		m.marketplaceDetail.Width = detailW
+		m.marketplaceDetail.Height = msg.Height - footerHeight
+		m.refreshMarketplaceDetail()
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - footerHeight
 		return m, nil
@@ -220,6 +222,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case marketplaceImportedMsg:
 		return m.handleMarketplaceImported(msg)
+
+	case previewTickMsg:
+		return m.handlePreviewTick(msg)
+
+	case previewLoadedMsg:
+		return m.handlePreviewLoaded(msg)
 
 	case tea.KeyMsg:
 		// While the user is typing into a list's filter box, single-key
@@ -243,9 +251,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.pane == paneBrowse || m.pane == paneDetail {
 					return m.startTest()
 				}
-			case "a":
+			case "p", "a":
 				if m.pane == paneBrowse {
 					return m.startMarketplace()
+				}
+			case "ctrl+d":
+				if m.pane == paneMarketplace {
+					m.marketplaceDetail.HalfViewDown()
+					return m, nil
+				}
+			case "ctrl+u":
+				if m.pane == paneMarketplace {
+					m.marketplaceDetail.HalfViewUp()
+					return m, nil
 				}
 			case "r":
 				if m.pane == paneMarketplace {
@@ -287,7 +305,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case paneDetail:
 		m.viewport, cmd = m.viewport.Update(msg)
 	case paneMarketplace:
+		var syncCmd tea.Cmd
 		m.marketplaceList, cmd = m.marketplaceList.Update(msg)
+		syncCmd = m.syncMarketplaceDetail()
+		cmd = tea.Batch(cmd, syncCmd)
 	case paneTemplates:
 		k := m.currentTemplateKind()
 		tl := m.templateLists[k]
@@ -359,7 +380,7 @@ func (m Model) View() string {
 	case paneDetail:
 		body = m.viewport.View()
 	case paneMarketplace:
-		body = m.marketplaceList.View()
+		body = m.marketplaceView()
 	case paneTemplates:
 		body = m.templateTabs.View(m.width) + "\n" + m.templateLists[m.currentTemplateKind()].View()
 	}
@@ -378,12 +399,12 @@ func (m Model) helpEntries() []helpEntry {
 	case paneBrowse:
 		return []helpEntry{
 			{"enter", "open"}, {"n", "new"}, {"e", "export"}, {"t", "test"},
-			{"a", "add"}, {"b", "templates"}, {"tab/shift+tab", "switch kind"}, {"q", "quit"},
+			{"p", "browse plugins"}, {"b", "templates"}, {"tab/shift+tab", "switch kind"}, {"q", "quit"},
 		}
 	case paneDetail:
 		return []helpEntry{{"e", "export"}, {"t", "test"}, {"esc", "back"}}
 	case paneMarketplace:
-		return []helpEntry{{"enter", "import"}, {"/", "filter loaded results"}, {"r", "refresh"}, {"esc", "back"}}
+		return []helpEntry{{"enter", "import"}, {"/", "filter"}, {"ctrl+d/u", "scroll details"}, {"r", "refresh"}, {"esc", "back"}}
 	case paneTemplates:
 		return []helpEntry{
 			{"enter", "create from this template"}, {"/", "filter"},
@@ -401,15 +422,15 @@ func metaLine(label, value string) string {
 }
 
 func renderArtifact(a *artifact.Artifact) string {
-	header := titleStyle.Render(fmt.Sprintf("%s (%s)", a.Name, a.Kind))
+	header := titleStyle.Render(fmt.Sprintf("%s (%s)", a.DisplayName(), a.Kind))
 
 	var meta string
 	meta += metaLine("Description:", a.Description)
 	if a.Version != "" {
 		meta += metaLine("Version:", a.Version)
 	}
-	if len(a.Targets) > 0 {
-		meta += metaLine("Targets:", strings.Join(a.Targets, ", "))
+	if a.Namespace != "" {
+		meta += metaLine("Namespace:", "@"+a.Namespace)
 	}
 	meta += metaLine("Path:", a.Dir)
 

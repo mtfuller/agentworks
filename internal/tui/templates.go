@@ -45,8 +45,8 @@ func (m Model) startTemplates() (tea.Model, tea.Cmd) {
 }
 
 // startCreateFromTemplate opens the same create form manual creation uses
-// ("n"), pre-filled with the selected template's kind, description, and
-// the project's default targets -- commitCreate (actions.go) threads
+// ("n"), pre-filled with the selected template's kind and description --
+// commitCreate (actions.go) threads
 // Template through to scaffold.New unchanged.
 func (m Model) startCreateFromTemplate() (tea.Model, tea.Cmd) {
 	item, ok := m.templateLists[m.currentTemplateKind()].SelectedItem().(templateItem)
@@ -58,7 +58,6 @@ func (m Model) startCreateFromTemplate() (tea.Model, tea.Cmd) {
 		Kind:        string(item.t.Kind),
 		Description: item.t.Description,
 		Template:    item.t.ID,
-		Targets:     append([]string(nil), m.defaultTargets...),
 	}
 	form, answers := newArtifactForm(defaults)
 	m.newAnswers = answers

@@ -604,6 +604,47 @@ If either vendor ships a real plugin/bundle format, or documents a stable
 tools/model mapping for Cursor agents, re-open the relevant gap then — don't assume
 today's reasoning still holds without checking.
 
+Also done as of this pass: five workflow changes, which supersede earlier notes above
+that mention `--all`/`--kind`/`--bundle` or per-artifact `targets:`.
+
+1. **Targets are project-level.** `agentworks.yaml`'s `targets:` is the only place they
+   live; `artifact.Frontmatter.Targets` and `scaffold.Options.Targets` are gone (a legacy
+   `targets:` key in a `<kind>.md` still parses -- it just round-trips through `Extra`),
+   and neither `agentworks new`'s wizard nor the TUI's create form asks for them.
+2. **`internal/export` owns export orchestration** (`export.Run`), shared by
+   `cmd/export.go` and the TUI's export form, plus the lockfile helpers that used to live
+   in `cmd/export.go` (`Record`, `HandEditedWarning`, `HashDirs`). It also blank-imports
+   every exporter, so anything that can `Run` can reach them all. Every plugin-format
+   export bundles: one plugin holding everything (default), or `Namespaces` for one per
+   chosen namespace (`"."` = un-namespaced). `FormatSkillsZip`/`FormatSkillFiles` write all
+   skills as one `.zip` or one `.skill` each, needing no target. `--target` resolves
+   `--target` flag -> manifest `targets:` -> error (`export.ResolveTargets`). Output is
+   `dist/<target>/<plugin>`, always per-target so several targets can't collide. A vendor
+   without a `BundleExporter` falls back to one export per artifact, with a warning;
+   workflows always export as their own plugin. `cmd/marketplace.go` is unchanged and
+   still does its own namespace grouping.
+3. **Imports are namespaced.** `importer.Source.DefaultNamespace()` (GitHub owner, or the
+   archive host's first label) files artifacts at `<kind>s/<namespace>/<name>`, via the
+   namespace support `project.Discover` already had. `--namespace` overrides. `update` on a
+   pre-namespacing flat import keeps it flat (`Plan.Overwrite`). Since plugin formats only
+   discover `skills/<name>/` one level deep, bundle exporters file members via
+   `targets.FlatNames` (bare name, or `<namespace>-<name>` only on a collision) rather than
+   the nested qualified path.
+4. **The TUI's marketplace pane is "browse plugins" (`p`; `a` still works)** with a detail
+   pane on the right. `marketplace.Search` takes `Options{CommercialOnly}`: a plugin
+   survives only if its license is verifiably permissive (`IsCommerciallySafe`: MIT,
+   Apache-2.0, BSD-2/3, ISC, 0BSD, Unlicense, CC0, Zlib). The license is the manifest
+   entry's own `license` if declared, else read from the plugin dir's / repo's LICENSE file
+   on raw.githubusercontent.com and sniffed (`detectLicense`) -- deliberately not the
+   GitHub API, whose 60/hr unauthenticated limit a few-hundred-plugin catalog would blow.
+   agentskills.codes is skipped in this mode: its API exposes neither a license nor a repo
+   to check one against. Unknown/copyleft/unlicensed is excluded, never assumed safe. What
+   a plugin *includes* is fetched lazily (`marketplace.FetchPreview`, debounced 400ms after
+   the highlight settles, cached per source) by running the same `importer.Prepare` an
+   import does, without `Apply`. Known limits: a relative-path plugin inherits its
+   marketplace repo's license unless it ships its own LICENSE, and LICENSE sniffing is
+   phrase-matching, not a full SPDX classifier.
+
 ## Conventions
 
 - Go 1.24+. `gofmt` formatting. Package names lowercase, single word.

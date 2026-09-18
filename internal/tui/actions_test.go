@@ -3,12 +3,14 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/export"
 	"github.com/mtfuller/agentworks/internal/project"
 
 	// Blank-imported so its init() registers the "claude-code" exporter
@@ -18,12 +20,10 @@ import (
 	_ "github.com/mtfuller/agentworks/internal/targets/claudecode"
 )
 
-// TestStartCreateFormPrefillsProjectDefaultTargets confirms the fix this
-// package's create flows exist for: a project with agentworks.yaml
-// "targets:" already set shouldn't make every artifact re-pick them from a
-// blank multi-select -- startCreateForm should carry the project's
-// defaults into the form up front.
-func TestStartCreateFormPrefillsProjectDefaultTargets(t *testing.T) {
+// TestCreateFormHasNoTargetsField confirms targets are a project-level
+// setting: the new-artifact form never asks for them, so a project with
+// targets configured opens the same three-field form as one without.
+func TestCreateFormHasNoTargetsField(t *testing.T) {
 	root := t.TempDir()
 	if _, err := project.Init(root, "proj", []string{"claude-code", "chatgpt"}); err != nil {
 		t.Fatalf("project.Init() error = %v", err)
@@ -38,11 +38,10 @@ func TestStartCreateFormPrefillsProjectDefaultTargets(t *testing.T) {
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	m = updated.(Model)
 	if m.newAnswers == nil {
-		t.Fatal("newAnswers is nil, want it prefilled")
+		t.Fatal("newAnswers is nil, want the form's answers")
 	}
-	want := []string{"claude-code", "chatgpt"}
-	if got := m.newAnswers.Targets; !equalStrings(got, want) {
-		t.Errorf("newAnswers.Targets = %v, want %v (the project's default)", got, want)
+	if view := m.View(); strings.Contains(strings.ToLower(view), "targets") {
+		t.Errorf("create form still mentions targets:\n%s", view)
 	}
 }
 
@@ -130,8 +129,8 @@ func TestStartExportFormFromBrowseAndDetail(t *testing.T) {
 		if m.pane != paneForm || m.formPurpose != formExport {
 			t.Fatalf("drillToDetail=%v: pane=%v formPurpose=%v, want paneForm/formExport", drillToDetail, m.pane, m.formPurpose)
 		}
-		if m.exportSubject == nil || m.exportSubject.Name != "demo" {
-			t.Errorf("drillToDetail=%v: exportSubject = %+v, want the demo skill", drillToDetail, m.exportSubject)
+		if m.exportAnswers == nil {
+			t.Errorf("drillToDetail=%v: exportAnswers is nil, want the export form's answers", drillToDetail)
 		}
 	}
 }
@@ -189,29 +188,55 @@ func TestCommitCreateInvalidKindReportsError(t *testing.T) {
 	}
 }
 
-func TestCommitExportRunsRealExporter(t *testing.T) {
+func TestCommitExportBundlesProjectForConfiguredTargets(t *testing.T) {
 	m := newTestModel(t)
-	m = tabTo(m, artifact.KindSkill)
-	item, ok := m.artifactLists[artifact.KindSkill].SelectedItem().(artifactItem)
-	if !ok {
-		t.Fatal("no artifact selected")
-	}
+	setProjectTargets(t, m.root, "claude-code")
 
-	m.exportSubject = item.a
-	m.exportAnswers = &ExportAnswers{Target: "claude-code", Zip: false}
-
+	m.exportAnswers = &ExportAnswers{Format: string(export.FormatPlugin)}
 	updated, _ := m.commitExport()
 	m = updated.(Model)
 
-	wantSkillMD := filepath.Join(m.root, "dist", "demo", "SKILL.md")
-	if _, err := os.Stat(wantSkillMD); err != nil {
-		t.Errorf("expected %s to exist: %v", wantSkillMD, err)
-	}
-	if m.statusMsg == "" {
-		t.Error("expected a non-empty statusMsg reporting the export")
+	want := filepath.Join(m.root, "dist", "claude-code", "proj", "skills", "demo", "SKILL.md")
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("expected %s to exist: %v (status: %s)", want, err, m.statusMsg)
 	}
 	if m.statusLevel != statusSuccess {
-		t.Errorf("statusLevel = %v, want statusSuccess", m.statusLevel)
+		t.Errorf("statusLevel = %v (%s), want statusSuccess", m.statusLevel, m.statusMsg)
+	}
+}
+
+func TestCommitExportPluginWithoutTargetsReportsHowToFixIt(t *testing.T) {
+	m := newTestModel(t) // project has no targets
+
+	m.exportAnswers = &ExportAnswers{Format: string(export.FormatPlugin)}
+	updated, _ := m.commitExport()
+	m = updated.(Model)
+
+	if m.statusLevel != statusError || !strings.Contains(m.statusMsg, "targets:") {
+		t.Errorf("status = %v %q, want an error pointing at agentworks.yaml targets", m.statusLevel, m.statusMsg)
+	}
+}
+
+func TestCommitExportSkillsZipNeedsNoTargets(t *testing.T) {
+	m := newTestModel(t)
+
+	m.exportAnswers = &ExportAnswers{Format: string(export.FormatSkillsZip)}
+	updated, _ := m.commitExport()
+	m = updated.(Model)
+
+	if _, err := os.Stat(filepath.Join(m.root, "dist", "proj-skills.zip")); err != nil {
+		t.Errorf("expected the skills zip: %v (status: %s)", err, m.statusMsg)
+	}
+}
+
+func setProjectTargets(t *testing.T, root string, targets ...string) {
+	t.Helper()
+	body := "name: proj\ntargets:\n"
+	for _, tg := range targets {
+		body += "  - " + tg + "\n"
+	}
+	if err := os.WriteFile(filepath.Join(root, project.ManifestFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

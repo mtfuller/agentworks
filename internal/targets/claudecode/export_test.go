@@ -17,7 +17,6 @@ func newTestSkill(t *testing.T) *artifact.Artifact {
 	root := t.TempDir()
 	a, err := scaffold.New(root, artifact.KindSkill, "csv-analyzer", scaffold.Options{
 		Description: "Analyze a CSV and flag rows that stand out.",
-		Targets:     []string{TargetID},
 	})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)
@@ -128,7 +127,6 @@ func newTestTool(t *testing.T) *artifact.Artifact {
 	root := t.TempDir()
 	a, err := scaffold.New(root, artifact.KindTool, "jira-fetch", scaffold.Options{
 		Description: "Fetch a Jira ticket.",
-		Targets:     []string{TargetID},
 	})
 	if err != nil {
 		t.Fatalf("scaffold.New() error = %v", err)

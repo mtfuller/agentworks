@@ -36,8 +36,10 @@ Body text here.
 	if got := fm.ExtraString("entrypoint"); got != "scripts/main.py" {
 		t.Errorf("ExtraString(entrypoint) = %q, want scripts/main.py", got)
 	}
-	if want := []string{"claude-code", "chatgpt"}; len(fm.Targets) != 2 || fm.Targets[0] != want[0] || fm.Targets[1] != want[1] {
-		t.Errorf("Targets = %v, want %v", fm.Targets, want)
+	// Targets are project-level now; a legacy per-artifact `targets:` key
+	// must still parse and round-trip untouched rather than erroring.
+	if _, ok := fm.Extra["targets"]; !ok {
+		t.Errorf("legacy targets key not preserved in Extra: %v", fm.Extra)
 	}
 	if !strings.Contains(body, "# CSV Analyzer") {
 		t.Errorf("body missing heading, got: %q", body)

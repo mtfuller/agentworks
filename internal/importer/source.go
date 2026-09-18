@@ -67,6 +67,28 @@ func (s Source) String() string {
 	}
 }
 
+// DefaultNamespace is the namespace artifacts imported from s are filed
+// under: the GitHub owner ("obra" for obra/superpowers), or for a bare
+// archive URL the first label of its host. Empty only if neither yields a
+// usable slug.
+func (s Source) DefaultNamespace() string {
+	switch s.Kind {
+	case SourceGitHub:
+		owner, _, _ := strings.Cut(s.Repo, "/")
+		if slug, err := slugify(owner); err == nil {
+			return slug
+		}
+	case SourceArchive:
+		if u, err := url.Parse(s.URL); err == nil {
+			host, _, _ := strings.Cut(strings.TrimPrefix(u.Hostname(), "www."), ".")
+			if slug, err := slugify(host); err == nil {
+				return slug
+			}
+		}
+	}
+	return "imported"
+}
+
 var slugInvalid = regexp.MustCompile(`[^a-z0-9]+`)
 
 // slugify converts an arbitrary display name (as real marketplace entries

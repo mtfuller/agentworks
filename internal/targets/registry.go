@@ -122,6 +122,27 @@ type BundleExporter interface {
 	ExportBundle(name, description string, artifacts []*artifact.Artifact, outDir string, opts ExportOptions) (string, error)
 }
 
+// FlatNames picks the single-segment name each bundle member is filed under
+// where a vendor format only discovers components one directory deep (a
+// plugin's skills/<name>/SKILL.md and agents/<name>.md). It's just the
+// artifact's Name, unless two members share one (same name, different
+// namespaces) -- those become "<namespace>-<name>" so neither is dropped.
+func FlatNames(members []*artifact.Artifact) map[*artifact.Artifact]string {
+	count := map[string]int{}
+	for _, m := range members {
+		count[string(m.Kind)+"/"+m.Name]++
+	}
+	out := make(map[*artifact.Artifact]string, len(members))
+	for _, m := range members {
+		if count[string(m.Kind)+"/"+m.Name] > 1 && m.Namespace != "" {
+			out[m] = m.Namespace + "-" + m.Name
+		} else {
+			out[m] = m.Name
+		}
+	}
+	return out
+}
+
 var exporters = map[string]Exporter{}
 
 // Register makes an Exporter available via GetExporter. Called from an

@@ -108,7 +108,14 @@ func copyFile(src, dst string) error {
 // ZipDir packages srcDir as srcDir+".zip", with srcDir's base name as the
 // single top-level folder inside the archive.
 func ZipDir(srcDir string) (string, error) {
-	zipPath := srcDir + ".zip"
+	return ZipDirTo(srcDir, srcDir+".zip", true)
+}
+
+// ZipDirTo packages srcDir as the archive zipPath. With withBase, srcDir's
+// base name is the single top-level folder inside (the shape a single
+// skill's .zip/.skill upload expects); without it, srcDir's children sit at
+// the archive root (a bundle of several skill folders).
+func ZipDirTo(srcDir, zipPath string, withBase bool) (string, error) {
 	zf, err := os.Create(zipPath)
 	if err != nil {
 		return "", fmt.Errorf("creating %s: %w", zipPath, err)
@@ -130,7 +137,11 @@ func ZipDir(srcDir string) (string, error) {
 		if err != nil {
 			return err
 		}
-		w, err := zw.Create(filepath.ToSlash(filepath.Join(base, rel)))
+		entry := rel
+		if withBase {
+			entry = filepath.Join(base, rel)
+		}
+		w, err := zw.Create(filepath.ToSlash(entry))
 		if err != nil {
 			return err
 		}

@@ -24,11 +24,10 @@ var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$`)
 // (e.g. a tool's "entrypoint", a hook's "events") round-trip through Extra
 // so the parser doesn't need a separate struct per kind.
 type Frontmatter struct {
-	Kind        Kind     `yaml:"kind"`
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Version     string   `yaml:"version,omitempty"`
-	Targets     []string `yaml:"targets,omitempty"`
+	Kind        Kind   `yaml:"kind"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	Version     string `yaml:"version,omitempty"`
 	// Namespace optionally scopes an artifact under a team/org prefix (e.g.
 	// "team-a"), so two projects (or two teams within one registry) can
 	// each have their own "csv-analyzer" without colliding. When set, the
@@ -86,6 +85,16 @@ func (a *Artifact) QualifiedName() string {
 		return a.Name
 	}
 	return a.Namespace + "/" + a.Name
+}
+
+// DisplayName is QualifiedName in the form users see: "@namespace/name" for a
+// namespaced artifact (e.g. one imported from a plugin), else just Name. Only
+// QualifiedName ("namespace/name") is a valid on-disk/CLI reference.
+func (a *Artifact) DisplayName() string {
+	if a.Namespace == "" {
+		return a.Name
+	}
+	return "@" + a.Namespace + "/" + a.Name
 }
 
 // Validate checks that an artifact's required fields are present and

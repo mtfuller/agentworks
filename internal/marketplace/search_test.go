@@ -52,7 +52,7 @@ func withMarketplaceTestServers(t *testing.T, marketplaceBody, agentSkillsBody s
 func TestSearchFiltersByNameAndDescription(t *testing.T) {
 	withMarketplaceTestServers(t, testMarketplaceJSON, testAgentSkillsJSON, http.StatusOK, http.StatusOK)
 
-	results, errs := Search(context.Background(), "pdf")
+	results, errs := Search(context.Background(), "pdf", Options{})
 	if len(errs) != 0 {
 		t.Fatalf("Search() errs = %v, want none", errs)
 	}
@@ -64,7 +64,7 @@ func TestSearchFiltersByNameAndDescription(t *testing.T) {
 		t.Fatalf("Search(pdf) results = %v, want 2 matches", names)
 	}
 
-	noMatch, errs := Search(context.Background(), "nonexistent-query-xyz")
+	noMatch, errs := Search(context.Background(), "nonexistent-query-xyz", Options{})
 	if len(errs) != 0 {
 		t.Fatalf("Search() errs = %v, want none", errs)
 	}
@@ -81,7 +81,7 @@ func TestSearchFiltersByNameAndDescription(t *testing.T) {
 func TestSearchSetsOrigin(t *testing.T) {
 	withMarketplaceTestServers(t, testMarketplaceJSON, testAgentSkillsJSON, http.StatusOK, http.StatusOK)
 
-	results, _ := Search(context.Background(), "")
+	results, _ := Search(context.Background(), "", Options{})
 	origins := map[string]bool{}
 	for _, r := range results {
 		origins[r.Origin] = true
@@ -97,7 +97,7 @@ func TestSearchSetsOrigin(t *testing.T) {
 func TestSearchReturnsPartialResultsWhenASourceFails(t *testing.T) {
 	withMarketplaceTestServers(t, testMarketplaceJSON, "", http.StatusOK, http.StatusInternalServerError)
 
-	results, errs := Search(context.Background(), "")
+	results, errs := Search(context.Background(), "", Options{})
 	if len(errs) != 1 {
 		t.Fatalf("Search() errs = %v, want exactly 1 (agentskills.codes down)", errs)
 	}
@@ -122,7 +122,7 @@ func TestSearchSkipsUnresolvableEntries(t *testing.T) {
 	]}`
 	withMarketplaceTestServers(t, body, testAgentSkillsJSON, http.StatusOK, http.StatusOK)
 
-	results, errs := Search(context.Background(), "")
+	results, errs := Search(context.Background(), "", Options{})
 	if len(errs) != 0 {
 		t.Fatalf("Search() errs = %v, want none (an unresolvable entry is skipped, not an error)", errs)
 	}

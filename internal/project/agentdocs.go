@@ -84,16 +84,18 @@ these commands over hand-writing or hand-editing files under ` + "`agents/`" + `
   frontmatter (no path runs every artifact that declares one).
 - ` + "`agentworks targets`" + ` — capability matrix of which vendor targets support which
   artifact kinds, and whether a real exporter exists for that combination.
-- ` + "`agentworks export <path> --target <id>`" + ` — export one artifact to a vendor's
-  native format (e.g. ` + "`--target claude-code`" + `, ` + "`--target github-copilot`" + `,
-  ` + "`--target chatgpt`" + `, ` + "`--target m365-copilot`" + `). Use ` + "`--all`" + ` or ` + "`--kind <kind>`" + `
-  instead of a path to export the whole project (or one kind of it) in one call. Pass
-  several paths, or one path with ` + "`--bundle <name>`" + `, to package multiple artifacts
-  into a single plugin (` + "`claude-code`" + `/` + "`github-copilot`" + ` only).
+- ` + "`agentworks export`" + ` — bundle the whole project into a plugin for each target in
+  ` + "`agentworks.yaml`" + `'s ` + "`targets:`" + ` (override with ` + "`--target <id>`" + `). ` + "`--namespace <ns>`" + ` bundles
+  one plugin per listed namespace instead (` + "`.`" + ` = your own un-namespaced artifacts);
+  ` + "`--format skills.zip`" + ` / ` + "`--format skill`" + ` export every skill as one .zip or as
+  individual .skill files, no target needed. Targets are project-level: artifacts don't
+  declare their own.
 - ` + "`agentworks add <url>`" + ` — import a published Agent Skill or Claude Code plugin
   into this project (the reverse of export). Accepts a GitHub ` + "`owner/repo`" + `
-  shorthand, a repo/tree/blob URL, or a direct archive URL. With no argument in an
-  interactive terminal, opens the marketplace search TUI instead.
+  shorthand, a repo/tree/blob URL, or a direct archive URL. Imports are filed under a
+  namespace (the GitHub owner by default, ` + "`--namespace`" + ` to override) so they stay
+  distinct from your own artifacts. With no argument in an interactive terminal, opens
+  the plugin browser TUI instead.
 - ` + "`agentworks marketplace`" + ` — publish this whole project as a plugin marketplace
   repo: exports every artifact into committed ` + "`plugins/`" + ` directories (bundled one
   per namespace, or ` + "`--single`" + ` for one plugin total) and writes
@@ -101,7 +103,7 @@ these commands over hand-writing or hand-editing files under ` + "`agents/`" + `
   team can add this repo directly as a plugin source instead of installing artifacts
   one at a time.
 - ` + "`agentworks tui`" + ` — full-screen browser for all of the above: drill into an
-  artifact, then ` + "`n`" + `ew/` + "`e`" + `xport/` + "`t`" + `est/` + "`a`" + `dd/` + "`b`" + `rowse-templates without
+  artifact, then ` + "`n`" + `ew/` + "`e`" + `xport/` + "`t`" + `est/` + "`p`" + `lugins (browse)/` + "`b`" + `rowse-templates without
   dropping back to individual CLI calls.
 
 Global flags: ` + "`-p, --project`" + ` (path inside the project to operate on, default
@@ -117,8 +119,8 @@ Global flags: ` + "`-p, --project`" + ` (path inside the project to operate on, 
    ` + "`events`" + `/` + "`command`" + ` set together, a tool's ` + "`auth`" + ` requiring ` + "`command`" + `).
 3. ` + "`agentworks build <path>`" + ` if the artifact declares a ` + "`build:`" + ` command.
 4. ` + "`agentworks test <path>`" + ` if the artifact declares a ` + "`test:`" + ` command.
-5. ` + "`agentworks export <path> --target <id>`" + ` for each vendor this artifact needs
-   to ship to. Never hand-edit the exported output — re-export instead.
+5. ` + "`agentworks export`" + ` to ship to the project's configured targets. Never
+   hand-edit the exported output — re-export instead.
 `
 
 // writeAgentDocs writes AGENTS.md and the .agents/skills/agentworks-cli/

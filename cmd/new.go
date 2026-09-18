@@ -9,7 +9,6 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/color"
-	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/scaffold"
 	"github.com/mtfuller/agentworks/internal/tui"
 )
@@ -17,7 +16,6 @@ import (
 var (
 	newDescription  string
 	newVersion      string
-	newTargetsFlag  []string
 	newFromTemplate string
 )
 
@@ -50,33 +48,21 @@ interactive terminal and a short wizard fills in the rest.`),
 			name = args[1]
 		}
 		description := newDescription
-		targetList := newTargetsFlag
-		if len(targetList) == 0 {
-			if m, err := project.Load(root); err == nil {
-				targetList = m.Targets
-			}
-		}
 
 		if needsInteractiveWizard(kindStr, name, description, newFromTemplate) {
 			if !isInteractive() {
 				return fmt.Errorf("kind, name, and --description are required (or run this command interactively)")
 			}
-			// targetList is already the project's default at this point
-			// (unless --target overrode it above), so the wizard's Targets
-			// field opens pre-checked instead of blank -- accepting the
-			// form as-is just uses the project's default, no need to
-			// re-pick it for every artifact.
 			answers, err := tui.RunNewArtifactWizard(tui.NewArtifactAnswers{
 				Kind:        kindStr,
 				Name:        name,
 				Description: description,
-				Targets:     targetList,
 				Template:    newFromTemplate,
 			})
 			if err != nil {
 				return fmt.Errorf("cancelled: %w", err)
 			}
-			kindStr, name, description, targetList = answers.Kind, answers.Name, answers.Description, answers.Targets
+			kindStr, name, description = answers.Kind, answers.Name, answers.Description
 		}
 
 		kind, err := artifact.ParseKind(kindStr)
@@ -89,7 +75,6 @@ interactive terminal and a short wizard fills in the rest.`),
 		a, err := scaffold.New(root, kind, name, scaffold.Options{
 			Description: description,
 			Version:     newVersion,
-			Targets:     targetList,
 			Template:    newFromTemplate,
 		})
 		if err != nil {
@@ -134,6 +119,5 @@ func init() {
 	rootCmd.AddCommand(newCmd)
 	newCmd.Flags().StringVar(&newDescription, "description", "", "one-line description of the artifact")
 	newCmd.Flags().StringVar(&newVersion, "version", "", "artifact version (default: 0.1.0)")
-	newCmd.Flags().StringSliceVar(&newTargetsFlag, "target", nil, "vendor target(s) this artifact supports (repeatable; default: project's default targets)")
 	newCmd.Flags().StringVar(&newFromTemplate, "from-template", "", "scaffold from a built-in starter template (see 'agentworks templates')")
 }
