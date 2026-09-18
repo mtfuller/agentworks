@@ -165,6 +165,15 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   common to every plugin they produce (the manifest writer, `writeMCPFile`) — `agent.go`
   and `workflow.go` both call the same `write*AgentFile` helper so a subagent file looks
   identical whether it's exported standalone or bundled into a workflow.
+
+  `cursor` and `geminicli` follow the same one-file-per-kind `export.go` dispatch shape,
+  but neither has a `plugin.go` — Cursor's and Gemini CLI's real formats are loose,
+  project-scoped files/directories, not an installable plugin, so there's no shared
+  manifest writer to factor out (Gemini CLI's `manifest.go` is its own thing, a
+  `gemini-extension.json` writer, not a plugin manifest). Both still reuse
+  `mcpconfig.ServerFor` for tool export and `filecopy.CopyArtifactFiles` for a skill's
+  supporting files — see "Cursor and Gemini CLI: what's real vs. deferred" below for the
+  full per-kind mapping and researched reasoning.
 - **`internal/tui`** — the Bubble Tea project browser (`model.go`/`app.go`), the
   create/export actions it drives (`actions.go`, `export_form.go`), the test action
   (`test_action.go`), and the `huh`-based create-artifact wizard (`wizard.go`) shared
@@ -211,7 +220,7 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
 ### What's real vs. deferred
 
 Implemented: the project/artifact model, scaffolding for all 5 kinds, project-wide
-discovery/test-running, the vendor capability matrix, and real exporters for all four
+discovery/test-running, the vendor capability matrix, and real exporters for all six
 registered targets. `validate` checks each kind's export-readiness, not just the four
 generic fields `Artifact.Validate()` covers — a workflow's `steps:` resolve to real
 artifacts, a hook's `events`/`command` are set together, a tool with `auth` also has a
@@ -222,7 +231,10 @@ as a subagent-file plugin, hooks as a lifecycle-event plugin, and workflows as a
 plugin composing the others via `workflowsteps`. `chatgpt` exports skills only, by
 deliberate, researched decision (see "ChatGPT: why skills only" below), not because
 nobody's gotten to it. `m365-copilot` exports skills and agents as a declarative-agent
-app package. Also implemented: the Bubble Tea browser + `new` wizard.
+app package. `cursor` and `gemini-cli` each export skill/agent/tool/hook as loose,
+project-scoped files rather than a plugin (see "Cursor and Gemini CLI: what's real vs.
+deferred" below) — workflow is unsupported on both, same as `chatgpt`/`m365-copilot`.
+Also implemented: the Bubble Tea browser + `new` wizard.
 
 Deliberately deferred (do this later, not by accident while doing something else):
 exporting `hook`/`tool`/`workflow` on `m365-copilot` (the registry's capability matrix
@@ -449,6 +461,64 @@ researched yet":
 If this changes — a stable, documented, file-based ChatGPT format emerges — re-open the
 investigation then; don't assume today's reasoning still holds without checking, this
 area was unusually volatile even within the week it was researched.
+
+### Cursor and Gemini CLI: what's real vs. deferred
+
+Researched (Sept 2026, against cursor.com/docs and geminicli.com/
+github.com/google-gemini/gemini-cli) whether Cursor and Gemini CLI could be added as
+export targets the same way `chatgpt`/`m365-copilot` were. Unlike ChatGPT, both have a
+real, confirmed, file-based format for most kinds — see
+`internal/targets/cursor`/`internal/targets/geminicli`. Neither has a plugin/bundle
+format like Claude Code or GitHub Copilot, though: every kind maps to a loose,
+project-scoped file or directory instead of an installable package.
+
+**Cursor** (`internal/targets/cursor`):
+- **Skill** → a project rule, `.cursor/rules/<name>.mdc` (YAML frontmatter
+  `description`/`alwaysApply: false` + Markdown body), since Cursor has no native Agent
+  Skills/SKILL.md support. The skill's own supporting files are copied alongside it so
+  its instructions can still reference them by the same relative paths.
+- **Agent** → a real subagent file, `.cursor/agents/<name>.md`. Only `name`/`description`
+  are populated — deliberately deferred, not overlooked: Cursor's docs don't confirm a
+  `tools:` allowlist field on subagents at all, and `model:` only accepts `inherit` or a
+  literal, fast-moving model ID with no documented stable tier alias, so there's nothing
+  honest for `agentcaps` to map to yet (the same call already made for GitHub Copilot's
+  agent export). Re-open once Cursor documents either.
+- **Tool** → `.cursor/mcp.json`, confirmed identical in shape to Claude Desktop's
+  `claude_desktop_config.json` — reuses `mcpconfig.ServerFor` directly.
+- **Hook** → `.cursor/hooks.json`. AgentWorks' hook artifact events are already
+  vendor-shaped, not translated (see `claudecode/hook.go` above) — a hook targeting
+  Cursor is expected to use Cursor's own event names (`beforeShellExecution`,
+  `afterFileEdit`, `preToolUse`, ...), unrelated to Claude Code's or Gemini CLI's.
+- **Workflow** → unsupported. No plugin/bundle/orchestration format exists; everything
+  above is loose per-project config, not an installable package.
+
+**Gemini CLI** (`internal/targets/geminicli`):
+- **Skill** → a Gemini CLI **extension** directory (`gemini-extension.json` manifest +
+  `GEMINI.md` context file + supporting files) — a real, distributable, installable
+  unit, the closest analog Gemini CLI has to a Claude Code plugin-wrapped skill.
+- **Agent** → a real subagent file, `.gemini/agents/<name>.md`, with a real `tools:`
+  array and `model:` mapping (`agentcaps.ForGeminiCLI`) — unlike Cursor, Gemini CLI
+  documents both a real built-in tool-name vocabulary (`read_file`, `write_file`,
+  `run_shell_command`, `web_search`, ...) and real evergreen model aliases
+  (`gemini-flash-lite-latest`/`gemini-flash-latest`/`gemini-pro-latest` — Google's own
+  stable, deliberately hot-swapped pointers, the same kind of tier alias `ForClaudeCode`
+  already uses for `haiku`/`sonnet`/`opus`), so there's something honest to map to.
+- **Tool** → an extension's `gemini-extension.json` with only its `mcpServers` field
+  populated (no `GEMINI.md` needed for a bare tool) — same server shape as
+  Cursor/Claude Code, just nested under the manifest instead of a bare top-level file.
+- **Hook** → a `.gemini/settings.json` *fragment* (just the `hooks` key), not a complete
+  file. Gemini CLI hooks live only in `settings.json`, shared with unrelated user/project
+  settings — there's no extension-scoped hook format to write a self-contained artifact
+  to, so the output is meant to be merged in by hand, the same "AgentWorks produces an
+  artifact, never edits your live project" posture a bare tool's `.mcp.json`-shaped
+  output already has elsewhere. Event names are raw-passthrough, same reasoning as
+  Cursor's hooks above.
+- **Workflow** → unsupported. No orchestration/composition primitive exists beyond a
+  single extension's own commands.
+
+If either vendor ships a real plugin/bundle format, or documents a stable
+tools/model mapping for Cursor agents, re-open the relevant gap then — don't assume
+today's reasoning still holds without checking.
 
 ## Conventions
 

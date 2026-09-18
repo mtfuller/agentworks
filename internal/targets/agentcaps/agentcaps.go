@@ -4,9 +4,12 @@
 // frontmatter, plus the per-vendor mapping functions that turn them into
 // each target's real, native shape (Claude Code's comma-separated `tools:`
 // allowlist + `model:` alias, Microsoft 365's declarative-agent
-// `capabilities` array). GitHub Copilot's custom-agent frontmatter has no
-// publicly confirmed tools/model fields yet, so there's deliberately no
-// ForGitHubCopilot here -- see internal/targets/githubcopilot/agent.go.
+// `capabilities` array, Gemini CLI's `tools:` array + `model:` alias).
+// GitHub Copilot's custom-agent frontmatter has no publicly confirmed
+// tools/model fields yet, so there's deliberately no ForGitHubCopilot here
+// -- see internal/targets/githubcopilot/agent.go. Cursor's subagent
+// frontmatter is in the same position (no `tools:` field, no stable model
+// alias) -- see internal/targets/cursor/agent.go.
 //
 // Tiers and curated tool categories are used instead of literal per-vendor
 // tool/model names so the mapping stays valid as vendors rename or add
@@ -112,6 +115,55 @@ func ForClaudeCode(tools []string, model string) (toolsField, modelField string)
 		modelField = "sonnet"
 	case ModelPowerful:
 		modelField = "opus"
+	}
+	return toolsField, modelField
+}
+
+// ForGeminiCLI maps AgentWorks' vendor-agnostic tools/model to Gemini CLI's
+// real subagent frontmatter shape: a "tools:" array of Gemini CLI's actual
+// built-in tool names (see
+// https://geminicli.com/docs/core/subagents/) and a "model:" field. Unlike
+// Cursor (see internal/targets/cursor/agent.go), Gemini CLI documents both
+// a real tools array and real evergreen model aliases
+// ("gemini-flash-lite-latest"/"gemini-flash-latest"/"gemini-pro-latest" --
+// Google's own stable, deliberately hot-swapped pointers, the same kind of
+// tier alias ForClaudeCode already uses for "haiku"/"sonnet"/"opus"), so
+// there's something honest to map to. Empty/unrecognized input on either
+// side yields an empty return value, matching ForClaudeCode's own "omit the
+// field, let the vendor's default apply" behavior.
+func ForGeminiCLI(tools []string, model string) (toolsField []string, modelField string) {
+	seen := map[string]bool{}
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			toolsField = append(toolsField, name)
+		}
+	}
+	for _, t := range tools {
+		switch t {
+		case ReadFiles:
+			add("read_file")
+			add("glob")
+			add("grep_search")
+		case EditFiles:
+			add("write_file")
+			add("replace")
+		case RunCommands, CodeExecution:
+			add("run_shell_command")
+		case WebSearch:
+			add("web_search")
+			add("web_fetch")
+		}
+	}
+	sort.Strings(toolsField)
+
+	switch model {
+	case ModelFast:
+		modelField = "gemini-flash-lite-latest"
+	case ModelBalanced:
+		modelField = "gemini-flash-latest"
+	case ModelPowerful:
+		modelField = "gemini-pro-latest"
 	}
 	return toolsField, modelField
 }

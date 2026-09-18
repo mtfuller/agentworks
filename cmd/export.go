@@ -17,6 +17,8 @@ import (
 
 	_ "github.com/mtfuller/agentworks/internal/targets/chatgpt"
 	_ "github.com/mtfuller/agentworks/internal/targets/claudecode"
+	_ "github.com/mtfuller/agentworks/internal/targets/cursor"
+	_ "github.com/mtfuller/agentworks/internal/targets/geminicli"
 	_ "github.com/mtfuller/agentworks/internal/targets/githubcopilot"
 )
 
