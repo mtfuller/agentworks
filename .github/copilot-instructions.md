@@ -2,8 +2,8 @@ You are a knowledgeable software engineer familiar with best practices for build
 
 ## Project summary
 - AgentWorks: a local-first, vendor-agnostic tool for building agent contexts, skills,
-  tools, and hooks — author once, export to the harnesses you actually use (Claude Code,
-  ChatGPT, GitHub Copilot, Microsoft 365 Copilot, and others).
+  MCP servers, and hooks — author once, export to the harnesses you actually use (Claude Code,
+  ChatGPT, GitHub Copilot, Cursor, Gemini CLI).
 - A CLI (Cobra-based) for authoring, testing, validating, and exporting agent artifacts
   as plain files in a project directory, versioned and diffable, no vendor lock-in.
 - Distinguishes core capabilities (portable across every target) from vendor-specific
@@ -26,7 +26,7 @@ You are a knowledgeable software engineer familiar with best practices for build
 - Structured logging with levels (DEBUG, INFO, WARN, ERROR)
 - Colored terminal output for better UX
 - Commands support flags and arguments via Cobra's flag system
-- Vendor-agnostic-first: model artifacts (agents, skills, tools, hooks) independent of
+- Vendor-agnostic-first: model artifacts (agents, skills, MCP servers, hooks) independent of
   any single vendor's format, then transform to target-specific output on export
 
 ## Development conventions

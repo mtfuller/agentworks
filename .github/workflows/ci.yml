@@ -23,8 +23,20 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Format
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
       - name: Vet
         run: go vet ./...
 
       - name: Test (race)
         run: go test -race ./...
+
+      # Dogfood the CI gates on the example project, so a change that would
+      # break them for a real project fails here first.
+      - name: Check the example project
+        run: |
+          go build -o "$RUNNER_TEMP/agentworks" .
+          cd examples/starter-project
+          "$RUNNER_TEMP/agentworks" validate --strict
+          "$RUNNER_TEMP/agentworks" doctor
