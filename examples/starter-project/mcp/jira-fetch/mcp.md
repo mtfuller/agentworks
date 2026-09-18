@@ -1,5 +1,5 @@
 ---
-kind: tool
+kind: mcp
 name: jira-fetch
 description: Fetch a Jira ticket and extract feature-relevant information.
 version: 0.1.0

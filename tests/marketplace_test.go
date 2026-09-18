@@ -23,29 +23,17 @@ func runAgentworks(t *testing.T, args ...string) string {
 }
 
 // setUpMarketplaceProject scaffolds a project with two unnamespaced
-// artifacts and two "team-a"-namespaced artifacts, giving the tool a real
-// command so it's export-ready.
+// artifacts and two "team-a"-namespaced artifacts. The mcp scaffold is a
+// runnable server, so it's export-ready as generated.
 func setUpMarketplaceProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	runAgentworks(t, "init", dir)
 	runAgentworks(t, "new", "skill", "csv-analyzer", "--description", "Analyze a CSV file and flag rows that stand out.", "--project", dir)
-	runAgentworks(t, "new", "tool", "jira-fetch", "--description", "Fetch a Jira ticket by key over the REST API.", "--project", dir)
+	runAgentworks(t, "new", "mcp", "jira-fetch", "--description", "Fetch a Jira ticket by key over the REST API.", "--project", dir)
 	runAgentworks(t, "new", "skill", "team-a/reviewer", "--description", "Review a pull request diff before a human looks at it.", "--project", dir)
 	runAgentworks(t, "new", "agent", "team-a/triager", "--description", "Triage an incoming support ticket and assign it a priority.", "--project", dir)
 
-	toolPath := filepath.Join(dir, "tools", "jira-fetch", "tool.md")
-	data, err := os.ReadFile(toolPath)
-	if err != nil {
-		t.Fatalf("reading %s: %v", toolPath, err)
-	}
-	fixed := bytes.Replace(data, []byte(`command: ""`), []byte(`command: "python3 src/main.py"`), 1)
-	if bytes.Equal(fixed, data) {
-		t.Fatalf("didn't find command: \"\" to replace in %s", toolPath)
-	}
-	if err := os.WriteFile(toolPath, fixed, 0o644); err != nil {
-		t.Fatalf("writing %s: %v", toolPath, err)
-	}
 	return dir
 }
 

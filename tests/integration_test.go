@@ -124,7 +124,7 @@ func TestCLIDoctorStrictFailsOnMissingAuth(t *testing.T) {
 // inspector's full-screen UI when stdin isn't a real terminal -- as it
 // never is when go test execs the CLI -- rather than attempting it and
 // hanging or corrupting the test runner's own output. A real end-to-end
-// run of the inspector against examples/starter-project's jira-fetch tool
+// run of the inspector against examples/starter-project's jira-fetch mcp server
 // isn't practical to drive here; internal/mcpclient and internal/inspector
 // carry that coverage in their own unit tests instead (see AGENTS.md).
 func TestCLIRunNeedsInteractiveTerminal(t *testing.T) {
@@ -132,7 +132,7 @@ func TestCLIRunNeedsInteractiveTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("filepath.Abs(main.go) error = %v", err)
 	}
-	cmd := exec.Command("go", "run", mainGo, "run", "tools/jira-fetch")
+	cmd := exec.Command("go", "run", mainGo, "run", "mcp/jira-fetch")
 	cmd.Dir = "../examples/starter-project"
 	var out bytes.Buffer
 	cmd.Stdout = &out
