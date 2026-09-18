@@ -29,12 +29,6 @@ type Manifest struct {
 	// only place targets are configured -- artifacts don't carry their own
 	// -- and `agentworks export` falls back to it when --target isn't given.
 	Targets []string `yaml:"targets,omitempty"`
-	// Publisher is optional project-level publishing identity, currently
-	// read by the m365-copilot exporter for its app manifest's developer
-	// block (see internal/targets/m365copilot). Left unset, exports fall
-	// back to clearly-labeled placeholder values a human has to find and
-	// edit before submitting anywhere -- setting it here means they don't.
-	Publisher *Publisher `yaml:"publisher,omitempty"`
 	// Eval is optional project-level eval configuration, currently just a
 	// default runner command for `agentworks eval` (see internal/evalspec)
 	// when an individual artifact doesn't declare its own "eval_runner".
@@ -48,17 +42,6 @@ type EvalConfig struct {
 	// prompt to when an artifact doesn't declare its own "eval_runner"
 	// frontmatter field.
 	DefaultRunner string `yaml:"default_runner,omitempty"`
-}
-
-// Publisher is a project's publishing identity: who's shipping the
-// artifacts it exports, for vendor formats that require that (currently
-// just m365-copilot's Teams-style app manifest).
-type Publisher struct {
-	Name        string `yaml:"name,omitempty"`
-	Website     string `yaml:"website,omitempty"`
-	PrivacyURL  string `yaml:"privacy_url,omitempty"`
-	TermsURL    string `yaml:"terms_url,omitempty"`
-	AccentColor string `yaml:"accent_color,omitempty"`
 }
 
 // gitignoreTemplate is the .gitignore a new project starts with: regenerable

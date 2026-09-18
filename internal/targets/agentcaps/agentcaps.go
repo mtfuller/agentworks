@@ -3,8 +3,7 @@
 // "tools" capabilities and "model" tiers set via an agent artifact's
 // frontmatter, plus the per-vendor mapping functions that turn them into
 // each target's real, native shape (Claude Code's comma-separated `tools:`
-// allowlist + `model:` alias, Microsoft 365's declarative-agent
-// `capabilities` array, Gemini CLI's `tools:` array + `model:` alias).
+// allowlist + `model:` alias, Gemini CLI's `tools:` array + `model:` alias).
 // GitHub Copilot's custom-agent frontmatter has no publicly confirmed
 // tools/model fields yet, so there's deliberately no ForGitHubCopilot here
 // -- see internal/targets/githubcopilot/agent.go. Cursor's subagent
@@ -13,8 +12,8 @@
 //
 // Tiers and curated tool categories are used instead of literal per-vendor
 // tool/model names so the mapping stays valid as vendors rename or add
-// models and tools -- the same reasoning already applied to the ChatGPT and
-// M365 publisher decisions elsewhere in this codebase.
+// models and tools -- the same reasoning already applied to the ChatGPT
+// decision elsewhere in this codebase.
 package agentcaps
 
 import (
@@ -24,7 +23,7 @@ import (
 
 // Tool identifiers in AgentWorks' vendor-agnostic vocabulary, set via an
 // agent artifact's "tools:" frontmatter field (a YAML list). Not every
-// vendor has a real equivalent for every one of these -- see ForM365Capabilities.
+// vendor has a real equivalent for every one of these.
 const (
 	ReadFiles     = "read-files"
 	EditFiles     = "edit-files"
@@ -166,33 +165,4 @@ func ForGeminiCLI(tools []string, model string) (toolsField []string, modelField
 		modelField = "gemini-pro-latest"
 	}
 	return toolsField, modelField
-}
-
-// ForM365Capabilities maps AgentWorks' vendor-agnostic tools to Microsoft
-// 365 declarative-agent capability names (see
-// https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/declarative-agent-manifest-1.8).
-// Only "web-search" and "code-execution" have a real declarative-agent
-// equivalent (WebSearch, CodeInterpreter) -- declarative agents have no
-// local filesystem or shell-execution concept, so read-files/edit-files/
-// run-commands intentionally map to nothing here. That's a deliberate
-// partial mapping, the same "not every vendor supports every capability"
-// shape as internal/targets.Target.Supports, not a bug to fix later.
-func ForM365Capabilities(tools []string) []string {
-	seen := map[string]bool{}
-	var caps []string
-	add := func(name string) {
-		if !seen[name] {
-			seen[name] = true
-			caps = append(caps, name)
-		}
-	}
-	for _, t := range tools {
-		switch t {
-		case WebSearch:
-			add("WebSearch")
-		case CodeExecution:
-			add("CodeInterpreter")
-		}
-	}
-	return caps
 }

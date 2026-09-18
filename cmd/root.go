@@ -20,7 +20,7 @@ var rootCmd = &cobra.Command{
 	Short: "A local-first, vendor-agnostic tool for building agent contexts, skills, tools, and hooks",
 	Long: color.Bold("agentworks") + ` is a local-first, vendor-agnostic platform for authoring agents,
 skills, tools, and hooks once and exporting them to the harnesses you actually use
-(Claude Code, ChatGPT, GitHub Copilot, Microsoft 365 Copilot, and others).
+(Claude Code, ChatGPT, GitHub Copilot, Cursor, Gemini CLI, and others).
 
 Author artifacts as plain files in a project directory, test and validate them
 locally, then export versioned, target-specific bundles (skill zips, plugins,

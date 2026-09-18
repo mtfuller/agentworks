@@ -21,12 +21,6 @@ import (
 // makes its members available together, it doesn't sequence them -- and
 // members can be any of agent/skill/tool/hook, not just agent/tool.
 func (exporter) ExportBundle(name, description string, artifacts []*artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
-	for _, m := range artifacts {
-		if m.Kind == artifact.KindWorkflow {
-			return "", fmt.Errorf("%s: a workflow can't be a bundle member -- export it on its own instead", m.Name)
-		}
-	}
-
 	pluginDir := filepath.Join(outDir, name)
 	if err := os.RemoveAll(pluginDir); err != nil {
 		return "", fmt.Errorf("clearing %s: %w", pluginDir, err)

@@ -1,25 +1,24 @@
 // Package artifact defines AgentWorks' vendor-agnostic artifact model: the
-// in-memory representation of an agent, skill, tool, hook, or workflow, and
+// in-memory representation of an agent, skill, tool, or hook, and
 // the on-disk <kind>.md (YAML frontmatter + Markdown body) format it's
 // loaded from and saved to.
 package artifact
 
 import "fmt"
 
-// Kind identifies which of the five artifact types an artifact is.
+// Kind identifies which of the four artifact types an artifact is.
 type Kind string
 
 const (
-	KindAgent    Kind = "agent"
-	KindSkill    Kind = "skill"
-	KindTool     Kind = "tool"
-	KindHook     Kind = "hook"
-	KindWorkflow Kind = "workflow"
+	KindAgent Kind = "agent"
+	KindSkill Kind = "skill"
+	KindTool  Kind = "tool"
+	KindHook  Kind = "hook"
 )
 
 // Kinds returns every known artifact kind, in a stable order.
 func Kinds() []Kind {
-	return []Kind{KindAgent, KindSkill, KindTool, KindHook, KindWorkflow}
+	return []Kind{KindAgent, KindSkill, KindTool, KindHook}
 }
 
 // Valid reports whether k is one of the known kinds.

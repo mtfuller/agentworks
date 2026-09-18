@@ -6,7 +6,6 @@ version: 0.1.0
 targets:
   - claude-code
   - chatgpt
-  - m365-copilot
 entrypoint: scripts/main.py
 test: python3 -m unittest discover -s tests -p "test_*.py"
 ---

@@ -26,7 +26,7 @@ const marketplaceGHSchema = "https://agent-plugins.org/schemas/1.0.0/marketplace
 // marketplaceTarget is one vendor this command knows how to publish a
 // repo-level marketplace.json for. Only claude-code and github-copilot
 // share the marketplace.json convention (see internal/marketplace's
-// WellKnown) -- chatgpt and m365-copilot have no such concept.
+// WellKnown) -- chatgpt has no such concept.
 type marketplaceTarget struct {
 	id           string
 	manifestPath string // project-root-relative
@@ -57,8 +57,7 @@ claude-code, .github/plugin/marketplace.json for github-copilot (see
 Skills, agents, tools, and hooks are grouped into one bundled plugin per
 namespace (unnamespaced artifacts land in one plugin named after the
 project) -- pass --single to collapse all of them into one plugin
-regardless of namespace. Workflows always export as their own plugin (a
-workflow can't be a bundle member -- see "agentworks export").
+regardless of namespace.
 
 Re-running this command regenerates --out and both marketplace.json files
 from scratch, so it stays in sync as artifacts are added, removed, or
@@ -149,8 +148,7 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 		color.Warning("%s: no artifacts this target supports -- skipping", mt.id)
 		return nil
 	}
-	workflows, rest := splitWorkflows(supported)
-	groups := groupArtifacts(rest, marketplaceSingle, projectName)
+	groups := groupArtifacts(supported, marketplaceSingle, projectName)
 
 	groupNames := make([]string, 0, len(groups))
 	for name := range groups {
@@ -164,12 +162,6 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 	// flagging first, exactly like a plain `export` does.
 	for _, name := range groupNames {
 		warnIfHandEdited(lf, mt.id, "bundle:"+name)
-	}
-	for _, wf := range workflows {
-		key, err := rootRelKey(root, wf.Dir)
-		if err == nil {
-			warnIfHandEdited(lf, mt.id, key)
-		}
 	}
 
 	targetOut := filepath.Join(pluginsRoot, mt.id)
@@ -205,30 +197,6 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 		color.Success("%s: exported %s (%d artifact(s)) to %s", mt.id, name, len(members), out)
 	}
 
-	for _, wf := range workflows {
-		warnSecurityRisk(wf)
-
-		out, err := exporter.Export(wf, targetOut, targets.ExportOptions{})
-		if err != nil {
-			return fmt.Errorf("%s: exporting workflow %q: %w", mt.id, wf.Name, err)
-		}
-
-		key, err := rootRelKey(root, wf.Dir)
-		if err != nil {
-			return err
-		}
-		if err := recordExport(root, lf, mt.id, key, []string{wf.Dir}, out); err != nil {
-			color.Warning("exported successfully, but failed to record it in %s: %v", lockfile.FileName, err)
-		}
-
-		src, err := marketplaceSourcePath(root, out)
-		if err != nil {
-			return err
-		}
-		entries = append(entries, marketplace.Entry{Name: wf.Name, Description: wf.Description, Source: src})
-		color.Success("%s: exported workflow %s to %s", mt.id, wf.Name, out)
-	}
-
 	manifestPath := filepath.Join(root, mt.manifestPath)
 	if err := marketplace.WriteManifest(manifestPath, mt.schema, projectName, entries); err != nil {
 		return err
@@ -245,17 +213,6 @@ func filterByTarget(all []*artifact.Artifact, targetID string) []*artifact.Artif
 		}
 	}
 	return out
-}
-
-func splitWorkflows(all []*artifact.Artifact) (workflows, rest []*artifact.Artifact) {
-	for _, a := range all {
-		if a.Kind == artifact.KindWorkflow {
-			workflows = append(workflows, a)
-		} else {
-			rest = append(rest, a)
-		}
-	}
-	return workflows, rest
 }
 
 // groupArtifacts buckets skill/agent/tool/hook artifacts into the plugin

@@ -155,24 +155,6 @@ func TestExportBundle(t *testing.T) {
 	}
 }
 
-func TestExportBundleRejectsWorkflowMember(t *testing.T) {
-	root := t.TempDir()
-	if _, err := project.Init(root, "proj", nil); err != nil {
-		t.Fatalf("project.Init() error = %v", err)
-	}
-	wf, err := scaffold.New(root, artifact.KindWorkflow, "wf1", scaffold.Options{Description: "x"})
-	if err != nil {
-		t.Fatalf("scaffold.New(workflow) error = %v", err)
-	}
-	if err := wf.Save(); err != nil {
-		t.Fatalf("Save(workflow) error = %v", err)
-	}
-
-	if _, err := (exporter{}).ExportBundle("bad-kit", "desc", []*artifact.Artifact{wf}, t.TempDir(), targets.ExportOptions{}); err == nil {
-		t.Fatal("ExportBundle() with a workflow member expected error, got nil")
-	}
-}
-
 func TestExportBundleZip(t *testing.T) {
 	members := newTestBundleMembers(t)
 	dest, err := (exporter{}).ExportBundle("demo-kit", "A demo kit.", members, t.TempDir(), targets.ExportOptions{Zip: true})

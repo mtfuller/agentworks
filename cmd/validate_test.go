@@ -85,15 +85,6 @@ func TestValidateKindSpecificTool(t *testing.T) {
 	}
 }
 
-func TestValidateKindSpecificWorkflowMissingStep(t *testing.T) {
-	a := newValidateTestArtifact(t, artifact.KindWorkflow, map[string]any{
-		"steps": []any{map[string]any{"agent": "does-not-exist"}},
-	})
-	if err := validateKindSpecific(a); err == nil {
-		t.Fatal("validateKindSpecific() with a missing referenced agent expected error, got nil")
-	}
-}
-
 func TestValidateKindSpecificSkillAndAgentAreNoOps(t *testing.T) {
 	for _, kind := range []artifact.Kind{artifact.KindSkill, artifact.KindAgent} {
 		a := newValidateTestArtifact(t, kind, nil)

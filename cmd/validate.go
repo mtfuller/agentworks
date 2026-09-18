@@ -12,7 +12,6 @@ import (
 	"github.com/mtfuller/agentworks/internal/evalspec"
 	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/targets/agentcaps"
-	"github.com/mtfuller/agentworks/internal/targets/workflowsteps"
 )
 
 var validateStrict bool
@@ -22,7 +21,7 @@ var validateCmd = &cobra.Command{
 	Short: "Validate artifact frontmatter",
 	Long: `Parse and validate one artifact (by path) or every artifact in the project.
 
-Beyond structural checks (required fields, a workflow's "steps:" resolving,
+Beyond structural checks (required fields,
 etc.), this also lints description quality -- too long, too vague, redundant
 with the name, or overlapping with another artifact's description -- and
 prints those as warnings. Warnings don't fail the command unless --strict is
@@ -107,10 +106,6 @@ func validateKindSpecific(a *artifact.Artifact) error {
 		}
 		if model := a.ExtraString("model"); model != "" && !agentcaps.IsValidModel(model) {
 			return fmt.Errorf("%s: unknown model %q (want one of: %s)", a.Dir, model, strings.Join(agentcaps.ValidModels(), ", "))
-		}
-	case artifact.KindWorkflow:
-		if _, err := workflowsteps.Resolve(a); err != nil {
-			return err
 		}
 	case artifact.KindHook:
 		events := a.ExtraStringSlice("events")

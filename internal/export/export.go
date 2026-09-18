@@ -25,7 +25,6 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets"
 	"github.com/mtfuller/agentworks/internal/targets/agentskills"
 	"github.com/mtfuller/agentworks/internal/targets/filecopy"
-	"github.com/mtfuller/agentworks/internal/targets/m365copilot"
 
 	// Every exporter registers itself with the targets registry from its
 	// package's init(); importing them here means anything that can Run an
@@ -233,13 +232,11 @@ func exportPlugins(req Request, name string, arts []*artifact.Artifact, lf *lock
 		bundler, canBundle := exporter.(targets.BundleExporter)
 
 		for _, g := range groups {
-			var bundleable, workflows []*artifact.Artifact
+			var bundleable, standalone []*artifact.Artifact
 			for _, a := range g.members {
 				switch {
 				case !targets.Supports(target, a.Kind):
 					res.Warnings = append(res.Warnings, fmt.Sprintf("%s: skipping %s (%s) -- %s doesn't support this kind", target, a.DisplayName(), a.Kind, target))
-				case a.Kind == artifact.KindWorkflow:
-					workflows = append(workflows, a)
 				default:
 					bundleable = append(bundleable, a)
 				}
@@ -261,10 +258,10 @@ func exportPlugins(req Request, name string, arts []*artifact.Artifact, lf *lock
 				// No plugin format for this vendor: fall back to one output
 				// per artifact rather than refusing the whole export.
 				res.Warnings = append(res.Warnings, fmt.Sprintf("%s has no plugin format -- exporting each artifact on its own", target))
-				workflows = append(workflows, bundleable...)
+				standalone = append(standalone, bundleable...)
 			}
 
-			for _, a := range workflows {
+			for _, a := range standalone {
 				key, err := RootRelKey(req.Root, a.Dir)
 				if err != nil {
 					failures = append(failures, fmt.Sprintf("%s: %s: %v", target, a.DisplayName(), err))
@@ -277,9 +274,6 @@ func exportPlugins(req Request, name string, arts []*artifact.Artifact, lf *lock
 					continue
 				}
 				res.Outputs = append(res.Outputs, Output{Target: target, Name: a.Name, Path: out, Members: 1})
-				if target == m365copilot.TargetID && m365copilot.UsesPlaceholderPublisher(a) {
-					res.Warnings = append(res.Warnings, fmt.Sprintf("manifest.json inside %s has placeholder developer/privacy/terms URLs -- set a `publisher:` block in agentworks.yaml before submitting to AppSource", out))
-				}
 				res.record(req.Root, lf, target, key, []*artifact.Artifact{a}, out)
 			}
 		}

@@ -92,30 +92,3 @@ func TestForGeminiCLI(t *testing.T) {
 		})
 	}
 }
-
-func TestForM365Capabilities(t *testing.T) {
-	tests := []struct {
-		name  string
-		tools []string
-		want  []string
-	}{
-		{"empty input yields no capabilities", nil, nil},
-		{"web-search maps to WebSearch", []string{WebSearch}, []string{"WebSearch"}},
-		{"code-execution maps to CodeInterpreter", []string{CodeExecution}, []string{"CodeInterpreter"}},
-		{"read-files/edit-files/run-commands have no M365 equivalent", []string{ReadFiles, EditFiles, RunCommands}, nil},
-		{"both mapped capabilities together, deduped", []string{WebSearch, CodeExecution, WebSearch}, []string{"WebSearch", "CodeInterpreter"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ForM365Capabilities(tt.tools)
-			if len(got) != len(tt.want) {
-				t.Fatalf("ForM365Capabilities(%v) = %v, want %v", tt.tools, got, tt.want)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("ForM365Capabilities(%v) = %v, want %v", tt.tools, got, tt.want)
-				}
-			}
-		})
-	}
-}

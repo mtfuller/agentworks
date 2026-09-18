@@ -134,24 +134,6 @@ Set ` + "`events`" + ` and ` + "`command`" + ` in this file's frontmatter to des
 what triggers this hook and what it runs.
 `,
 	},
-	artifact.KindWorkflow: {
-		extra: func(name string) map[string]any {
-			return map[string]any{"steps": []map[string]string{}}
-		},
-		bodyTmpl: `# {{.Title}}
-
-{{.Description}}
-
-List the agents/tools this workflow composes, in order, under ` + "`steps`" + ` in
-this file's frontmatter, e.g.:
-
-` + "```yaml" + `
-steps:
-  - agent: researcher
-  - tool: jira-fetch
-` + "```" + `
-`,
-	},
 }
 
 // New scaffolds a new artifact of the given kind under root (a project's

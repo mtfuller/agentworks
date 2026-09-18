@@ -47,7 +47,7 @@ agentworks.yaml; pass --target (repeatable) to override it for one run.
 
 The skill formats are vendor-neutral and need no target. Pass paths to
 export only those artifacts rather than the whole project. Vendors with no
-plugin format (chatgpt, cursor, gemini-cli, m365-copilot) get each artifact
+plugin format (chatgpt, cursor, gemini-cli) get each artifact
 exported on its own instead, and workflows always become their own plugin.
 
 Before exporting, every artifact being exported (the whole project unless

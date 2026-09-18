@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
-	"github.com/mtfuller/agentworks/internal/targets/workflowsteps"
 )
 
 func TestEveryTemplateScaffoldsAndValidates(t *testing.T) {
@@ -28,14 +27,6 @@ func TestEveryTemplateScaffoldsAndValidates(t *testing.T) {
 				t.Errorf("manifest not written: %v", err)
 			}
 
-			// A workflow template must not prefill `steps:` with names that
-			// don't exist yet -- that would fail validate/export on a fresh
-			// project before the user ever gets to fill it in themselves.
-			if tmpl.Kind == artifact.KindWorkflow {
-				if _, err := workflowsteps.Resolve(a); err != nil {
-					t.Errorf("workflow template %q has unresolvable steps out of the box: %v", tmpl.ID, err)
-				}
-			}
 		})
 	}
 }

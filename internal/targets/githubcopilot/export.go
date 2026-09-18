@@ -44,8 +44,6 @@ func (exporter) Export(a *artifact.Artifact, outDir string, opts targets.ExportO
 		return exportAgent(a, outDir, opts)
 	case artifact.KindHook:
 		return exportHook(a, outDir, opts)
-	case artifact.KindWorkflow:
-		return exportWorkflow(a, outDir, opts)
 	default:
 		return "", fmt.Errorf("github-copilot export doesn't support %s", a.Kind)
 	}
