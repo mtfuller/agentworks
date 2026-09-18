@@ -15,13 +15,18 @@ import (
 var (
 	initName    string
 	initTargets []string
+	initCI      bool
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init [path]",
 	Short: "Scaffold a new AgentWorks project",
-	Long: `Create agentworks.yaml and the agents/, skills/, tools/, hooks/, and
-workflows/ directories for a new project at path (default: current directory).`,
+	Long: `Create agentworks.yaml and the agents/, skills/, mcp/, and hooks/
+directories for a new project at path (default: current directory).
+
+With --ci, also write .github/workflows/agentworks.yml, a GitHub Actions
+workflow that runs the project's checks (validate --strict, doctor, and the
+committed-marketplace freshness check) on every pull request.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dir := "."
@@ -49,6 +54,14 @@ workflows/ directories for a new project at path (default: current directory).`,
 		m, err := project.Init(dir, name, projectTargets)
 		if err != nil {
 			return err
+		}
+
+		if initCI {
+			path, err := project.WriteCIWorkflow(dir)
+			if err != nil {
+				return err
+			}
+			color.Success("Wrote %s", path)
 		}
 
 		color.Success("Initialized AgentWorks project %q in %s", m.Name, absDir)
@@ -86,5 +99,6 @@ func promptProjectTargets() ([]string, error) {
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVar(&initName, "name", "", "project name (default: the directory name)")
+	initCmd.Flags().BoolVar(&initCI, "ci", false, "also write a GitHub Actions workflow that runs the project's checks on pull requests")
 	initCmd.Flags().StringSliceVar(&initTargets, "target", nil, "vendor target(s) this project exports to (repeatable)")
 }

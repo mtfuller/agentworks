@@ -68,11 +68,13 @@ directory; artifacts without one are skipped.`,
 		}
 
 		ran, failed := 0, 0
+		results := []evalItem{}
 		for _, a := range toRun {
 			cases, err := evalspec.LoadDir(filepath.Join(a.Dir, "evals"))
 			if err != nil {
 				color.Error("%v", err)
 				failed++
+				results = append(results, evalItem{Artifact: a.Name, Path: itemPath(a), Status: "failed", Reasons: []string{err.Error()}})
 				continue
 			}
 			if len(cases) == 0 {
@@ -85,6 +87,9 @@ directory; artifacts without one are skipped.`,
 			}
 			if runner == "" {
 				color.Warning("%s: has eval cases but no \"eval_runner\" set (and no project default) -- skipping", a.Dir)
+				for _, c := range cases {
+					results = append(results, evalItem{Artifact: a.Name, Path: itemPath(a), Case: c.Name, Status: "skipped", Reasons: []string{"no eval_runner set and no project default"}})
+				}
 				continue
 			}
 
@@ -93,10 +98,13 @@ directory; artifacts without one are skipped.`,
 					continue
 				}
 				ran++
+				item := evalItem{Artifact: a.Name, Path: itemPath(a), Case: c.Name}
 				output, err := runCase(runner, a.Dir, c.Prompt)
 				if err != nil {
 					color.Error("%s: %q: runner failed: %v", a.Name, c.Name, err)
 					failed++
+					item.Status, item.Reasons = "failed", []string{"runner failed: " + err.Error()}
+					results = append(results, item)
 					continue
 				}
 				if reasons := evalspec.Evaluate(c.Assert, output); len(reasons) > 0 {
@@ -105,20 +113,56 @@ directory; artifacts without one are skipped.`,
 						color.Error("  - %s", r)
 					}
 					failed++
+					item.Status, item.Reasons = "failed", reasons
+					results = append(results, item)
 					continue
 				}
 				color.Success("%s: %q passed", a.Name, c.Name)
+				item.Status = "passed"
+				results = append(results, item)
 			}
 		}
 
 		if ran == 0 {
 			color.Info("No eval cases ran.")
 		}
+		var failErr error
 		if failed > 0 {
-			return fmt.Errorf("%d eval case(s) failed", failed)
+			failErr = fmt.Errorf("%d eval case(s) failed", failed)
 		}
-		return nil
+		if jsonFlag {
+			if err := emitJSON(evalDoc{
+				envelope: newEnvelope("eval", failErr == nil),
+				Summary:  evalSummary{Ran: ran, Failed: failed},
+				Cases:    results,
+			}); err != nil {
+				return err
+			}
+		}
+		return failErr
 	},
+}
+
+type evalDoc struct {
+	envelope
+	Summary evalSummary `json:"summary"`
+	Cases   []evalItem  `json:"cases"`
+}
+
+type evalSummary struct {
+	Ran    int `json:"ran"`
+	Failed int `json:"failed"`
+}
+
+type evalItem struct {
+	Artifact string `json:"artifact"`
+	Path     string `json:"path"`
+	// Case is empty for a failure that isn't tied to one case (e.g. an
+	// unparseable evals/ file).
+	Case string `json:"case,omitempty"`
+	// Status is "passed", "failed", or "skipped".
+	Status  string   `json:"status"`
+	Reasons []string `json:"reasons,omitempty"`
 }
 
 // runCase pipes prompt to runner's stdin (run via "sh -c" from dir, the

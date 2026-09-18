@@ -42,6 +42,7 @@ var (
 	marketplaceTargetFlag []string
 	marketplaceSingle     bool
 	marketplaceOut        string
+	marketplaceCheck      bool
 )
 
 var marketplaceCmd = &cobra.Command{
@@ -62,7 +63,13 @@ regardless of namespace.
 Re-running this command regenerates --out and both marketplace.json files
 from scratch, so it stays in sync as artifacts are added, removed, or
 renamed. Exports are recorded in agentworks.lock exactly like "agentworks
-export", so "agentworks status" also reports on them.`,
+export", so "agentworks status" also reports on them.
+
+With --check nothing is written: the marketplace is regenerated into a
+temporary directory and compared with what is committed, and the command
+exits non-zero if either marketplace.json or any plugin directory differs.
+Run it in CI to catch a source artifact changing without the committed
+marketplace being republished.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		selected, err := resolveMarketplaceTargets(marketplaceTargetFlag)
@@ -97,6 +104,10 @@ export", so "agentworks status" also reports on them.`,
 			pluginsRoot = filepath.Join(root, pluginsRoot)
 		}
 
+		if marketplaceCheck {
+			return checkMarketplace(selected, found, m.Name, root, pluginsRoot)
+		}
+
 		for _, mt := range selected {
 			if err := publishMarketplaceTarget(mt, found, m.Name, root, pluginsRoot, lf); err != nil {
 				return err
@@ -108,6 +119,90 @@ export", so "agentworks status" also reports on them.`,
 		}
 		return nil
 	},
+}
+
+// checkMarketplace regenerates the marketplace into a scratch directory
+// laid out like the repo (same relative plugins/ and marketplace.json
+// paths) and compares it with what's committed. The artifacts are still
+// read from the real project; only the output destination differs, which is
+// why publishMarketplaceTarget takes the output root separately and skips
+// lockfile bookkeeping when handed no lockfile.
+func checkMarketplace(selected []marketplaceTarget, found []*artifact.Artifact, projectName, root, pluginsRoot string) error {
+	stage, err := os.MkdirTemp("", "agentworks-marketplace-check-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+
+	stagePlugins := filepath.Join(stage, "plugins")
+	items := []marketplaceCheckItem{}
+	drifted := 0
+	for _, mt := range selected {
+		// Progress messages from the generator are noise for a check.
+		if err := quietly(func() error {
+			return publishMarketplaceTarget(mt, found, projectName, stage, stagePlugins, nil)
+		}); err != nil {
+			return err
+		}
+
+		// Both sides are compared as directory/file hashes: the plugin tree
+		// for this target, and its marketplace.json.
+		pairs := []struct{ label, want, have string }{
+			{"plugins/" + mt.id, filepath.Join(stagePlugins, mt.id), filepath.Join(pluginsRoot, mt.id)},
+			{filepath.ToSlash(mt.manifestPath), filepath.Join(stage, mt.manifestPath), filepath.Join(root, mt.manifestPath)},
+		}
+		for _, p := range pairs {
+			status := compareTrees(p.want, p.have)
+			if status != "in sync" {
+				drifted++
+				color.Error("%s: %s -- run 'agentworks marketplace' and commit the result", mt.id, p.label+" is "+status)
+			} else {
+				color.Success("%s: %s in sync", mt.id, p.label)
+			}
+			items = append(items, marketplaceCheckItem{Target: mt.id, Path: p.label, Status: status})
+		}
+	}
+
+	var failErr error
+	if drifted > 0 {
+		failErr = fmt.Errorf("%d marketplace path(s) out of date", drifted)
+	}
+	if jsonFlag {
+		if err := emitJSON(marketplaceCheckDoc{envelope: newEnvelope("marketplace", failErr == nil), Checked: items}); err != nil {
+			return err
+		}
+	}
+	return failErr
+}
+
+// compareTrees reports "in sync" when have (a file or directory) matches
+// want byte for byte, "missing" when have doesn't exist, else "stale". want
+// not existing means the generator produced nothing, so any have is stale.
+func compareTrees(want, have string) string {
+	wantHash, wantErr := lockfile.HashDir(want)
+	haveHash, haveErr := lockfile.HashDir(have)
+	switch {
+	case wantErr != nil && haveErr != nil:
+		return "in sync" // neither exists: nothing to publish, nothing committed
+	case haveErr != nil:
+		return "missing"
+	case wantErr != nil || wantHash != haveHash:
+		return "stale"
+	}
+	return "in sync"
+}
+
+type marketplaceCheckDoc struct {
+	envelope
+	Checked []marketplaceCheckItem `json:"checked"`
+}
+
+type marketplaceCheckItem struct {
+	Target string `json:"target"`
+	Path   string `json:"path"`
+	// Status is "in sync", "stale" (committed content differs from what the
+	// source artifacts would generate), or "missing" (nothing committed).
+	Status string `json:"status"`
 }
 
 func resolveMarketplaceTargets(requested []string) ([]marketplaceTarget, error) {
@@ -159,9 +254,12 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 	// Warn about hand-edited output before anything gets cleared --
 	// regenerating this target's whole plugin tree from scratch is this
 	// command's job, but a hand-edit to a previous run's output is worth
-	// flagging first, exactly like a plain `export` does.
-	for _, name := range groupNames {
-		warnIfHandEdited(lf, mt.id, "bundle:"+name)
+	// flagging first, exactly like a plain `export` does. (lf is nil for
+	// --check, which writes to a scratch directory and records nothing.)
+	if lf != nil {
+		for _, name := range groupNames {
+			warnIfHandEdited(lf, mt.id, "bundle:"+name)
+		}
 	}
 
 	targetOut := filepath.Join(pluginsRoot, mt.id)
@@ -181,12 +279,14 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 			return fmt.Errorf("%s: bundling %q: %w", mt.id, name, err)
 		}
 
-		memberDirs := make([]string, len(members))
-		for i, a := range members {
-			memberDirs[i] = a.Dir
-		}
-		if err := recordExport(root, lf, mt.id, "bundle:"+name, memberDirs, out); err != nil {
-			color.Warning("exported successfully, but failed to record it in %s: %v", lockfile.FileName, err)
+		if lf != nil {
+			memberDirs := make([]string, len(members))
+			for i, a := range members {
+				memberDirs[i] = a.Dir
+			}
+			if err := recordExport(root, lf, mt.id, "bundle:"+name, memberDirs, out); err != nil {
+				color.Warning("exported successfully, but failed to record it in %s: %v", lockfile.FileName, err)
+			}
 		}
 
 		src, err := marketplaceSourcePath(root, out)
@@ -250,5 +350,6 @@ func init() {
 	rootCmd.AddCommand(marketplaceCmd)
 	marketplaceCmd.Flags().StringSliceVar(&marketplaceTargetFlag, "target", nil, "vendor target(s) to publish for (repeatable; default: claude-code and github-copilot)")
 	marketplaceCmd.Flags().BoolVar(&marketplaceSingle, "single", false, "bundle every skill/agent/tool/hook into one plugin instead of grouping by namespace")
+	marketplaceCmd.Flags().BoolVar(&marketplaceCheck, "check", false, "write nothing; exit non-zero if the committed plugins/ and marketplace.json differ from what the project would generate")
 	marketplaceCmd.Flags().StringVar(&marketplaceOut, "out", "plugins", "directory plugin output is written to (committed, unlike export's --out dist)")
 }

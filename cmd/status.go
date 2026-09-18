@@ -14,6 +14,8 @@ import (
 	"github.com/mtfuller/agentworks/internal/lockfile"
 )
 
+var statusFailOnDrift bool
+
 var statusCmd = &cobra.Command{
 	Use:   "status [path]",
 	Short: "Check exported dist/ output for drift against its source artifact(s)",
@@ -29,7 +31,9 @@ var statusCmd = &cobra.Command{
             to pick up the change.
   missing   the recorded output path no longer exists.
 
-Pass a path to filter to exports whose source artifact matches it.`,
+Pass a path to filter to exports whose source artifact matches it. With
+--fail-on-drift the command exits non-zero unless every export is in sync,
+which is what a CI check wants.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := projectRoot()
@@ -41,6 +45,9 @@ Pass a path to filter to exports whose source artifact matches it.`,
 			return err
 		}
 		if len(lf.Exports) == 0 {
+			if jsonFlag {
+				return emitJSON(statusDoc{envelope: newEnvelope("status", true), Exports: []statusItem{}})
+			}
 			color.Info("No exports recorded in %s -- run 'agentworks export' first.", lockfile.FileName)
 			return nil
 		}
@@ -63,23 +70,47 @@ Pass a path to filter to exports whose source artifact matches it.`,
 		}
 		sort.Strings(keys)
 		if len(keys) == 0 {
+			if jsonFlag {
+				return emitJSON(statusDoc{envelope: newEnvelope("status", true), Exports: []statusItem{}})
+			}
 			color.Info("No matching exports recorded in %s.", lockfile.FileName)
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "TARGET\tARTIFACT\tOUTPUT\tSTATUS")
 		counts := map[string]int{}
+		items := make([]statusItem, 0, len(keys))
 		for _, k := range keys {
 			e := lf.Exports[k]
 			s := exportStatus(root, e)
 			counts[s]++
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.Target, e.Artifact, e.Output, s)
+			items = append(items, statusItem{Target: e.Target, Artifact: e.Artifact, Output: e.Output, Status: s})
+		}
+		drifted := len(items) - counts["in sync"]
+		var failErr error
+		if statusFailOnDrift && drifted > 0 {
+			failErr = fmt.Errorf("%d export(s) are not in sync", drifted)
+		}
+
+		if jsonFlag {
+			if err := emitJSON(statusDoc{
+				envelope: newEnvelope("status", failErr == nil),
+				Summary:  statusSummary{InSync: counts["in sync"], Modified: counts["modified"], Stale: counts["stale"], Missing: counts["missing"]},
+				Exports:  items,
+			}); err != nil {
+				return err
+			}
+			return failErr
+		}
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+		fmt.Fprintln(w, "TARGET\tARTIFACT\tOUTPUT\tSTATUS")
+		for _, it := range items {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", it.Target, it.Artifact, it.Output, it.Status)
 		}
 		w.Flush()
 
 		color.Info("%d in sync, %d modified, %d stale, %d missing", counts["in sync"], counts["modified"], counts["stale"], counts["missing"])
-		return nil
+		return failErr
 	},
 }
 
@@ -108,6 +139,27 @@ func exportStatus(root string, e lockfile.ExportEntry) string {
 	return "in sync"
 }
 
+type statusDoc struct {
+	envelope
+	Summary statusSummary `json:"summary"`
+	Exports []statusItem  `json:"exports"`
+}
+
+type statusSummary struct {
+	InSync   int `json:"in_sync"`
+	Modified int `json:"modified"`
+	Stale    int `json:"stale"`
+	Missing  int `json:"missing"`
+}
+
+type statusItem struct {
+	Target   string `json:"target"`
+	Artifact string `json:"artifact"`
+	Output   string `json:"output"`
+	Status   string `json:"status"`
+}
+
 func init() {
+	statusCmd.Flags().BoolVar(&statusFailOnDrift, "fail-on-drift", false, "exit non-zero unless every recorded export is in sync")
 	rootCmd.AddCommand(statusCmd)
 }

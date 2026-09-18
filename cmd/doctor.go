@@ -55,37 +55,74 @@ with --strict.`,
 		}
 
 		if len(toCheck) == 0 {
+			if jsonFlag {
+				return emitJSON(doctorDoc{envelope: newEnvelope("doctor", true), Strict: doctorStrict, Artifacts: []doctorItem{}})
+			}
 			color.Info("No artifacts to check.")
 			return nil
 		}
 
 		env := os.Environ()
 		failed, warned := 0, 0
+		items := make([]doctorItem, 0, len(toCheck))
 		for _, a := range toCheck {
 			issues := doctorChecks(a, env)
+			item := doctorItem{Kind: string(a.Kind), Name: a.Name, Path: itemPath(a), Issues: []doctorIssueDoc{}}
 			if len(issues) == 0 {
 				color.Success("%s (%s)", a.Name, a.Kind)
-				continue
 			}
 			for _, issue := range issues {
+				severity := "warning"
 				if issue.fatal {
+					severity = "error"
 					color.Error("%s: %s", a.Dir, issue.message)
 					failed++
 				} else {
 					color.Warning("%s: %s", a.Dir, issue.message)
 					warned++
 				}
+				item.Issues = append(item.Issues, doctorIssueDoc{Severity: severity, Message: issue.message})
 			}
+			items = append(items, item)
 		}
 
 		if doctorStrict {
 			failed += warned
 		}
+		var failErr error
 		if failed > 0 {
-			return fmt.Errorf("%d issue(s) found", failed)
+			failErr = fmt.Errorf("%d issue(s) found", failed)
 		}
-		return nil
+		if jsonFlag {
+			if err := emitJSON(doctorDoc{
+				envelope:  newEnvelope("doctor", failErr == nil),
+				Strict:    doctorStrict,
+				Artifacts: items,
+			}); err != nil {
+				return err
+			}
+		}
+		return failErr
 	},
+}
+
+type doctorDoc struct {
+	envelope
+	Strict    bool         `json:"strict"`
+	Artifacts []doctorItem `json:"artifacts"`
+}
+
+type doctorItem struct {
+	Kind   string           `json:"kind"`
+	Name   string           `json:"name"`
+	Path   string           `json:"path"`
+	Issues []doctorIssueDoc `json:"issues"`
+}
+
+type doctorIssueDoc struct {
+	// Severity is "error" (always fails) or "warning" (fails under --strict).
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
 }
 
 // doctorIssue is one preflight problem found on an artifact. fatal issues

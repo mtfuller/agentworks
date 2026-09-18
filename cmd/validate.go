@@ -26,10 +26,13 @@ Beyond structural checks (required fields,
 etc.), this also lints description quality -- too long, too vague, redundant
 with the name, or overlapping with another artifact's description -- and
 prints those as warnings. Warnings don't fail the command unless --strict is
-set.`,
+set. A hook or mcp server's shell command is reported as a notice, not a
+warning, so a working project passes --strict; only a suspicious command shape
+(a download piped into a shell, sudo, ...) counts as a warning.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var toCheck []*artifact.Artifact
+		var discoverErrList []error
 		discoverErrs := 0
 		wholeProject := len(args) == 0
 
@@ -49,48 +52,105 @@ set.`,
 				color.Error("%v", e)
 			}
 			discoverErrs = len(errs)
+			discoverErrList = errs
 			toCheck = found
 		}
 
 		failed := discoverErrs
 		warned := 0
+		doc := validateDoc{Strict: validateStrict, Artifacts: []validateItem{}, Problems: []string{}, Warnings: []validateWarning{}}
+		for _, e := range discoverErrList {
+			doc.Problems = append(doc.Problems, e.Error())
+		}
 		for _, a := range toCheck {
+			item := validateItem{Kind: string(a.Kind), Name: a.Name, Path: itemPath(a), Errors: []string{}, Warnings: []string{}, Notices: []string{}}
 			if err := a.Validate(); err != nil {
 				color.Error("%v", err)
 				failed++
+				item.Errors = append(item.Errors, err.Error())
+				doc.Artifacts = append(doc.Artifacts, item)
 				continue
 			}
 			if err := validateKindSpecific(a); err != nil {
 				color.Error("%v", err)
 				failed++
+				item.Errors = append(item.Errors, err.Error())
+				doc.Artifacts = append(doc.Artifacts, item)
 				continue
 			}
-			for _, w := range a.LintDescription() {
-				color.Warning("%s: %s", w.Dir, w.Message)
-				warned++
+			// The "declares a command" notice is shown but never counted as a
+			// warning: every working hook or mcp server has one.
+			if n := a.LintSecurityNotice(); n != nil {
+				color.Info("%s: %s", n.Dir, n.Message)
+				item.Notices = append(item.Notices, n.Message)
 			}
-			for _, w := range a.LintSecurity() {
+			for _, w := range append(a.LintDescription(), a.LintSecurityRisks()...) {
 				color.Warning("%s: %s", w.Dir, w.Message)
 				warned++
+				item.Warnings = append(item.Warnings, w.Message)
 			}
 			color.Success("%s (%s)", a.Name, a.Kind)
+			doc.Artifacts = append(doc.Artifacts, item)
 		}
 
 		if wholeProject {
 			for _, w := range artifact.LintOverlap(toCheck) {
 				color.Warning("%s: %s", w.Dir, w.Message)
 				warned++
+				doc.Warnings = append(doc.Warnings, validateWarning{Path: filepath.ToSlash(w.Dir), Message: w.Message})
 			}
 		}
 
 		if validateStrict {
 			failed += warned
 		}
+		var failErr error
 		if failed > 0 {
-			return fmt.Errorf("%d artifact(s) failed validation", failed)
+			failErr = fmt.Errorf("%d artifact(s) failed validation", failed)
 		}
-		return nil
+		if jsonFlag {
+			doc.envelope = newEnvelope("validate", failErr == nil)
+			doc.Summary = validateSummary{Artifacts: len(toCheck), Failed: failed, Warnings: warned}
+			if err := emitJSON(doc); err != nil {
+				return err
+			}
+		}
+		return failErr
 	},
+}
+
+// validateDoc is validate's --json document. Problems are artifacts that
+// couldn't even be discovered (unparseable frontmatter); Warnings are the
+// project-wide ones (description overlap) that belong to no single artifact.
+type validateDoc struct {
+	envelope
+	Strict    bool              `json:"strict"`
+	Summary   validateSummary   `json:"summary"`
+	Artifacts []validateItem    `json:"artifacts"`
+	Problems  []string          `json:"discovery_errors"`
+	Warnings  []validateWarning `json:"project_warnings"`
+}
+
+type validateSummary struct {
+	Artifacts int `json:"artifacts"`
+	Failed    int `json:"failed"`
+	Warnings  int `json:"warnings"`
+}
+
+type validateItem struct {
+	Kind     string   `json:"kind"`
+	Name     string   `json:"name"`
+	Path     string   `json:"path"`
+	Errors   []string `json:"errors"`
+	Warnings []string `json:"warnings"`
+	// Notices are informational and never fail --strict (e.g. "declares a
+	// shell command").
+	Notices []string `json:"notices"`
+}
+
+type validateWarning struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
 }
 
 // validateKindSpecific checks the frontmatter fields specific to a kind

@@ -15,7 +15,7 @@ import (
 var listCmd = &cobra.Command{
 	Use:   "list [kind]",
 	Short: "List artifacts in the project",
-	Long:  "List discovered agents, skills, tools, hooks, and workflows. Pass a kind to filter.",
+	Long:  "List discovered agents, skills, mcp servers, and hooks. Pass a kind to filter.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := projectRoot()
@@ -36,6 +36,21 @@ var listCmd = &cobra.Command{
 		for _, e := range errs {
 			color.Warning("%v", e)
 		}
+		if jsonFlag {
+			doc := listDoc{envelope: newEnvelope("list", true), Artifacts: make([]listItem, 0, len(found))}
+			for _, a := range found {
+				doc.Artifacts = append(doc.Artifacts, listItem{
+					Kind:          string(a.Kind),
+					Name:          a.Name,
+					Namespace:     a.Namespace,
+					QualifiedName: a.QualifiedName(),
+					Description:   a.Description,
+					Version:       a.Version,
+					Path:          itemPath(a),
+				})
+			}
+			return emitJSON(doc)
+		}
 		if len(found) == 0 {
 			color.Info("No artifacts found.")
 			return nil
@@ -48,6 +63,21 @@ var listCmd = &cobra.Command{
 		}
 		return w.Flush()
 	},
+}
+
+type listDoc struct {
+	envelope
+	Artifacts []listItem `json:"artifacts"`
+}
+
+type listItem struct {
+	Kind          string `json:"kind"`
+	Name          string `json:"name"`
+	Namespace     string `json:"namespace,omitempty"`
+	QualifiedName string `json:"qualified_name"`
+	Description   string `json:"description"`
+	Version       string `json:"version,omitempty"`
+	Path          string `json:"path"`
 }
 
 func truncate(s string, max int) string {

@@ -50,40 +50,65 @@ list its tools) when they declare no "test:" of their own.`,
 		}
 
 		ran, failed := 0, 0
+		results := []testItem{}
 		for _, a := range toRun {
+			item := testItem{Kind: string(a.Kind), Name: a.Name, Path: itemPath(a)}
 			testCommand := a.ExtraString("test")
 			if testCommand == "" {
 				if smokeEligible(a) {
 					ran++
-					if err := smokeTestMCP(a); err != nil {
+					item.Type = "smoke"
+					if skipped, err := smokeTestMCP(a); err != nil {
 						color.Error("%s: mcp smoke test failed: %v", a.Name, err)
 						failed++
+						item.Status, item.Message = "failed", err.Error()
+					} else if skipped != "" {
+						ran--
+						item.Status, item.Message = "skipped", skipped
+					} else {
+						item.Status = "passed"
 					}
+					results = append(results, item)
 				}
 				continue
 			}
 			ran++
+			item.Type = "test"
 			color.Info("Running tests for %s (%s): %s", a.Name, a.Kind, testCommand)
 
 			c := exec.Command("sh", "-c", testCommand)
 			c.Dir = a.Dir
-			c.Stdout = os.Stdout
+			c.Stdout = stdoutForChildren()
 			c.Stderr = os.Stderr
 			if err := c.Run(); err != nil {
 				color.Error("%s: tests failed: %v", a.Name, err)
 				failed++
+				item.Status, item.Message = "failed", err.Error()
+				results = append(results, item)
 				continue
 			}
 			color.Success("%s: tests passed", a.Name)
+			item.Status = "passed"
+			results = append(results, item)
 		}
 
 		if ran == 0 {
 			color.Info("No artifacts declare a `test:` command.")
 		}
+		var failErr error
 		if failed > 0 {
-			return fmt.Errorf("%d artifact(s) failed tests", failed)
+			failErr = fmt.Errorf("%d artifact(s) failed tests", failed)
 		}
-		return nil
+		if jsonFlag {
+			if err := emitJSON(testDoc{
+				envelope: newEnvelope("test", failErr == nil),
+				Summary:  testSummary{Ran: ran, Failed: failed},
+				Results:  results,
+			}); err != nil {
+				return err
+			}
+		}
+		return failErr
 	},
 }
 
@@ -99,12 +124,16 @@ func smokeEligible(a *artifact.Artifact) bool {
 // server starts and speaks the protocol, not a test of its tools' behavior.
 // Skipped (with a warning, not a failure) when a declared `auth:` variable
 // isn't set, since the server can't be expected to start without it.
-func smokeTestMCP(a *artifact.Artifact) error {
+//
+// Returns a non-empty skipped reason when the test was skipped, an error when
+// it failed, and ("", nil) when it passed.
+func smokeTestMCP(a *artifact.Artifact) (skipped string, err error) {
 	env := os.Environ()
 	for _, name := range a.ExtraStringSlice("auth") {
 		if !envHasValue(env, name) {
-			color.Warning("%s: skipping mcp smoke test -- %q is not set", a.Name, name)
-			return nil
+			reason := fmt.Sprintf("%q is not set", name)
+			color.Warning("%s: skipping mcp smoke test -- %s", a.Name, reason)
+			return reason, nil
 		}
 	}
 
@@ -113,17 +142,40 @@ func smokeTestMCP(a *artifact.Artifact) error {
 	defer cancel()
 
 	var stderr []string
-	info, tools, err := mcpclient.Probe(ctx, mcpconfig.CommandLine(a), a.Dir, append(env, mcpEnvPairs(a)...), func(line string) {
+	info, tools, probeErr := mcpclient.Probe(ctx, mcpconfig.CommandLine(a), a.Dir, append(env, mcpEnvPairs(a)...), func(line string) {
 		stderr = append(stderr, line)
 	})
-	if err != nil {
+	if probeErr != nil {
 		for _, line := range stderr {
 			color.Warning("  stderr: %s", line)
 		}
-		return err
+		return "", probeErr
 	}
 	color.Success("%s: %s %s started and lists %d tool(s)", a.Name, info.ServerInfo.Name, info.ServerInfo.Version, len(tools))
-	return nil
+	return "", nil
+}
+
+type testDoc struct {
+	envelope
+	Summary testSummary `json:"summary"`
+	Results []testItem  `json:"results"`
+}
+
+type testSummary struct {
+	Ran    int `json:"ran"`
+	Failed int `json:"failed"`
+}
+
+type testItem struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// Type is "test" (the artifact's own test: command) or "smoke" (the
+	// built-in mcp handshake check).
+	Type string `json:"type"`
+	// Status is "passed", "failed", or "skipped".
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
 }
 
 func init() {

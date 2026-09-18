@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -165,5 +166,49 @@ func TestMarketplaceUnknownTarget(t *testing.T) {
 	}
 	if want := "unknown marketplace target"; !bytes.Contains(out.Bytes(), []byte(want)) {
 		t.Errorf("error output should contain %q, got: %s", want, out.String())
+	}
+}
+
+func TestMarketplaceCheckDetectsStaleAndMissing(t *testing.T) {
+	dir := setUpMarketplaceProject(t)
+
+	if _, _, exit := runJSON(t, "marketplace", "--check", "--project", dir); exit == 0 {
+		t.Fatal("--check should fail before anything has been published")
+	}
+
+	runAgentworks(t, "marketplace", "--project", dir)
+	if out, err := runAgentworksErr("marketplace", "--check", "--project", dir); err != nil {
+		t.Fatalf("--check on a freshly published marketplace failed: %v\n%s", err, out)
+	}
+
+	// --check must not write anything: the committed tree is unchanged.
+	if _, err := os.Stat(filepath.Join(dir, "agentworks.lock")); err == nil {
+		before, _ := os.ReadFile(filepath.Join(dir, "agentworks.lock"))
+		runAgentworks(t, "marketplace", "--check", "--project", dir)
+		after, _ := os.ReadFile(filepath.Join(dir, "agentworks.lock"))
+		if !bytes.Equal(before, after) {
+			t.Error("--check modified agentworks.lock")
+		}
+	}
+
+	skill := filepath.Join(dir, "skills", "csv-analyzer", "skill.md")
+	f, err := os.OpenFile(skill, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("\nA source change that was never republished.\n")
+	f.Close()
+
+	out, err := runAgentworksErr("marketplace", "--check", "--project", dir)
+	if err == nil {
+		t.Fatalf("--check should fail once a source artifact changed without republishing:\n%s", out)
+	}
+	if !strings.Contains(out, "stale") {
+		t.Errorf("--check output should say what is stale, got:\n%s", out)
+	}
+
+	runAgentworks(t, "marketplace", "--project", dir)
+	if out, err := runAgentworksErr("marketplace", "--check", "--project", dir); err != nil {
+		t.Fatalf("--check after republishing should pass: %v\n%s", err, out)
 	}
 }

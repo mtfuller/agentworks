@@ -1,6 +1,20 @@
 package color
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+	"os"
+)
+
+// out is where Success/Error/Warning/Info write. It is stdout by default;
+// `--json` mode points it at stderr so stdout carries only the JSON document.
+var out io.Writer = os.Stdout
+
+// SetOutput redirects the message helpers (Success, Error, Warning, Info).
+func SetOutput(w io.Writer) { out = w }
+
+// Output returns the writer the message helpers currently use.
+func Output() io.Writer { return out }
 
 // ANSI color codes
 const (
@@ -62,20 +76,20 @@ func Bold(text string) string {
 
 // Success prints a success message in green
 func Success(format string, args ...interface{}) {
-	fmt.Printf(Green("✓ ")+format+"\n", args...)
+	fmt.Fprintf(out, Green("✓ ")+format+"\n", args...)
 }
 
 // Error prints an error message in red
 func Error(format string, args ...interface{}) {
-	fmt.Printf(Red("✗ ")+format+"\n", args...)
+	fmt.Fprintf(out, Red("✗ ")+format+"\n", args...)
 }
 
 // Warning prints a warning message in yellow
 func Warning(format string, args ...interface{}) {
-	fmt.Printf(Yellow("⚠ ")+format+"\n", args...)
+	fmt.Fprintf(out, Yellow("⚠ ")+format+"\n", args...)
 }
 
 // Info prints an info message in blue
 func Info(format string, args ...interface{}) {
-	fmt.Printf(Blue("ℹ ")+format+"\n", args...)
+	fmt.Fprintf(out, Blue("ℹ ")+format+"\n", args...)
 }

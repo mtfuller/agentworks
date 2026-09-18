@@ -21,6 +21,22 @@ Check this before investing effort in an artifact meant for a specific vendor.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		all := targets.All()
 
+		if jsonFlag {
+			doc := targetsDoc{envelope: newEnvelope("targets", true), Targets: make([]targetItem, 0, len(all))}
+			for _, t := range all {
+				item := targetItem{ID: t.ID, Name: t.Name, Notes: t.Notes, Supports: []string{}}
+				for _, k := range artifact.Kinds() {
+					if targets.Supports(t.ID, k) {
+						item.Supports = append(item.Supports, string(k))
+					}
+				}
+				_, err := targets.GetExporter(t.ID)
+				item.ExportImplemented = err == nil
+				doc.Targets = append(doc.Targets, item)
+			}
+			return emitJSON(doc)
+		}
+
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 		header := "KIND"
 		for _, t := range all {
@@ -52,6 +68,19 @@ Check this before investing effort in an artifact meant for a specific vendor.`,
 		}
 		return nil
 	},
+}
+
+type targetsDoc struct {
+	envelope
+	Targets []targetItem `json:"targets"`
+}
+
+type targetItem struct {
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Supports          []string `json:"supports"`
+	ExportImplemented bool     `json:"export_implemented"`
+	Notes             string   `json:"notes"`
 }
 
 func init() {

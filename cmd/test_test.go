@@ -58,8 +58,12 @@ func TestScaffoldedMCPServersAreWorking(t *testing.T) {
 			if !smokeEligible(a) {
 				t.Fatal("smokeEligible() = false for a runnable local server")
 			}
-			if err := smokeTestMCP(a); err != nil {
+			skipped, err := smokeTestMCP(a)
+			if err != nil {
 				t.Errorf("smokeTestMCP() error = %v", err)
+			}
+			if skipped != "" {
+				t.Errorf("smokeTestMCP() skipped (%s), want it to run", skipped)
 			}
 		})
 	}

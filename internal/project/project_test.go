@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/mtfuller/agentworks/internal/artifact"
 )
 
@@ -301,5 +303,38 @@ func TestInitWritesGitignoreWithoutClobbering(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(existing, ".gitignore")); string(got) != "mine\n" {
 		t.Errorf("existing .gitignore was overwritten: %q", got)
+	}
+}
+
+func TestWriteCIWorkflow(t *testing.T) {
+	dir := t.TempDir()
+	path, err := WriteCIWorkflow(dir)
+	if err != nil {
+		t.Fatalf("WriteCIWorkflow() error = %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Jobs map[string]struct {
+			Steps []map[string]any `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("generated workflow is not valid YAML: %v", err)
+	}
+	var usesAction bool
+	for _, s := range doc.Jobs["check"].Steps {
+		if u, _ := s["uses"].(string); strings.HasPrefix(u, "mtfuller/agentworks@") {
+			usesAction = true
+		}
+	}
+	if !usesAction {
+		t.Errorf("workflow should run the agentworks action, got:\n%s", data)
+	}
+
+	if _, err := WriteCIWorkflow(dir); err == nil {
+		t.Error("WriteCIWorkflow() over an existing workflow should refuse to overwrite it")
 	}
 }

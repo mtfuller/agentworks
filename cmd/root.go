@@ -25,7 +25,16 @@ skills, tools, and hooks once and exporting them to the harnesses you actually u
 Author artifacts as plain files in a project directory, test and validate them
 locally, then export versioned, target-specific bundles (skill zips, plugins,
 or vendor-native formats) without hand-maintaining a copy per vendor.`,
+	// Execute reports errors itself (colored, and as JSON under --json), and
+	// a failed check isn't a usage mistake, so neither cobra's own "Error:"
+	// line nor the usage text is wanted.
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if jsonFlag {
+			// stdout is reserved for the JSON document.
+			color.SetOutput(os.Stderr)
+		}
 		// Configure logger based on flags
 		if verbose {
 			logger.SetLevel(logger.DEBUG)
@@ -38,9 +47,13 @@ or vendor-native formats) without hand-maintaining a copy per vendor.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	err := rootCmd.Execute()
+	cmd, err := rootCmd.ExecuteC()
 	if err != nil {
-		color.Error("Error: %v", err)
+		name := "agentworks"
+		if cmd != nil {
+			name = cmd.Name()
+		}
+		reportError(name, err)
 		os.Exit(1)
 	}
 }
@@ -49,5 +62,6 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output (debug level)")
 	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "info", "set log level (debug, info, warn, error)")
+	rootCmd.PersistentFlags().BoolVar(&jsonFlag, "json", false, "print machine-readable JSON on stdout (human messages go to stderr)")
 	rootCmd.PersistentFlags().StringVarP(&projectFlag, "project", "p", ".", "path inside the AgentWorks project to operate on")
 }

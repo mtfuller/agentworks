@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "greeter": {
+      "type": "stdio",
+      "command": "sh",
+      "args": [
+        "-c",
+        "cd 'mcp/greeter' \u0026\u0026 python3 src/server.py"
+      ]
+    }
+  }
+}

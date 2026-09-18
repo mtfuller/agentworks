@@ -33,15 +33,36 @@ var suspiciousCommandPatterns = []struct {
 // Never fails `validate` on its own -- see cmd/validate.go's --strict flag
 // -- and callers that write new artifacts to disk (`agentworks add`) use
 // these as a confirmation gate rather than a silent warning.
+//
+// The result is the notice that a command exists (LintSecurityNotice)
+// followed by any risky-shape hits (LintSecurityRisks). Callers that only
+// want to fail on the latter -- `validate --strict` -- use them separately,
+// since every working hook or mcp server has a command and "it has a
+// command" alone isn't a defect.
 func (a *Artifact) LintSecurity() []LintWarning {
+	notice := a.LintSecurityNotice()
+	if notice == nil {
+		return nil
+	}
+	return append([]LintWarning{*notice}, a.LintSecurityRisks()...)
+}
+
+// LintSecurityNotice returns the informational note that this artifact runs
+// a shell command with the user's permissions, or nil if it has none.
+func (a *Artifact) LintSecurityNotice() *LintWarning {
 	command := a.ExtraString("command")
 	if command == "" {
 		return nil
 	}
+	return &LintWarning{a.Dir, fmt.Sprintf(
+		"declares a shell command that will run with your permissions when exported and triggered/invoked: %s", command)}
+}
 
-	warnings := []LintWarning{{a.Dir, fmt.Sprintf(
-		"declares a shell command that will run with your permissions when exported and triggered/invoked: %s", command)}}
-
+// LintSecurityRisks returns a warning for each suspicious shape (see
+// suspiciousCommandPatterns) found in the artifact's command.
+func (a *Artifact) LintSecurityRisks() []LintWarning {
+	command := a.ExtraString("command")
+	var warnings []LintWarning
 	for _, p := range suspiciousCommandPatterns {
 		if p.pattern.MatchString(command) {
 			warnings = append(warnings, LintWarning{a.Dir, fmt.Sprintf("command %s -- review it carefully before trusting", p.reason)})

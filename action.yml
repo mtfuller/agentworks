@@ -1,0 +1,75 @@
+name: AgentWorks checks
+description: Validate an AgentWorks project in CI -- artifact validation, environment preflight, and committed-marketplace freshness.
+author: mtfuller
+
+inputs:
+  path:
+    description: Directory containing agentworks.yaml (or any path inside the project).
+    default: "."
+  version:
+    description: AgentWorks version to install -- a release tag such as v0.3.0, a branch, or "latest".
+    default: latest
+  checks:
+    description: >
+      Comma-separated checks to run, in order. Available: validate, doctor, marketplace
+      (only if a marketplace.json is committed), test, eval, status.
+    default: validate,doctor,marketplace
+  strict:
+    description: Treat validation warnings (weak descriptions, risky commands) as failures.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.24"
+        cache: false
+
+    - name: Install agentworks
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        go install "github.com/mtfuller/agentworks@${VERSION}"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Run checks
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        CHECKS: ${{ inputs.checks }}
+        STRICT: ${{ inputs.strict }}
+      run: |
+        set -uo pipefail
+        failed=0
+        run() {
+          echo "::group::agentworks $*"
+          if ! agentworks "$@"; then
+            echo "::error title=agentworks $1 failed::agentworks $* exited non-zero"
+            failed=1
+          fi
+          echo "::endgroup::"
+        }
+
+        IFS=',' read -ra checks <<< "$CHECKS"
+        for check in "${checks[@]}"; do
+          case "$(echo "$check" | tr -d ' ')" in
+            validate)
+              if [ "$STRICT" = "true" ]; then run validate --strict; else run validate; fi ;;
+            doctor) run doctor ;;
+            marketplace)
+              if [ -f .claude-plugin/marketplace.json ] || [ -f .github/plugin/marketplace.json ]; then
+                run marketplace --check
+              else
+                echo "No committed marketplace.json -- skipping the marketplace check."
+              fi ;;
+            test) run test ;;
+            eval) run eval ;;
+            status) run status --fail-on-drift ;;
+            "") ;;
+            *) echo "::error::unknown check '$check'"; failed=1 ;;
+          esac
+        done
+        exit "$failed"

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Build macOS binaries and draft a release
+    name: Build binaries and draft a release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,28 +24,32 @@ jobs:
       # Homebrew formula itself builds from the tag's source archive instead
       # (see .github/workflows/homebrew.yml) -- these tarballs aren't part of
       # that path.
-      - name: Build (darwin/arm64, darwin/amd64)
+      - name: Build (darwin and linux, arm64 and amd64)
         env:
           CGO_ENABLED: '0'
         run: |
           VERSION="${GITHUB_REF_NAME}"
           BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           PKG=github.com/mtfuller/agentworks/internal/version
-          for ARCH in arm64 amd64; do
-            mkdir -p "dist/agentworks_darwin_${ARCH}"
-            GOOS=darwin GOARCH="$ARCH" go build -trimpath \
-              -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA} -X ${PKG}.BuildDate=${BUILD_DATE}" \
-              -o "dist/agentworks_darwin_${ARCH}/agentworks" ./main.go
+          for OS in darwin linux; do
+            for ARCH in arm64 amd64; do
+              mkdir -p "dist/agentworks_${OS}_${ARCH}"
+              GOOS="$OS" GOARCH="$ARCH" go build -trimpath \
+                -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA} -X ${PKG}.BuildDate=${BUILD_DATE}" \
+                -o "dist/agentworks_${OS}_${ARCH}/agentworks" ./main.go
+            done
           done
 
       - name: Package
         run: |
           VERSION="${GITHUB_REF_NAME}"
           : > SHA256SUMS
-          for ARCH in arm64 amd64; do
-            cp LICENSE README.md "dist/agentworks_darwin_${ARCH}/"
-            tar -C "dist/agentworks_darwin_${ARCH}" -czf "agentworks_${VERSION}_darwin_${ARCH}.tar.gz" agentworks LICENSE README.md
-            shasum -a 256 "agentworks_${VERSION}_darwin_${ARCH}.tar.gz" >> SHA256SUMS
+          for OS in darwin linux; do
+            for ARCH in arm64 amd64; do
+              cp LICENSE README.md "dist/agentworks_${OS}_${ARCH}/"
+              tar -C "dist/agentworks_${OS}_${ARCH}" -czf "agentworks_${VERSION}_${OS}_${ARCH}.tar.gz" agentworks LICENSE README.md
+              shasum -a 256 "agentworks_${VERSION}_${OS}_${ARCH}.tar.gz" >> SHA256SUMS
+            done
           done
 
       - name: Draft release notes
@@ -53,10 +57,10 @@ jobs:
           cat > NOTES.md <<'EOF'
           ## agentworks ${{ github.ref_name }}
 
-          Prebuilt macOS binaries for Apple Silicon (arm64) and Intel (amd64).
+          Prebuilt binaries for macOS and Linux, each on arm64 and amd64.
 
-          The binaries are **not notarized**. After downloading and extracting, clear
-          the Gatekeeper quarantine flag before first run:
+          The macOS binaries are **not notarized**. After downloading and extracting,
+          clear the Gatekeeper quarantine flag before first run:
 
           ```bash
           xattr -d com.apple.quarantine agentworks
@@ -84,5 +88,5 @@ jobs:
             --draft \
             --title "agentworks ${GITHUB_REF_NAME}" \
             --notes-file NOTES.md \
-            agentworks_*_darwin_*.tar.gz \
+            agentworks_*.tar.gz \
             SHA256SUMS
