@@ -66,6 +66,74 @@ func TestInitWritesAgentDocs(t *testing.T) {
 	}
 }
 
+func TestInitWritesSkillPerKind(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Init(dir, "myproject", nil); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	want := []string{"agentworks-cli", "agentworks-evals"}
+	for _, k := range artifact.Kinds() {
+		want = append(want, "agentworks-author-"+string(k))
+	}
+	got, err := AgentSkillNames()
+	if err != nil {
+		t.Fatalf("AgentSkillNames() error = %v", err)
+	}
+	sort.Strings(want)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("AgentSkillNames() = %v, want %v", got, want)
+	}
+
+	agentsMD, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("reading AGENTS.md: %v", err)
+	}
+	for _, name := range got {
+		skillPath := filepath.Join(dir, ".agents", "skills", name, "SKILL.md")
+		data, err := os.ReadFile(skillPath)
+		if err != nil {
+			t.Errorf("reading %s: %v", skillPath, err)
+			continue
+		}
+		fm, _, err := artifact.Parse(data)
+		if err != nil {
+			t.Errorf("%s: parsing frontmatter: %v", name, err)
+			continue
+		}
+		if fm.Name != name {
+			t.Errorf("%s: frontmatter name = %q, want it to match its directory", name, fm.Name)
+		}
+		a := &artifact.Artifact{Frontmatter: fm, Dir: name}
+		if w := a.LintDescription(); len(w) > 0 {
+			t.Errorf("%s: description lint warnings: %v", name, w)
+		}
+		if !strings.Contains(string(agentsMD), ".agents/skills/"+name+"/SKILL.md") {
+			t.Errorf("AGENTS.md should link to the %s skill", name)
+		}
+	}
+	if strings.Contains(string(agentsMD), "{{project}}") {
+		t.Errorf("AGENTS.md left the project placeholder unreplaced: %s", agentsMD)
+	}
+}
+
+func TestWriteAgentDocsDoesNotClobberEditedSkill(t *testing.T) {
+	dir := t.TempDir()
+	skillPath := filepath.Join(dir, ".agents", "skills", "agentworks-cli", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte("custom skill"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAgentDocs(dir, "myproject"); err != nil {
+		t.Fatalf("writeAgentDocs() error = %v", err)
+	}
+	if got, _ := os.ReadFile(skillPath); string(got) != "custom skill" {
+		t.Errorf("SKILL.md = %q, want hand-edited content preserved", got)
+	}
+}
+
 func TestWriteAgentDocsDoesNotClobberHandEdits(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("custom content"), 0o644); err != nil {

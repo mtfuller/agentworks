@@ -1,148 +1,80 @@
 package project
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 )
 
-// agentsMDTemplate is the AGENTS.md written into every new project by Init.
-// It orients a coding agent working in this specific project (not
-// AgentWorks' own repo) and points it at the CLI skill for command detail.
-const agentsMDTemplate = `# AGENTS.md
+// embeddedDocs holds the AGENTS.md template and the skills written into every
+// new project. Edit the markdown under embedded/ directly; nothing here needs
+// Go string escaping.
+//
+//go:embed embedded
+var embeddedDocs embed.FS
 
-Guidance for coding agents working in this project.
+const (
+	agentsMDTemplatePath = "embedded/AGENTS.md"
+	embeddedSkillsDir    = "embedded/skills"
+)
 
-## What this project is
+// AgentSkillNames returns the name of every skill Init writes under
+// .agents/skills/, in a stable order.
+func AgentSkillNames() ([]string, error) {
+	entries, err := fs.ReadDir(embeddedDocs, embeddedSkillsDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading embedded skills: %w", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	return names, nil
+}
 
-**%s** is an [AgentWorks](https://github.com/mtfuller/agentworks) project: agents,
-skills, tools, hooks, and workflows are authored here as plain files, then exported to
-whatever vendor format a given AI harness needs (Claude Code, ChatGPT, GitHub Copilot,
-Microsoft 365 Copilot, and others) with the ` + "`agentworks`" + ` CLI.
-
-## Layout
-
-` + "```" + `
-agentworks.yaml   project manifest: name, description, default targets, publisher
-agents/           agent definitions (agent.md + resources/)
-skills/           skills (skill.md + scripts/tests/samples)
-tools/            MCP-server-backed tools (tool.md + src/tests)
-hooks/            lifecycle hooks (hook.md)
-workflows/        multi-artifact pipelines (workflow.md)
-` + "```" + `
-
-Each artifact is a directory containing one ` + "`<kind>.md`" + ` file (YAML frontmatter plus a
-Markdown body) alongside whatever supporting files it needs. It's plain text — read and
-edit it directly rather than going through the CLI for inspection.
-
-## Working with this project
-
-See [.agents/skills/agentworks-cli/SKILL.md](.agents/skills/agentworks-cli/SKILL.md) for
-how to scaffold, validate, test, and export artifacts with the ` + "`agentworks`" + ` CLI. Prefer
-the CLI over hand-writing ` + "`<kind>.md`" + ` files from scratch (` + "`agentworks new`" + `) and over
-hand-editing exported vendor output (` + "`agentworks export`" + ` regenerates it).
-` + "`agentworks validate`" + ` also warns on weak descriptions (too vague, too long, or
-indistinguishable from another artifact's) -- worth heeding even though it won't fail
-the command unless ` + "`--strict`" + ` is passed, since a bad description is how an agent picks
-the wrong artifact or misses this one entirely.
-`
-
-// agentworksCLISkillTemplate is the SKILL.md written into every new project
-// at .agents/skills/agentworks-cli/, teaching a coding agent how to drive
-// the agentworks CLI for this specific project.
-const agentworksCLISkillTemplate = `---
-name: agentworks-cli
-description: >
-  How to scaffold, validate, test, and export this project's agents, skills, tools,
-  hooks, and workflows with the agentworks CLI. Use whenever asked to add, change,
-  check, or export an artifact in this project.
----
-
-# Using the agentworks CLI
-
-This project is managed by [AgentWorks](https://github.com/mtfuller/agentworks). Prefer
-these commands over hand-writing or hand-editing files under ` + "`agents/`" + `, ` + "`skills/`" + `,
-` + "`tools/`" + `, ` + "`hooks/`" + `, or ` + "`workflows/`" + ` directly.
-
-## Commands
-
-- ` + "`agentworks new <kind> [name] --description \"...\"`" + ` — scaffold a new artifact
-  (` + "`kind`" + ` is one of ` + "`agent`" + `/` + "`skill`" + `/` + "`tool`" + `/` + "`hook`" + `/` + "`workflow`" + `). Leave out
-  ` + "`name`" + `/` + "`description`" + ` in an interactive terminal to get a short wizard instead.
-  Pass ` + "`--from-template <id>`" + ` to start from a curated built-in template — see
-  ` + "`agentworks templates [kind]`" + ` for the list.
-- ` + "`agentworks list [kind]`" + ` — table of this project's discovered artifacts.
-- ` + "`agentworks validate [path]`" + ` — parse and validate one artifact, or the whole
-  project if no path is given. Run this after hand-editing any ` + "`<kind>.md`" + ` file.
-  Beyond structural checks, it also warns on weak descriptions (too short, too long, or
-  overlapping heavily with another artifact's) -- pass ` + "`--strict`" + ` to fail on those too.
-- ` + "`agentworks build [path]`" + ` — run the ` + "`build:`" + ` command an artifact declares in
-  its frontmatter (installing dependencies, compiling, bundling, or whatever else it
-  needs before it can run or be exported; no path runs every artifact that declares
-  one).
-- ` + "`agentworks test [path]`" + ` — run the ` + "`test:`" + ` command an artifact declares in its
-  frontmatter (no path runs every artifact that declares one).
-- ` + "`agentworks targets`" + ` — capability matrix of which vendor targets support which
-  artifact kinds, and whether a real exporter exists for that combination.
-- ` + "`agentworks export`" + ` — bundle the whole project into a plugin for each target in
-  ` + "`agentworks.yaml`" + `'s ` + "`targets:`" + ` (override with ` + "`--target <id>`" + `). ` + "`--namespace <ns>`" + ` bundles
-  one plugin per listed namespace instead (` + "`.`" + ` = your own un-namespaced artifacts);
-  ` + "`--format skills.zip`" + ` / ` + "`--format skill`" + ` export every skill as one .zip or as
-  individual .skill files, no target needed. Targets are project-level: artifacts don't
-  declare their own.
-- ` + "`agentworks add <url>`" + ` — import a published Agent Skill or Claude Code plugin
-  into this project (the reverse of export). Accepts a GitHub ` + "`owner/repo`" + `
-  shorthand, a repo/tree/blob URL, or a direct archive URL. Imports are filed under a
-  namespace (the GitHub owner by default, ` + "`--namespace`" + ` to override) so they stay
-  distinct from your own artifacts. With no argument in an interactive terminal, opens
-  the plugin browser TUI instead.
-- ` + "`agentworks marketplace`" + ` — publish this whole project as a plugin marketplace
-  repo: exports every artifact into committed ` + "`plugins/`" + ` directories (bundled one
-  per namespace, or ` + "`--single`" + ` for one plugin total) and writes
-  ` + "`.claude-plugin/marketplace.json`" + ` / ` + "`.github/plugin/marketplace.json`" + ` so a
-  team can add this repo directly as a plugin source instead of installing artifacts
-  one at a time.
-- ` + "`agentworks tui`" + ` — full-screen browser for all of the above: drill into an
-  artifact, then ` + "`n`" + `ew/` + "`e`" + `xport/` + "`t`" + `est/` + "`p`" + `lugins (browse)/` + "`b`" + `rowse-templates without
-  dropping back to individual CLI calls.
-
-Global flags: ` + "`-p, --project`" + ` (path inside the project to operate on, default
-` + "`.`" + `, resolved upward like ` + "`git`" + ` finds a repo root), ` + "`-v, --verbose`" + `,
-` + "`-l, --log-level`" + `.
-
-## Workflow for a typical change
-
-1. ` + "`agentworks new <kind> <name> --description \"...\"`" + ` to scaffold, or edit an
-   existing artifact's ` + "`<kind>.md`" + ` / supporting files directly.
-2. ` + "`agentworks validate`" + ` to catch frontmatter and cross-reference problems
-   (a workflow's ` + "`steps:`" + ` resolving to real artifacts, a hook's
-   ` + "`events`" + `/` + "`command`" + ` set together, a tool's ` + "`auth`" + ` requiring ` + "`command`" + `).
-3. ` + "`agentworks build <path>`" + ` if the artifact declares a ` + "`build:`" + ` command.
-4. ` + "`agentworks test <path>`" + ` if the artifact declares a ` + "`test:`" + ` command.
-5. ` + "`agentworks export`" + ` to ship to the project's configured targets. Never
-   hand-edit the exported output — re-export instead.
-`
-
-// writeAgentDocs writes AGENTS.md and the .agents/skills/agentworks-cli/
-// SKILL.md into a freshly-initialized project, so a coding agent working in
-// it immediately knows how to drive the agentworks CLI. It does not
-// overwrite either file if already present, so re-running init-adjacent
-// tooling never clobbers hand edits.
+// writeAgentDocs writes AGENTS.md and every embedded skill under
+// .agents/skills/<name>/ into a freshly-initialized project, so a coding
+// agent working in it immediately knows how to drive the agentworks CLI and
+// author each artifact kind. It does not overwrite files already present, so
+// re-running init-adjacent tooling never clobbers hand edits.
 func writeAgentDocs(dir, name string) error {
-	agentsMDPath := filepath.Join(dir, "AGENTS.md")
-	if err := writeIfAbsent(agentsMDPath, fmt.Sprintf(agentsMDTemplate, name)); err != nil {
+	tmpl, err := embeddedDocs.ReadFile(agentsMDTemplatePath)
+	if err != nil {
+		return fmt.Errorf("reading embedded AGENTS.md: %w", err)
+	}
+	agentsMD := strings.ReplaceAll(string(tmpl), "{{project}}", name)
+	if err := writeIfAbsent(filepath.Join(dir, "AGENTS.md"), agentsMD); err != nil {
 		return err
 	}
 
-	skillDir := filepath.Join(dir, ".agents", "skills", "agentworks-cli")
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", skillDir, err)
-	}
-	skillPath := filepath.Join(skillDir, "SKILL.md")
-	if err := writeIfAbsent(skillPath, agentworksCLISkillTemplate); err != nil {
-		return err
-	}
-	return nil
+	destRoot := filepath.Join(dir, ".agents", "skills")
+	return fs.WalkDir(embeddedDocs, embeddedSkillsDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel := strings.TrimPrefix(strings.TrimPrefix(p, embeddedSkillsDir), "/")
+		if rel == "" {
+			return nil
+		}
+		dest := filepath.Join(destRoot, filepath.FromSlash(rel))
+		if d.IsDir() {
+			if err := os.MkdirAll(dest, 0o755); err != nil {
+				return fmt.Errorf("creating %s: %w", dest, err)
+			}
+			return nil
+		}
+		content, err := embeddedDocs.ReadFile(path.Clean(p))
+		if err != nil {
+			return fmt.Errorf("reading embedded %s: %w", p, err)
+		}
+		return writeIfAbsent(dest, string(content))
+	})
 }
 
 func writeIfAbsent(path, content string) error {

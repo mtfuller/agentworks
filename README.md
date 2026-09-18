@@ -54,9 +54,9 @@ without building one yourself.
 ## A project, on disk
 
 `agentworks init` creates a project manifest, one directory per artifact kind, and an
-`AGENTS.md` + `.agents/skills/agentworks-cli/` skill so a coding agent working in the
-project immediately knows how to drive the CLI (neither is overwritten if it already
-exists):
+`AGENTS.md` + a set of `.agents/skills/` (CLI usage, one authoring skill per artifact
+kind, and evals) so a coding agent working in the project immediately knows how to drive
+the CLI and write each kind (none is overwritten if it already exists):
 
 ```
 myproject/
@@ -64,8 +64,9 @@ myproject/
 ├── AGENTS.md             # guidance for coding agents working in this project
 ├── .agents/
 │   └── skills/
-│       └── agentworks-cli/
-│           └── SKILL.md  # how to scaffold/validate/test/export with agentworks
+│       ├── agentworks-cli/           # how to scaffold/validate/test/export with agentworks
+│       ├── agentworks-author-agent/  # (likewise -skill, -tool, -hook, -workflow)
+│       └── agentworks-evals/         # writing and running behavior evals
 ├── agents/
 ├── skills/
 ├── tools/
@@ -173,7 +174,7 @@ above needs. See `agentworks templates` for the full list.
 
 | Command | What it does |
 | --- | --- |
-| `agentworks init [path]` | Scaffold a new project (`agentworks.yaml`, the 5 kind directories, and an `AGENTS.md` + `.agents/skills/agentworks-cli/SKILL.md` teaching a coding agent how to drive this CLI in the project). Pass `--target` (repeatable) to set the project's export targets, or leave it out in an interactive terminal for a prompt. Targets live only in `agentworks.yaml` -- artifacts don't declare their own -- and `agentworks export` reads them, so it needs no `--target` once they're set. |
+| `agentworks init [path]` | Scaffold a new project (`agentworks.yaml`, the 5 kind directories, and an `AGENTS.md` + `.agents/skills/` teaching a coding agent how to drive this CLI and author each artifact kind in the project). Pass `--target` (repeatable) to set the project's export targets, or leave it out in an interactive terminal for a prompt. Targets live only in `agentworks.yaml` -- artifacts don't declare their own -- and `agentworks export` reads them, so it needs no `--target` once they're set. |
 | `agentworks new <kind> [name]` | Scaffold a new agent/skill/tool/hook/workflow. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. Pass `--from-template <id>` to start from a curated built-in template instead of the generic blank scaffold (see `agentworks templates`) — its own description covers you if you don't pass `--description`. |
 | `agentworks templates [kind]` | Table of the built-in starter templates `--from-template` can scaffold from (two per kind for hook/workflow, three for agent, four for tool, six for skill: e.g. a tool's `api-wrapper`/`cli-wrapper`/`node-tool`/`node-ts-tool`, a workflow's `research-then-act`/`fetch-then-review`, a skill's `pptx-style-refresh`/`xlsx-workbook-updater` for Microsoft 365 Copilot's PowerPoint/Excel skills, or `node-skill`/`node-ts-skill`/`node-tool`/`node-ts-tool` for a Node.js or TypeScript implementation instead of the Python default -- the TypeScript variants bundle with esbuild via a `build:` command). Pass a kind to filter. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |

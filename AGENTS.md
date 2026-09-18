@@ -255,8 +255,11 @@ warning only fires when `m365copilot.UsesPlaceholderPublisher` says a required f
 a placeholder, so a project that's configured it stops seeing the nag.
 
 Also done as of this pass: `agentworks init` now writes an `AGENTS.md` plus
-`.agents/skills/agentworks-cli/SKILL.md` into every new project (see
-`internal/project/agentdocs.go`), so a coding agent working inside a scaffolded project
+`.agents/skills/` (`agentworks-cli`, one `agentworks-author-<kind>` per artifact kind, and
+`agentworks-evals`) into every new project. Their source is markdown under
+`internal/project/embedded/`, pulled in with `//go:embed` by `internal/project/agentdocs.go`;
+edit those files, and keep them in step with the CLI when commands or frontmatter rules
+change (`TestInitWritesSkillPerKind` checks each skill's frontmatter and description), so a coding agent working inside a scaffolded project
 knows to drive it via the CLI rather than hand-writing `<kind>.md` files or hand-editing
 exported vendor output. Neither file is overwritten if a project already has one
 (`writeAgentDocs`/`writeIfAbsent`), so re-running init-adjacent tooling never clobbers
@@ -343,7 +346,7 @@ promotes these warnings to failures for a CI gate that wants them enforced. Serv
 guiding scenario 6 (local validate workflows) directly — a description is how an agent
 *finds* an artifact in the first place, and that was previously untested by anything in
 AgentWorks. `agentworks init`'s generated `AGENTS.md`/`agentworks-cli` `SKILL.md`
-(`internal/project/agentdocs.go`) mention it too, so a coding agent working inside a
+(`internal/project/embedded/`) mention it too, so a coding agent working inside a
 scaffolded project knows to heed the warnings.
 
 Also done as of this pass: agents are no longer just a name + prompt. An agent
