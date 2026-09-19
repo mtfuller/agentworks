@@ -3,9 +3,9 @@
 All notable changes. See [COMPATIBILITY.md](COMPATIBILITY.md) for what counts as breaking.
 Before 1.0, a minor version may include breaking changes; each is marked **Breaking**.
 
-## Unreleased (heading to v0.18)
+## v0.18.0
 
-Milestone 1 of [PLAN-1.0.md](PLAN-1.0.md): freeze the formats.
+Milestones 1 and 2 of [PLAN-1.0.md](PLAN-1.0.md): freeze the formats, then import completeness.
 
 ### Added
 - **Field registry.** `internal/artifact/fields.go` lists every supported frontmatter field
@@ -25,7 +25,7 @@ Milestone 1 of [PLAN-1.0.md](PLAN-1.0.md): freeze the formats.
   types and validated against real output in the tests.
 - `COMPATIBILITY.md` and this changelog.
 
-Milestone 2 (import completeness), first part:
+**Import completeness (M2):**
 
 - **Import MCP servers and hooks from a plugin.** `agentworks add` now turns a Claude Code
   plugin's `.mcp.json` / `plugin.json` `mcpServers` into `mcp` artifacts, and its
