@@ -44,6 +44,7 @@ jobs:
           cd examples/starter-project
           "$RUNNER_TEMP/agentworks" validate --strict
           "$RUNNER_TEMP/agentworks" doctor
+          "$RUNNER_TEMP/agentworks" test
           "$RUNNER_TEMP/agentworks" eval
 
   lint:

@@ -78,6 +78,15 @@ warning, so a working project passes --strict; only a suspicious command shape
 				doc.Artifacts = append(doc.Artifacts, item)
 				continue
 			}
+			if errs := append(a.RequiresSyntaxErrors(), a.BinsSyntaxErrors()...); len(errs) > 0 {
+				for _, e := range errs {
+					color.Error("%s: %v", a.Dir, e)
+					item.Errors = append(item.Errors, e.Error())
+				}
+				failed++
+				doc.Artifacts = append(doc.Artifacts, item)
+				continue
+			}
 			// The "declares a command" notice is shown but never counted as a
 			// warning: every working hook or mcp server has one.
 			if n := a.LintSecurityNotice(); n != nil {
@@ -95,6 +104,11 @@ warning, so a working project passes --strict; only a suspicious command shape
 		}
 
 		if wholeProject {
+			for _, p := range artifact.CheckRequires(toCheck) {
+				color.Error("%s", p)
+				failed++
+				doc.Problems = append(doc.Problems, p)
+			}
 			for _, w := range artifact.LintOverlap(toCheck) {
 				color.Warning("%s: %s", w.Dir, w.Message)
 				warned++

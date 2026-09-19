@@ -37,7 +37,7 @@ func exportAgent(a *artifact.Artifact, outDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("encoding %s.md frontmatter: %w", a.Name, err)
 	}
-	content := "---\n" + string(data) + "---\n\n" + a.Body
+	content := "---\n" + string(data) + "---\n\n" + a.BodyWithRequirements()
 	path := filepath.Join(agentsDir, a.Name+".md")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return "", fmt.Errorf("writing %s: %w", path, err)

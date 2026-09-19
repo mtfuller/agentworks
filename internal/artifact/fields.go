@@ -57,6 +57,8 @@ var extraFields = []Field{
 	{Name: "eval_runner", Type: TypeString, Doc: "Shell command `agentworks eval` pipes each case's prompt to; its stdout is what the assertions check. Falls back to the project's `eval.default_runner`."},
 	{Name: "eval_protocol", Type: TypeString, Doc: "How the eval runner reports a response: `text` (stdout is the response) or `json` (one JSON object that also reports tool calls and activations, needed by the tool and trigger assertions). Falls back to the project's `eval.protocol`."},
 	{Name: "judge_runner", Type: TypeString, Doc: "Shell command that grades `rubric` assertions: reads a JSON request on stdin, prints a JSON verdict. Falls back to the project's `eval.judge_runner`."},
+	{Name: "requires", Type: TypeList, Doc: "Other artifacts this one depends on, as `kind:name` or `kind:namespace/name` (e.g. `skill:csv-analyzer`, `mcp:team-a/jira-fetch`). `agentworks validate` checks each exists and that there is no cycle; `agentworks export` refuses a bundle that would leave one dangling. An agent's exported instructions list what it requires."},
+	{Name: "bins", Type: TypeList, Doc: "Executables the artifact needs on PATH, optionally with a minimum version: `python3`, `node>=20`. `agentworks doctor` checks each."},
 	{Name: "source", Type: TypeObject, Doc: "Provenance written by `agentworks add` (where an imported artifact came from). Not meant to be edited by hand."},
 	{Name: "targets", Type: TypeList, Deprecated: "targets are set once in agentworks.yaml, not per artifact", Doc: "Ignored. Targets live in `agentworks.yaml`."},
 

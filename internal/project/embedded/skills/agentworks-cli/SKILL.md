@@ -79,6 +79,10 @@ something to run.
 
 ## Other
 
+- `agentworks graph [--dot]` — which artifacts `requires:` which. Any artifact may declare
+  `requires: [skill:csv-analyzer, mcp:jira-fetch]` (`kind:name` or `kind:namespace/name`) and
+  `bins: [python3, node>=20]`; `validate` rejects a dangling reference or cycle, `doctor` checks
+  `bins`, and `export` refuses a bundle that would leave a requirement out.
 - `agentworks tui` — full-screen browser for all of the above.
 - `agentworks version`.
 - Global flags: `-p, --project <path>` (any path inside the project; resolved upward like

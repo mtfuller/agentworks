@@ -47,6 +47,8 @@ var listCmd = &cobra.Command{
 					Description:   a.Description,
 					Version:       a.Version,
 					Path:          itemPath(a),
+					Requires:      refStrings(a.Requires()),
+					Bins:          append([]string{}, a.ExtraStringSlice("bins")...),
 				})
 			}
 			return emitJSON(doc)
@@ -78,6 +80,18 @@ type listItem struct {
 	Description   string `json:"description"`
 	Version       string `json:"version,omitempty"`
 	Path          string `json:"path"`
+	// Requires are the artifacts this one depends on, as kind:name references.
+	Requires []string `json:"requires"`
+	// Bins are the executables it needs on PATH (name or name>=version).
+	Bins []string `json:"bins"`
+}
+
+func refStrings(refs []artifact.Ref) []string {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, r.String())
+	}
+	return out
 }
 
 func truncate(s string, max int) string {

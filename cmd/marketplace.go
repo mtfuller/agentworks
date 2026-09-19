@@ -246,6 +246,16 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, m 
 	}
 	sort.Strings(groupNames)
 
+	// A plugin ships only its own members, so a requires: that points into
+	// another plugin (or at something this target can't take) would dangle.
+	for _, name := range groupNames {
+		for _, a := range groups[name] {
+			for _, r := range a.Missing(groups[name]) {
+				return fmt.Errorf("%s: %s requires %s, which isn't in the same plugin (%q) -- put them in one namespace, or pass --single", mt.id, a.DisplayName(), r, name)
+			}
+		}
+	}
+
 	// Warn about hand-edited output before anything gets cleared --
 	// regenerating this target's whole plugin tree from scratch is this
 	// command's job, but a hand-edit to a previous run's output is worth

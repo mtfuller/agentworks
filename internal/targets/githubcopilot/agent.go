@@ -60,7 +60,7 @@ func writeCopilotAgentFile(path string, a *artifact.Artifact) error {
 	if err != nil {
 		return fmt.Errorf("encoding %s frontmatter: %w", path, err)
 	}
-	content := "---\n" + string(data) + "---\n\n" + a.Body
+	content := "---\n" + string(data) + "---\n\n" + a.BodyWithRequirements()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}

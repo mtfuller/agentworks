@@ -1,9 +1,8 @@
 """Tests for jira-fetch. Run with: python3 -m unittest discover -s tests
 
-Requires `mcp` to be installed (pip install mcp), same as src/main.py
-itself -- these tests simulate the Jira REST API rather than calling a
-real instance, but they still import the real MCP SDK to exercise the
-actual tool registration/invocation path, not just extract().
+These simulate the Jira REST API rather than calling a real instance. No
+dependencies: the server speaks MCP itself, so the protocol path is tested
+through handle().
 """
 
 import io
@@ -113,13 +112,44 @@ class TestFetchIssueJSON(unittest.TestCase):
         self.assertTrue(called_request.get_header("Authorization").startswith("Basic "))
 
 
-class TestMCPToolRegistration(unittest.TestCase):
-    def test_fetch_issue_is_registered_as_a_tool(self):
-        import asyncio
+class TestMCPProtocol(unittest.TestCase):
+    def test_fetch_issue_is_listed_as_a_tool(self):
+        response = main.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        names = [t["name"] for t in response["result"]["tools"]]
+        self.assertEqual(names, ["fetch_issue"])
 
-        tools = asyncio.run(main.mcp.list_tools())
-        names = [t.name for t in tools]
-        self.assertIn("fetch_issue", names)
+    def test_calling_the_tool_returns_extracted_fields(self):
+        env = {
+            "JIRA_BASE_URL": "https://example.atlassian.net",
+            "JIRA_EMAIL": "a@b.com",
+            "JIRA_API_TOKEN": "tok",
+        }
+        fake = FakeHTTPResponse(json.dumps(FAKE_ISSUE).encode())
+        with patch.dict(os.environ, env, clear=True):
+            with patch("urllib.request.urlopen", return_value=fake):
+                response = main.handle(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "method": "tools/call",
+                        "params": {"name": "fetch_issue", "arguments": {"issue_key": "PROJ-123"}},
+                    }
+                )
+        result = response["result"]
+        self.assertFalse(result["isError"])
+        self.assertEqual(json.loads(result["content"][0]["text"])["title"], "Add dark mode toggle")
+
+    def test_a_config_error_is_reported_to_the_agent_not_raised(self):
+        with patch.dict(os.environ, {}, clear=True):
+            response = main.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "fetch_issue", "arguments": {"issue_key": "X-1"}},
+                }
+            )
+        self.assertTrue(response["result"]["isError"])
 
 
 if __name__ == "__main__":

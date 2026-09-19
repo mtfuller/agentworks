@@ -41,7 +41,7 @@ MCP over stdio, they don't invoke it as a one-shot CLI command.
 
 ## Implementation
 
-`src/main.py` (requires `pip install mcp`) and `tests/test_main.py`
+`src/main.py` (no dependencies -- it speaks MCP over stdio itself) and `tests/test_main.py`
 (stdlib `unittest`, simulating the Jira REST API rather than calling a
 real instance -- run via the `test:` command above). Uses Jira's API v2
 (not v3) so `description` comes back as a plain string instead of

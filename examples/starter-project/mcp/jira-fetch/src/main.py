@@ -2,9 +2,10 @@
 """jira-fetch: an MCP server exposing one tool, fetch_issue, that fetches
 a Jira Cloud issue and returns the fields useful for implementing it.
 
-Requires: pip install mcp
+No dependencies: it speaks MCP over stdio itself (newline-delimited JSON-RPC),
+so `agentworks test` passes on a fresh clone.
 Reads JIRA_BASE_URL, JIRA_EMAIL, and JIRA_API_TOKEN from the environment
-(see this tool's ../tool.md `auth:` list -- when exported to claude-code
+(see this tool's ../mcp.md `auth:` list -- when exported to claude-code
 or github-copilot, these are wired through as ${VAR} references in the
 generated MCP server config, never as literal secrets).
 
@@ -18,13 +19,37 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 from base64 import b64encode
 
-from mcp.server import MCPServer
+SERVER_NAME = "jira-fetch"
+SERVER_VERSION = "0.1.0"
+DEFAULT_PROTOCOL = "2024-11-05"
 
-mcp = MCPServer("jira-fetch")
+TOOLS = {}
+
+
+def tool(name, description, properties=None, required=()):
+    """Register fn as an MCP tool."""
+
+    def register(fn):
+        TOOLS[name] = {
+            "fn": fn,
+            "spec": {
+                "name": name,
+                "description": description,
+                "inputSchema": {
+                    "type": "object",
+                    "properties": properties or {},
+                    "required": list(required),
+                },
+            },
+        }
+        return fn
+
+    return register
 
 
 class ConfigError(RuntimeError):
@@ -108,13 +133,69 @@ def extract(issue: dict) -> dict:
     return result
 
 
-@mcp.tool()
-def fetch_issue(issue_key: str) -> dict:
-    """Fetch a Jira ticket and return its title, description, status,
-    linked issues, and acceptance criteria (if configured) as structured
-    data ready for an agent to act on."""
-    return extract(fetch_issue_json(issue_key))
+@tool(
+    "fetch_issue",
+    "Fetch a Jira ticket and return its title, description, status, linked issues, "
+    "and acceptance criteria (if configured) as structured data ready for an agent to act on.",
+    {"issue_key": {"type": "string", "description": "The issue key, e.g. PROJ-123"}},
+    ["issue_key"],
+)
+def fetch_issue(args):
+    return json.dumps(extract(fetch_issue_json(args["issue_key"])), indent=2)
+
+
+def handle(request):
+    """Turn one JSON-RPC request into a response dict, or None for a notification."""
+    method = request.get("method")
+    req_id = request.get("id")
+    params = request.get("params") or {}
+
+    if req_id is None:  # notification (e.g. notifications/initialized): no reply
+        return None
+
+    def ok(result):
+        return {"jsonrpc": "2.0", "id": req_id, "result": result}
+
+    def err(code, message):
+        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+
+    if method == "initialize":
+        return ok(
+            {
+                "protocolVersion": params.get("protocolVersion", DEFAULT_PROTOCOL),
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            }
+        )
+    if method == "ping":
+        return ok({})
+    if method == "tools/list":
+        return ok({"tools": [t["spec"] for t in TOOLS.values()]})
+    if method == "tools/call":
+        entry = TOOLS.get(params.get("name"))
+        if entry is None:
+            return err(-32602, f"unknown tool: {params.get('name')}")
+        try:
+            text = str(entry["fn"](params.get("arguments") or {}))
+            return ok({"content": [{"type": "text", "text": text}], "isError": False})
+        except Exception as exc:  # report tool failures to the agent, don't crash
+            return ok({"content": [{"type": "text", "text": str(exc)}], "isError": True})
+    return err(-32601, f"method not found: {method}")
+
+
+def main():
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            response = handle(json.loads(line))
+        except json.JSONDecodeError:
+            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
+        if response is not None:
+            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.flush()
 
 
 if __name__ == "__main__":
-    mcp.run()
+    main()

@@ -146,6 +146,12 @@ func Run(req Request, lf *lockfile.Lockfile) (Result, error) {
 		name = req.ProjectName
 	}
 
+	if req.Format == FormatPlugin || req.Format == "" {
+		if err := checkClosure(req, name, arts); err != nil {
+			return res, err
+		}
+	}
+
 	switch req.Format {
 	case FormatSkillsZip, FormatSkillFiles:
 		if len(req.Namespaces) > 0 {
@@ -489,4 +495,43 @@ func clearMergedFiles(lf *lockfile.Lockfile, target, outDir string) {
 	for _, rel := range mergedFiles[target] {
 		_ = os.Remove(filepath.Join(outDir, filepath.FromSlash(rel)))
 	}
+}
+
+// checkClosure refuses an export whose plugin would ship an artifact without
+// something it `requires:`. It looks at what each plugin will hold (the whole
+// selection, or one namespace's share of it) and says whether the missing
+// artifact exists elsewhere in the project, since that decides the fix.
+func checkClosure(req Request, name string, arts []*artifact.Artifact) error {
+	groups, err := planGroups(req, name, arts)
+	if err != nil {
+		return err
+	}
+	var all []*artifact.Artifact
+	if found, _ := project.Discover(req.Root); found != nil {
+		all = found
+	}
+	inProject := map[artifact.Ref]bool{}
+	for _, a := range all {
+		inProject[a.Ref()] = true
+	}
+
+	var problems []string
+	for _, g := range groups {
+		for _, a := range g.members {
+			for _, r := range a.Missing(g.members) {
+				hint := "it doesn't exist in this project (run `agentworks validate`)"
+				if inProject[r] {
+					hint = "it exists in the project but isn't part of this export -- include it"
+					if len(req.Namespaces) > 0 {
+						hint += ", or export the namespaces together"
+					}
+				}
+				problems = append(problems, fmt.Sprintf("%s requires %s, but %s", a.DisplayName(), r, hint))
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("the export would leave dependencies dangling:\n  %s", strings.Join(problems, "\n  "))
+	}
+	return nil
 }

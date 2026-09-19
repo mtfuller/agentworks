@@ -199,6 +199,12 @@ func doctorChecks(a *artifact.Artifact, env []string) []doctorIssue {
 		}
 	}
 
+	for _, b := range a.Bins() {
+		if msg := artifact.CheckBin(b); msg != "" {
+			issues = append(issues, doctorIssue{fatal: true, message: msg})
+		}
+	}
+
 	if entrypoint := a.ExtraString("entrypoint"); entrypoint != "" {
 		path := filepath.Join(a.Dir, entrypoint)
 		if _, err := os.Stat(path); err != nil {

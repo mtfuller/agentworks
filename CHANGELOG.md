@@ -3,6 +3,25 @@
 All notable changes. See [COMPATIBILITY.md](COMPATIBILITY.md) for what counts as breaking.
 Before 1.0, a minor version may include breaking changes; each is marked **Breaking**.
 
+## v0.22.0
+
+Milestones 3 and 7 of [PLAN-1.0.md](PLAN-1.0.md): dependencies, and docs.
+
+### Added
+- **`requires:`** on any artifact (`skill:csv-analyzer`, `mcp:team-a/jira-fetch`).
+  `validate` fails on a dangling reference or a cycle; `export` and `marketplace` fail
+  instead of producing a plugin that ships an artifact without its dependency. An agent's
+  exported instructions gain a Requires section.
+- **`bins:`** (`python3`, `node>=20`), checked by `doctor`.
+- `agentworks graph` (`--dot`), and `requires`/`bins` in `list --json`.
+- Guides under `docs/guides/` (author to publish, dependencies, importing, testing, CI) and
+  a docs index; shell completion is documented.
+
+### Changed
+- `init --ci` pins the action to the release that wrote the file, not `@main`.
+- The starter example's `jira-fetch` is dependency-free, so `agentworks test` passes on a
+  fresh clone.
+
 ## v0.21.0
 
 Milestone 6 of [PLAN-1.0.md](PLAN-1.0.md): vendor conformance and platform.

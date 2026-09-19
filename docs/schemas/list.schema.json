@@ -5,6 +5,12 @@
     "artifacts": {
       "items": {
         "properties": {
+          "bins": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "description": {
             "type": "string"
           },
@@ -23,6 +29,12 @@
           "qualified_name": {
             "type": "string"
           },
+          "requires": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "version": {
             "type": "string"
           }
@@ -32,7 +44,9 @@
           "name",
           "qualified_name",
           "description",
-          "path"
+          "path",
+          "requires",
+          "bins"
         ],
         "type": "object"
       },

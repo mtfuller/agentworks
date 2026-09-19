@@ -17,6 +17,8 @@ supporting multiple harnesses doesn't mean maintaining N copies by hand.
 See [AGENTS.md](AGENTS.md) for the guiding scenarios and how the project is organized
 for agentic development.
 
+Guides and reference: [docs/](docs/README.md).
+
 ## Quick Start
 
 ### Prerequisites
@@ -264,6 +266,7 @@ prompts, the inspector adds a section for each (keys `1`, `2`, `3`).
 | `agentworks update [path...]` | Check artifacts imported with `add` for upstream changes: re-fetches each locked source and compares its content hash against what was pinned at import time. Report-only by default; `--apply` overwrites a changed artifact with the fresh content (refusing rather than silently renaming/moving it if upstream itself renamed the artifact) and updates the pin, subject to the same shell-command confirmation gate as `add` (`--yes` to skip it). With no path, checks every import in `agentworks.lock`. Your own edits are protected: an artifact you changed since importing it is not overwritten by `--apply` unless you pass `--force`, and `--diff` shows what would change. |
 | `agentworks status [path]` | Fully offline check of `dist/` output against `agentworks.lock`'s export records: `in sync`, `stale` (source artifact changed, re-export), `modified` (dist was hand-edited since the last export — re-exporting discards it), or `missing`. `--fail-on-drift` exits non-zero unless everything is in sync. |
 | `agentworks marketplace` | Publish this project as a plugin marketplace repo a team can point Claude Code or GitHub Copilot at directly — see "Becoming a plugin marketplace repo" below. |
+| `agentworks graph` | Show which artifacts `requires:` which (`--dot` for Graphviz). See [dependencies](docs/guides/dependencies.md). |
 | `agentworks tui` | Full-screen Bubble Tea browser: a tab per artifact kind (`tab`/`shift+tab` to switch) showing that kind's artifacts directly, drill into one with `enter` for its rendered frontmatter and body. Press `n` to scaffold a new artifact (the same wizard `agentworks new` uses, pre-filled with the current tab's kind), `e` to export the whole project (one plugin, a plugin per namespace, or skills as `.zip`/`.skill`) to the project's configured targets, `t` to run its declared `test:` command, `p` to browse plugins from the Claude Code and GitHub Copilot marketplaces -- only permissively licensed ones (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0, Zlib), with a detail pane beside the list showing license, author, and exactly which skills/agents importing it would add --, or `b` to browse/search the built-in starter templates (also tabbed by kind) and create straight from one — all run right there, no dropping back to the CLI. |
 | `agentworks version` | Print version/commit/build-date info. |
 
@@ -430,7 +433,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: mtfuller/agentworks@main        # pin to a release tag once you depend on it
+      - uses: mtfuller/agentworks@v0.22.0       # pin to a release tag; @main tracks development
         with:
           checks: validate,doctor,marketplace # also: test, eval, status
           strict: "true"

@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/mtfuller/agentworks/internal/version"
 )
 
 // ciWorkflowPath is where WriteCIWorkflow puts the workflow, relative to the
@@ -26,16 +30,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pin this to a release tag (e.g. mtfuller/agentworks@v0.3.0) once you
-      # depend on it; @main tracks the latest.
-      - uses: mtfuller/agentworks@main
+      # Pinned to the release that wrote this file, so a new release can't
+      # change what your CI checks. Bump it deliberately.
+      - uses: mtfuller/agentworks@__REF__
         with:
+          version: __REF__
           # Available checks: validate, doctor, marketplace (only when a
           # marketplace.json is committed), test, eval, status.
           checks: validate,doctor,marketplace
           # Fail on weak descriptions and risky shell commands, not just errors.
           strict: "true"
 `
+
+var releaseTag = regexp.MustCompile(`^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
+
+// ciWorkflowText fills in the version to pin: the running binary's release
+// tag, or "main" for a development build that isn't one.
+func ciWorkflowText() string {
+	ref := "main"
+	if releaseTag.MatchString(version.Version) {
+		ref = version.Version
+	}
+	return strings.ReplaceAll(ciWorkflow, "__REF__", ref)
+}
 
 // WriteCIWorkflow writes a GitHub Actions workflow running the project's
 // AgentWorks checks into dir/.github/workflows/agentworks.yml and returns its
@@ -49,7 +66,7 @@ func WriteCIWorkflow(dir string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, []byte(ciWorkflow), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(ciWorkflowText()), 0o644); err != nil {
 		return "", fmt.Errorf("writing %s: %w", path, err)
 	}
 	return path, nil
