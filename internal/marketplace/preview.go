@@ -21,6 +21,9 @@ type Preview struct {
 	Namespace   string
 	Items       []PreviewItem
 	Unsupported []string
+	// Warnings are things that would import but need attention (an ignored
+	// field, a file a command references that isn't in the plugin).
+	Warnings []string
 }
 
 // FetchPreview downloads src and reports what importing it would create.
@@ -36,7 +39,7 @@ func FetchPreview(ctx context.Context, root string, src importer.Source) (*Previ
 }
 
 func previewFromPlan(plan *importer.Plan, src importer.Source) *Preview {
-	p := &Preview{Namespace: src.DefaultNamespace(), Unsupported: plan.Unsupported}
+	p := &Preview{Namespace: src.DefaultNamespace(), Unsupported: plan.Unsupported, Warnings: plan.Warnings}
 	for _, a := range plan.Artifacts {
 		p.Items = append(p.Items, PreviewItem{Kind: a.Kind, Namespace: a.Namespace, Name: a.Name, Description: a.Description})
 	}

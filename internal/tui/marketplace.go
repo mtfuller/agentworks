@@ -160,6 +160,10 @@ func (m Model) handleMarketplaceImported(msg marketplaceImportedMsg) (tea.Model,
 	for _, u := range msg.plan.Unsupported {
 		text += "; " + u
 	}
+	if len(msg.plan.Warnings) > 0 {
+		level = statusWarn
+		text += fmt.Sprintf("; %s", strings.Join(msg.plan.Warnings, "; "))
+	}
 	if len(msg.securityWarnings) > 0 {
 		level = statusWarn
 		text += fmt.Sprintf("; ⚠ %s", strings.Join(msg.securityWarnings, "; "))
@@ -338,6 +342,9 @@ func renderPreview(p *marketplace.Preview, wrap lipgloss.Style) string {
 	}
 	for _, u := range p.Unsupported {
 		b.WriteString("\n" + wrap.Render(statusWarnStyle.Render("not imported: ")+u) + "\n")
+	}
+	for _, w := range p.Warnings {
+		b.WriteString("\n" + wrap.Render(statusWarnStyle.Render("note: ")+w) + "\n")
 	}
 	return b.String()
 }

@@ -125,3 +125,61 @@ type CallToolResult struct {
 	Content []ContentBlock `json:"content"`
 	IsError bool           `json:"isError,omitempty"`
 }
+
+// Resource is one entry from "resources/list": something the server can hand
+// the client to read (a file, a record), identified by URI.
+type Resource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// ResourceContents is what "resources/read" returns for one URI: text, or a
+// base64 blob for binary content.
+type ResourceContents struct {
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Blob     string `json:"blob,omitempty"`
+}
+
+// Prompt is one entry from "prompts/list": a reusable message template the
+// server offers, with named arguments.
+type Prompt struct {
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
+}
+
+// PromptArgument is one argument a Prompt accepts.
+type PromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// PromptMessage is one message of a rendered prompt.
+type PromptMessage struct {
+	Role    string       `json:"role"`
+	Content ContentBlock `json:"content"`
+}
+
+// GetPromptResult is what "prompts/get" returns: the prompt rendered with the
+// given arguments.
+type GetPromptResult struct {
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
+}
+
+// HasCapability reports whether the server's initialize response advertised
+// the named capability ("tools", "resources", "prompts", ...). A server that
+// omits a capability isn't expected to answer its methods.
+func (r InitializeResult) HasCapability(name string) bool {
+	var caps map[string]json.RawMessage
+	if err := json.Unmarshal(r.Capabilities, &caps); err != nil {
+		return false
+	}
+	_, ok := caps[name]
+	return ok
+}

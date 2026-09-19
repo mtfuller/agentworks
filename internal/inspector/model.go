@@ -1,8 +1,10 @@
 // Package inspector is AgentWorks' MCP inspector: a full-screen Bubble Tea
-// UI that starts a tool artifact's declared "command" as a real MCP
-// server (via internal/mcpclient) and lets a user browse the tools it
-// exposes, fill in and submit a call against one, and inspect the result
-// -- `agentworks run`'s entry point (see cmd/run.go).
+// UI that connects to an mcp artifact's server -- starting its declared
+// "command" as a process, or reaching its remote http/sse endpoint (via
+// internal/mcpclient) -- and lets a user browse the tools it exposes, fill
+// in and submit a call against one, and inspect the result; and, for a
+// server that offers them, browse its resources and prompts too --
+// `agentworks run`'s entry point (see cmd/run.go).
 //
 // It's a separate package from internal/tui rather than folded into that
 // project browser: this is a different screen with a different
@@ -84,12 +86,10 @@ func (i toolItem) FilterValue() string { return i.tool.Name }
 // Model is the inspector's root Bubble Tea model.
 type Model struct {
 	artifactName string
-	command      string
-	dir          string
-	env          []string
+	target       mcpclient.Target
 	missingAuth  []string
 
-	proc *mcpclient.Process
+	conn *mcpclient.Conn
 
 	// connectDone is set once the initial connect+initialize+tools/list
 	// attempt finishes, successfully or not -- connectErr distinguishes
@@ -110,8 +110,15 @@ type Model struct {
 	// toggles it.
 	focusRight bool
 
-	toolList list.Model
-	detail   viewport.Model
+	// section is which list paneList is showing; resources and prompts exist
+	// only for a server that advertised them.
+	section      section
+	hasResources bool
+	hasPrompts   bool
+	toolList     list.Model
+	resourceList list.Model
+	promptList   list.Model
+	detail       viewport.Model
 
 	historyList list.Model
 	logView     viewport.Model
@@ -119,6 +126,9 @@ type Model struct {
 
 	activeForm *callForm
 	formTool   mcpclient.Tool
+	// formPrompt is set instead of formTool's call when the active form is
+	// collecting a prompt's arguments.
+	formPrompt *mcpclient.Prompt
 
 	history     []callRecord
 	shownResult *callRecord
@@ -130,26 +140,32 @@ type Model struct {
 }
 
 // New builds an inspector Model for artifact a, ready to be run via
-// tea.NewProgram (see Run in app.go). command/dir/env describe how to
-// start it as a process (the same shape mcpconfig.ServerFor already
-// builds for export, except here it's actually executed -- see
-// cmd/run.go). missingAuth is purely informational, shown as a header
+// tea.NewProgram (see Run in app.go). target says how to reach the server:
+// a local command to start (the shape mcpconfig.ServerFor builds for
+// export, except here it's actually executed) or a remote URL -- see
+// cmd/run.go. missingAuth is purely informational, shown as a header
 // warning.
-func New(a *artifact.Artifact, command, dir string, env, missingAuth []string) Model {
+func New(a *artifact.Artifact, target mcpclient.Target, missingAuth []string) Model {
 	toolList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	toolList.Title = "Tools"
+
+	resourceList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	resourceList.Title = "Resources"
+
+	promptList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	promptList.Title = "Prompts"
 
 	historyList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	historyList.Title = "Call history"
 
 	return Model{
 		artifactName: a.Name,
-		command:      command,
-		dir:          dir,
-		env:          env,
+		target:       target,
 		missingAuth:  missingAuth,
 		spinner:      spinner.New(spinner.WithSpinner(spinner.Dot)),
 		toolList:     toolList,
+		resourceList: resourceList,
+		promptList:   promptList,
 		detail:       viewport.New(0, 0),
 		historyList:  historyList,
 		logView:      viewport.New(0, 0),
@@ -158,7 +174,7 @@ func New(a *artifact.Artifact, command, dir string, env, missingAuth []string) M
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, connectCmd(m.command, m.dir, m.env, m.traceCh), waitForTrace(m.traceCh))
+	return tea.Batch(m.spinner.Tick, connectCmd(m.target, m.traceCh), waitForTrace(m.traceCh))
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -189,6 +205,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case callResultMsg:
 		return m.handleCallResult(msg)
+
+	case resourceResultMsg:
+		return m.handleResourceResult(msg)
+
+	case promptResultMsg:
+		return m.handlePromptResult(msg)
 	}
 
 	if !m.connectDone {
@@ -214,7 +236,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.focusRight {
 			m.detail, cmd = m.detail.Update(msg)
 		} else {
-			m.toolList, cmd = m.toolList.Update(msg)
+			l := m.currentList()
+			*l, cmd = l.Update(msg)
 			m.syncDetailToSelection()
 		}
 	case paneHistory:
@@ -237,8 +260,12 @@ func (m Model) handleKey(key tea.KeyMsg) (handled bool, next Model, cmd tea.Cmd)
 			return true, m, tea.Quit
 		case "enter":
 			if !m.focusRight {
-				updated, c := m.openCallForm()
+				updated, c := m.activateSelection()
 				return true, updated, c
+			}
+		case "1", "2", "3":
+			if next, ok := m.switchSection(key.String()); ok {
+				return true, next, nil
 			}
 		case "tab":
 			m.focusRight = !m.focusRight
@@ -273,7 +300,7 @@ func (m Model) handleKey(key tea.KeyMsg) (handled bool, next Model, cmd tea.Cmd)
 func (m Model) isFiltering() bool {
 	switch m.pane {
 	case paneList:
-		return m.toolList.FilterState() == list.Filtering
+		return m.currentList().FilterState() == list.Filtering
 	case paneHistory:
 		return m.historyList.FilterState() == list.Filtering
 	default:
@@ -312,6 +339,8 @@ func (m *Model) applySizes() {
 	}
 
 	m.toolList.SetSize(listWidth, bodyHeight)
+	m.resourceList.SetSize(listWidth, bodyHeight)
+	m.promptList.SetSize(listWidth, bodyHeight)
 	m.detail.Width = detailWidth
 	m.detail.Height = bodyHeight
 
@@ -328,48 +357,62 @@ func (m *Model) applySizes() {
 // -- connect --
 
 // connectedMsg reports the outcome of the initial connect+initialize+
-// tools/list sequence (see connectCmd). Exactly one of err or (proc,
-// tools) is meaningful.
+// tools/list sequence (see connectCmd). Exactly one of err or (conn,
+// tools) is meaningful. resources and prompts are listed only if the server
+// advertised them, and failing to list them isn't fatal: it is reported in
+// warnings and the connection still works for tools.
 type connectedMsg struct {
-	proc  *mcpclient.Process
-	info  mcpclient.InitializeResult
-	tools []mcpclient.Tool
-	err   error
+	conn      *mcpclient.Conn
+	info      mcpclient.InitializeResult
+	tools     []mcpclient.Tool
+	resources []mcpclient.Resource
+	prompts   []mcpclient.Prompt
+	warnings  []string
+	err       error
 }
 
-// connectCmd starts the tool artifact's command as an MCP server,
-// performs the initialize handshake, and lists its tools -- everything
-// `agentworks run` needs before there's anything to show the user.
-// traceCh receives every raw JSON-RPC line and stderr line as they
-// happen, for the log pane -- wired up before Initialize so the
+// connectCmd connects to the artifact's server, performs the initialize
+// handshake, and lists its tools (and resources and prompts, if it offers
+// them) -- everything `agentworks run` needs before there's anything to show
+// the user. traceCh receives every raw JSON-RPC message and stderr line as
+// they happen, for the log pane -- wired up before Initialize so the
 // handshake itself is visible there too.
-func connectCmd(command, dir string, env []string, traceCh chan<- string) tea.Cmd {
+func connectCmd(target mcpclient.Target, traceCh chan<- string) tea.Cmd {
 	return func() tea.Msg {
-		proc, err := mcpclient.StartProcess(command, dir, env)
-		if err != nil {
-			return connectedMsg{err: fmt.Errorf("starting %q: %w", command, err)}
-		}
-		proc.OnTrace = func(direction string, raw []byte) {
-			sendNonBlocking(traceCh, formatTraceLine(direction, raw))
-		}
-		proc.OnStderr = func(line string) {
-			sendNonBlocking(traceCh, formatStderrLine(line))
-		}
-
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		info, err := proc.Initialize(ctx, "agentworks", version.GetShortVersion())
+		conn, err := mcpclient.Open(ctx, target,
+			func(direction string, raw []byte) { sendNonBlocking(traceCh, formatTraceLine(direction, raw)) },
+			func(line string) { sendNonBlocking(traceCh, formatStderrLine(line)) },
+		)
 		if err != nil {
-			_ = proc.Close()
+			return connectedMsg{err: fmt.Errorf("connecting to %s: %w", describeTarget(target), err)}
+		}
+
+		info, err := conn.Initialize(ctx, "agentworks", version.GetShortVersion())
+		if err != nil {
+			_ = conn.Close()
 			return connectedMsg{err: fmt.Errorf("initialize: %w", err)}
 		}
-		tools, err := proc.ListTools(ctx)
+		tools, err := conn.ListTools(ctx)
 		if err != nil {
-			_ = proc.Close()
+			_ = conn.Close()
 			return connectedMsg{err: fmt.Errorf("tools/list: %w", err)}
 		}
-		return connectedMsg{proc: proc, info: info, tools: tools}
+
+		msg := connectedMsg{conn: conn, info: info, tools: tools}
+		if info.HasCapability("resources") {
+			if msg.resources, err = conn.ListResources(ctx); err != nil {
+				msg.warnings = append(msg.warnings, "resources/list: "+err.Error())
+			}
+		}
+		if info.HasCapability("prompts") {
+			if msg.prompts, err = conn.ListPrompts(ctx); err != nil {
+				msg.warnings = append(msg.warnings, "prompts/list: "+err.Error())
+			}
+		}
+		return msg
 	}
 }
 
@@ -380,7 +423,7 @@ func (m Model) handleConnected(msg connectedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.proc = msg.proc
+	m.conn = msg.conn
 	m.serverInfo = msg.info.ServerInfo
 
 	items := make([]list.Item, len(msg.tools))
@@ -388,6 +431,24 @@ func (m Model) handleConnected(msg connectedMsg) (tea.Model, tea.Cmd) {
 		items[i] = toolItem{tool: t}
 	}
 	m.toolList.SetItems(items)
+
+	// A section appears only for a server that advertised it (and listed at
+	// least one entry): a tools-only server looks exactly as it always has.
+	m.hasResources = len(msg.resources) > 0
+	m.hasPrompts = len(msg.prompts) > 0
+	resItems := make([]list.Item, len(msg.resources))
+	for i, r := range msg.resources {
+		resItems[i] = resourceItem{res: r}
+	}
+	m.resourceList.SetItems(resItems)
+	promptItems := make([]list.Item, len(msg.prompts))
+	for i, p := range msg.prompts {
+		promptItems[i] = promptItem{prompt: p}
+	}
+	m.promptList.SetItems(promptItems)
+	if len(msg.warnings) > 0 {
+		m.statusMsg = strings.Join(msg.warnings, "; ")
+	}
 	m.applySizes()
 	m.syncDetailToSelection()
 	return m, nil
@@ -475,6 +536,7 @@ func (m Model) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+x" {
 		m.pane = paneList
 		m.activeForm = nil
+		m.formPrompt = nil
 		m.statusMsg = ""
 		return m, nil
 	}
@@ -490,6 +552,7 @@ func (m Model) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case huh.StateAborted:
 		m.pane = paneList
 		m.activeForm = nil
+		m.formPrompt = nil
 		return m, nil
 	default:
 		return m, cmd
@@ -506,27 +569,35 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		m.statusMsg = fmt.Sprintf("%s: %v", tool.Name, err)
 		return m, nil
 	}
-	if m.proc == nil {
+	if m.conn == nil {
 		m.statusMsg = "not connected"
 		return m, nil
+	}
+
+	if prompt := m.formPrompt; prompt != nil {
+		m.formPrompt = nil
+		m.calling = true
+		m.callingTool = prompt.Name
+		m.statusMsg = fmt.Sprintf("Rendering %s...", prompt.Name)
+		return m, tea.Batch(getPromptCmd(m.conn, *prompt, stringArgs(args)), m.spinner.Tick)
 	}
 
 	m.calling = true
 	m.callingTool = tool.Name
 	m.statusMsg = fmt.Sprintf("Calling %s...", tool.Name)
-	return m, tea.Batch(callToolCmd(m.proc, tool.Name, args), m.spinner.Tick)
+	return m, tea.Batch(callToolCmd(m.conn, tool.Name, args), m.spinner.Tick)
 }
 
 // -- calling a tool --
 
 type callResultMsg struct{ record callRecord }
 
-func callToolCmd(proc *mcpclient.Process, toolName string, args map[string]any) tea.Cmd {
+func callToolCmd(conn *mcpclient.Conn, toolName string, args map[string]any) tea.Cmd {
 	return func() tea.Msg {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		result, err := proc.CallTool(ctx, toolName, args)
+		result, err := conn.CallTool(ctx, toolName, args)
 		return callResultMsg{record: callRecord{
 			at:       start,
 			toolName: toolName,
@@ -571,6 +642,26 @@ func (m *Model) rebuildHistoryList() {
 // -- selection/detail sync --
 
 func (m *Model) syncDetailToSelection() {
+	switch m.section {
+	case sectionResources:
+		m.shownResult = nil
+		if it, ok := m.resourceList.SelectedItem().(resourceItem); ok {
+			m.detail.SetContent(renderResourceDetail(it.res))
+		} else {
+			m.detail.SetContent("")
+		}
+		m.detail.GotoTop()
+		return
+	case sectionPrompts:
+		m.shownResult = nil
+		if it, ok := m.promptList.SelectedItem().(promptItem); ok {
+			m.detail.SetContent(renderPromptDetail(it.prompt))
+		} else {
+			m.detail.SetContent("")
+		}
+		m.detail.GotoTop()
+		return
+	}
 	item, ok := m.toolList.SelectedItem().(toolItem)
 	if !ok {
 		m.shownResult = nil
@@ -691,7 +782,7 @@ func (m Model) View() string {
 		body = m.logView.View()
 	default:
 		body = lipgloss.JoinHorizontal(lipgloss.Top,
-			listPaneStyle.Render(m.toolList.View()),
+			listPaneStyle.Render(m.currentList().View()),
 			detailPaneStyle.Render(m.detail.View()),
 		)
 	}
@@ -704,8 +795,12 @@ func (m Model) View() string {
 }
 
 func (m Model) connectingView() string {
-	return fmt.Sprintf("\n  %s starting %s and connecting...\n\n  %s\n\n  %s",
-		m.spinner.View(), m.artifactName, helpStyle.Render(m.command), helpStyle.Render("q: quit"))
+	verb := "starting"
+	if m.target.IsRemote() {
+		verb = "connecting to"
+	}
+	return fmt.Sprintf("\n  %s %s %s...\n\n  %s\n\n  %s",
+		m.spinner.View(), verb, m.artifactName, helpStyle.Render(describeTarget(m.target)), helpStyle.Render("q: quit"))
 }
 
 func (m Model) errorView() string {
@@ -732,6 +827,9 @@ func (m Model) renderHeader() string {
 	}
 
 	line := title + "   " + status
+	if tabs := m.renderTabs(); tabs != "" {
+		line += "   " + tabs
+	}
 	if len(m.missingAuth) > 0 {
 		line += "   " + warnStyle.Render("missing env: "+strings.Join(m.missingAuth, ", "))
 	}
@@ -745,7 +843,18 @@ func (m Model) helpText() string {
 		if m.focusRight {
 			focus = "result"
 		}
-		return fmt.Sprintf("enter: call tool  •  tab: focus %s  •  h: history  •  l: logs  •  /: filter  •  q: quit", focus)
+		action := "call tool"
+		switch m.section {
+		case sectionResources:
+			action = "read resource"
+		case sectionPrompts:
+			action = "render prompt"
+		}
+		switching := ""
+		if m.hasResources || m.hasPrompts {
+			switching = "1/2/3: section  •  "
+		}
+		return fmt.Sprintf("enter: %s  •  %stab: focus %s  •  h: history  •  l: logs  •  /: filter  •  q: quit", action, switching, focus)
 	case paneForm:
 		return "enter: next field  •  ctrl+x: cancel"
 	case paneHistory:
@@ -755,4 +864,146 @@ func (m Model) helpText() string {
 	default:
 		return "ctrl+c: quit"
 	}
+}
+
+// -- sections --
+
+// currentList is the list paneList is showing for the active section.
+func (m *Model) currentList() *list.Model {
+	switch m.section {
+	case sectionResources:
+		return &m.resourceList
+	case sectionPrompts:
+		return &m.promptList
+	default:
+		return &m.toolList
+	}
+}
+
+// switchSection handles 1/2/3, moving to the tools, resources, or prompts
+// list if the server offers it. ok is false for a section it doesn't.
+func (m Model) switchSection(key string) (Model, bool) {
+	var target section
+	switch key {
+	case "1":
+		target = sectionTools
+	case "2":
+		if !m.hasResources {
+			return m, false
+		}
+		target = sectionResources
+	case "3":
+		if !m.hasPrompts {
+			return m, false
+		}
+		target = sectionPrompts
+	default:
+		return m, false
+	}
+	m.section = target
+	m.focusRight = false
+	m.statusMsg = ""
+	m.syncDetailToSelection()
+	return m, true
+}
+
+// renderTabs shows the sections a server offers, highlighting the active one.
+// It is empty for a tools-only server, which has nothing to switch between.
+func (m Model) renderTabs() string {
+	if !m.hasResources && !m.hasPrompts {
+		return ""
+	}
+	labels := []struct {
+		s      section
+		shown  bool
+		number string
+	}{
+		{sectionTools, true, "1"},
+		{sectionResources, m.hasResources, "2"},
+		{sectionPrompts, m.hasPrompts, "3"},
+	}
+	var parts []string
+	for _, l := range labels {
+		if !l.shown {
+			continue
+		}
+		text := l.number + " " + l.s.label()
+		if l.s == m.section {
+			text = headerStyle.Render("[" + text + "]")
+		} else {
+			text = helpStyle.Render(text)
+		}
+		parts = append(parts, text)
+	}
+	return strings.Join(parts, " ")
+}
+
+// activateSelection is enter on the browse list: call a tool, read a
+// resource, or render a prompt.
+func (m Model) activateSelection() (Model, tea.Cmd) {
+	switch m.section {
+	case sectionResources:
+		it, ok := m.resourceList.SelectedItem().(resourceItem)
+		if !ok || m.conn == nil {
+			return m, nil
+		}
+		m.calling = true
+		m.callingTool = it.res.Name
+		m.statusMsg = "Reading " + it.res.URI + "..."
+		return m, tea.Batch(readResourceCmd(m.conn, it.res), m.spinner.Tick)
+
+	case sectionPrompts:
+		it, ok := m.promptList.SelectedItem().(promptItem)
+		if !ok || m.conn == nil {
+			return m, nil
+		}
+		if len(it.prompt.Arguments) == 0 {
+			m.calling = true
+			m.callingTool = it.prompt.Name
+			m.statusMsg = "Rendering " + it.prompt.Name + "..."
+			return m, tea.Batch(getPromptCmd(m.conn, it.prompt, nil), m.spinner.Tick)
+		}
+		cf, err := newCallForm(promptAsTool(it.prompt))
+		if err != nil {
+			m.statusMsg = fmt.Sprintf("%s: %v", it.prompt.Name, err)
+			return m, nil
+		}
+		if m.width > 0 {
+			cf.Form = cf.Form.WithWidth(m.width).WithHeight(m.height - 3)
+		}
+		prompt := it.prompt
+		m.activeForm = cf
+		m.formPrompt = &prompt
+		m.formTool = promptAsTool(prompt)
+		m.pane = paneForm
+		m.statusMsg = ""
+		return m, m.activeForm.Form.Init()
+	}
+	return m.openCallForm()
+}
+
+func (m Model) handleResourceResult(msg resourceResultMsg) (tea.Model, tea.Cmd) {
+	m.calling = false
+	m.callingTool = ""
+	m.detail.SetContent(renderResourceResult(msg))
+	m.detail.GotoTop()
+	if msg.err != nil {
+		m.statusMsg = fmt.Sprintf("%s: %v", msg.res.URI, msg.err)
+	} else {
+		m.statusMsg = fmt.Sprintf("Read %s in %s", msg.res.URI, msg.took.Round(time.Millisecond))
+	}
+	return m, nil
+}
+
+func (m Model) handlePromptResult(msg promptResultMsg) (tea.Model, tea.Cmd) {
+	m.calling = false
+	m.callingTool = ""
+	m.detail.SetContent(renderPromptResult(msg))
+	m.detail.GotoTop()
+	if msg.err != nil {
+		m.statusMsg = fmt.Sprintf("%s: %v", msg.prompt.Name, msg.err)
+	} else {
+		m.statusMsg = fmt.Sprintf("Rendered %s in %s", msg.prompt.Name, msg.took.Round(time.Millisecond))
+	}
+	return m, nil
 }

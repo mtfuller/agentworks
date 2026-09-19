@@ -3,8 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,6 +18,8 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 )
 
+var testRemote bool
+
 var testCmd = &cobra.Command{
 	Use:   "test [path]",
 	Short: "Run an artifact's declared test command",
@@ -24,9 +28,10 @@ from within its directory. Works for any language -- AgentWorks doesn't run
 the tests itself, it just invokes what you told it to.
 
 With no path, runs every artifact in the project that declares a test
-command; artifacts without one are skipped -- except local mcp artifacts,
-which get a built-in smoke test (start the server, run the MCP handshake,
-list its tools) when they declare no "test:" of their own.`,
+command; artifacts without one are skipped -- except mcp artifacts, which get
+a built-in smoke test (connect, run the MCP handshake, list what the server
+offers) when they declare no "test:" of their own. Remote (http/sse) servers
+are smoke-tested only with --remote, since that makes network calls.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var toRun []*artifact.Artifact
@@ -112,18 +117,27 @@ list its tools) when they declare no "test:" of their own.`,
 	},
 }
 
-// smokeEligible reports whether a is a local mcp server that should get the
-// built-in smoke test in place of a declared `test:` command.
+// smokeEligible reports whether a is an mcp server that should get the
+// built-in smoke test in place of a declared `test:` command: a local server
+// with a command, or -- only when --remote was passed, since it makes network
+// calls -- a remote one.
 func smokeEligible(a *artifact.Artifact) bool {
-	return a.Kind == artifact.KindMCP && !mcpconfig.IsRemote(a) && mcpconfig.CommandLine(a) != "" && mcpconfig.Placeholder(a) == ""
+	if a.Kind != artifact.KindMCP || mcpconfig.Placeholder(a) != "" {
+		return false
+	}
+	if mcpconfig.IsRemote(a) {
+		return testRemote && a.ExtraString("url") != ""
+	}
+	return mcpconfig.CommandLine(a) != ""
 }
 
-// smokeTestMCP starts the mcp artifact's server, runs the MCP initialize
-// handshake and tools/list, and reports what it found. It's what `agentworks
-// test` does for an mcp artifact with no `test:` of its own -- proof the
-// server starts and speaks the protocol, not a test of its tools' behavior.
-// Skipped (with a warning, not a failure) when a declared `auth:` variable
-// isn't set, since the server can't be expected to start without it.
+// smokeTestMCP connects to the mcp artifact's server, runs the MCP initialize
+// handshake, and lists what it offers (tools, and resources and prompts if it
+// advertises them). It's what `agentworks test` does for an mcp artifact with
+// no `test:` of its own -- proof the server starts and speaks the protocol, not
+// a test of its tools' behavior. Skipped (with a warning, not a failure) when a
+// declared `auth:` variable isn't set, since the server can't be expected to
+// work without it.
 //
 // Returns a non-empty skipped reason when the test was skipped, an error when
 // it failed, and ("", nil) when it passed.
@@ -137,22 +151,53 @@ func smokeTestMCP(a *artifact.Artifact) (skipped string, err error) {
 		}
 	}
 
-	color.Info("Smoke-testing mcp server %s: %s", a.Name, mcpconfig.CommandLine(a))
+	target, missing := mcpTarget(a)
+	if len(missing) > 0 {
+		reason := fmt.Sprintf("%q is not set", missing[0])
+		color.Warning("%s: skipping mcp smoke test -- %s", a.Name, reason)
+		return reason, nil
+	}
+
+	if target.IsRemote() {
+		color.Info("Smoke-testing remote mcp server %s (%s): %s", a.Name, target.Transport, hostOf(target.URL))
+	} else {
+		color.Info("Smoke-testing mcp server %s: %s", a.Name, target.Command)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	var stderr []string
-	info, tools, probeErr := mcpclient.Probe(ctx, mcpconfig.CommandLine(a), a.Dir, append(env, mcpEnvPairs(a)...), func(line string) {
-		stderr = append(stderr, line)
-	})
+	res, probeErr := mcpclient.Probe(ctx, target, func(line string) { stderr = append(stderr, line) })
 	if probeErr != nil {
 		for _, line := range stderr {
 			color.Warning("  stderr: %s", line)
 		}
 		return "", probeErr
 	}
-	color.Success("%s: %s %s started and lists %d tool(s)", a.Name, info.ServerInfo.Name, info.ServerInfo.Version, len(tools))
+	color.Success("%s: %s %s started and lists %s", a.Name, res.Info.ServerInfo.Name, res.Info.ServerInfo.Version, offered(res))
 	return "", nil
+}
+
+// offered summarizes what a probed server exposes, e.g. "3 tool(s), 1 resource(s)".
+func offered(res mcpclient.ProbeResult) string {
+	parts := []string{fmt.Sprintf("%d tool(s)", len(res.Tools))}
+	if len(res.Resources) > 0 {
+		parts = append(parts, fmt.Sprintf("%d resource(s)", len(res.Resources)))
+	}
+	if len(res.Prompts) > 0 {
+		parts = append(parts, fmt.Sprintf("%d prompt(s)", len(res.Prompts)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// hostOf returns just the host of a URL, for display: the path, query, and
+// userinfo can carry a credential.
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "(remote server)"
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 type testDoc struct {
@@ -180,4 +225,5 @@ type testItem struct {
 
 func init() {
 	rootCmd.AddCommand(testCmd)
+	testCmd.Flags().BoolVar(&testRemote, "remote", false, "also smoke-test remote (http/sse) mcp servers, which makes network calls")
 }

@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
@@ -107,5 +111,127 @@ func TestEveryScaffoldUsesOnlyRegisteredFields(t *testing.T) {
 				t.Errorf("scaffold frontmatter: %s", w.Message)
 			}
 		})
+	}
+}
+
+// fakeRemoteMCP serves a minimal streamable-HTTP MCP server that requires a
+// bearer token and offers one tool, one resource, and one prompt.
+func fakeRemoteMCP(t *testing.T, token string) *httptest.Server {
+	t.Helper()
+	reply := func(w http.ResponseWriter, id *int64, result any) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		var req struct {
+			ID     *int64 `json:"id"`
+			Method string `json:"method"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "initialize":
+			reply(w, req.ID, map[string]any{
+				"protocolVersion": "2025-06-18",
+				"serverInfo":      map[string]any{"name": "remote-fake", "version": "1"},
+				"capabilities":    map[string]any{"tools": map[string]any{}, "resources": map[string]any{}, "prompts": map[string]any{}},
+			})
+		case "tools/list":
+			reply(w, req.ID, map[string]any{"tools": []map[string]any{{"name": "echo"}}})
+		case "resources/list":
+			reply(w, req.ID, map[string]any{"resources": []map[string]any{{"uri": "mem://a", "name": "a"}}})
+		case "prompts/list":
+			reply(w, req.ID, map[string]any{"prompts": []map[string]any{{"name": "greet"}}})
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func remoteArtifact(t *testing.T, url string) *artifact.Artifact {
+	t.Helper()
+	a, err := scaffold.New(t.TempDir(), artifact.KindMCP, "remote", scaffold.Options{Description: "A remote server used to check the smoke test.", Template: "remote-http"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Extra["url"] = url
+	return a
+}
+
+func TestSmokeTestRemoteMCPServer(t *testing.T) {
+	srv := fakeRemoteMCP(t, "s3cret")
+	a := remoteArtifact(t, srv.URL)
+
+	// Off by default: a remote smoke test makes network calls.
+	testRemote = false
+	if smokeEligible(a) {
+		t.Error("a remote server must not be smoke-tested unless --remote is passed")
+	}
+	testRemote = true
+	t.Cleanup(func() { testRemote = false })
+	if !smokeEligible(a) {
+		t.Fatal("with --remote a remote server should be smoke-tested")
+	}
+
+	// Without the variable the template's header references, it is skipped, not failed.
+	t.Setenv("API_TOKEN", "")
+	if skipped, err := smokeTestMCP(a); err != nil || skipped == "" {
+		t.Errorf("smokeTestMCP() without API_TOKEN = (%q, %v), want a skip", skipped, err)
+	}
+
+	t.Setenv("API_TOKEN", "s3cret")
+	if skipped, err := smokeTestMCP(a); err != nil || skipped != "" {
+		t.Errorf("smokeTestMCP() = (%q, %v), want it to pass", skipped, err)
+	}
+
+	t.Setenv("API_TOKEN", "wrong")
+	if _, err := smokeTestMCP(a); err == nil || !strings.Contains(err.Error(), "401") {
+		t.Errorf("smokeTestMCP() with a bad token error = %v, want a 401", err)
+	}
+}
+
+func TestMCPTargetForLocalAndRemote(t *testing.T) {
+	local, err := scaffold.New(t.TempDir(), artifact.KindMCP, "local", scaffold.Options{Description: "A local server used to check its target."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, missing := mcpTarget(local)
+	if target.IsRemote() || target.Command != "python3 src/server.py" || target.Dir != local.Dir || len(missing) != 0 {
+		t.Errorf("local target = %+v, missing %v", target, missing)
+	}
+
+	remote := remoteArtifact(t, "https://example.com/mcp")
+	t.Setenv("API_TOKEN", "abc")
+	target, missing = mcpTarget(remote)
+	if !target.IsRemote() || target.Transport != "http" || target.URL != "https://example.com/mcp" {
+		t.Errorf("remote target = %+v", target)
+	}
+	if target.Headers["Authorization"] != "Bearer abc" || len(missing) != 0 {
+		t.Errorf("headers = %v, missing %v; want ${API_TOKEN} expanded from the environment", target.Headers, missing)
+	}
+
+	t.Setenv("API_TOKEN", "")
+	target, missing = mcpTarget(remote)
+	if _, sent := target.Headers["Authorization"]; sent {
+		t.Error("a header referencing an unset variable must be left out, not sent half-expanded")
+	}
+	if len(missing) != 1 || missing[0] != "API_TOKEN" {
+		t.Errorf("missing = %v, want [API_TOKEN]", missing)
+	}
+}
+
+func TestCheckRunnableAllowsRemoteServers(t *testing.T) {
+	if err := checkRunnable(remoteArtifact(t, "https://example.com/mcp")); err != nil {
+		t.Errorf("checkRunnable() on a remote server error = %v, want it allowed", err)
+	}
+	noURL := remoteArtifact(t, "")
+	delete(noURL.Extra, "url")
+	if err := checkRunnable(noURL); err == nil || !strings.Contains(err.Error(), "url") {
+		t.Errorf("checkRunnable() on a remote server with no url error = %v, want it to ask for one", err)
 	}
 }

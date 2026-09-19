@@ -1,8 +1,6 @@
 package mcpclient
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,18 +9,16 @@ import (
 	"sync/atomic"
 )
 
-// Client speaks MCP's stdio JSON-RPC transport to a single already-
-// connected server: w is where requests/notifications are written, r is
-// where the server's responses/notifications are read from (one JSON
-// value per line). New starts a background goroutine reading r
-// immediately; there's no separate Start step.
+// Client speaks MCP to a single already-connected server over a Transport:
+// it correlates requests with responses, runs the initialize handshake, and
+// exposes the protocol's calls. New starts a background goroutine reading
+// the transport immediately; there's no separate Start step.
 //
-// For a real child process (a tool artifact's declared "command"), use
-// StartProcess instead of New directly -- it wires up the process's own
-// stdin/stdout/stderr and returns a Client already bound to them.
+// For a real child process (an mcp artifact's declared "command"), use
+// StartProcess; for a hosted server, use DialHTTP or DialSSE. Each wires up
+// the right Transport and returns a Client already bound to it.
 type Client struct {
-	w   io.Writer
-	wMu sync.Mutex
+	t Transport
 
 	nextID int64
 
@@ -33,62 +29,63 @@ type Client struct {
 
 	readDone chan struct{}
 
-	// OnTrace, if set, is called for every raw JSON-RPC line sent ("->")
+	// OnTrace, if set, is called for every raw JSON-RPC message sent ("->")
 	// or received ("<-") -- the inspector's raw-traffic log pane. May be
 	// called from the read-loop goroutine ("<-") or from whichever
 	// goroutine is calling a request method ("->"); implementations must
-	// not block or call back into the Client.
+	// not block or call back into the Client. Only message bodies are
+	// traced, never HTTP headers, so a credential in a header can't leak
+	// into the log.
 	OnTrace func(direction string, raw []byte)
 
 	// OnStderr, if set, is called with each line the server process
 	// writes to its stderr (MCP servers log there, never stdout -- stdout
 	// is reserved for the JSON-RPC channel). Only populated when the
-	// Client came from StartProcess; a Client built from New has no
-	// stderr of its own to report.
+	// Client came from StartProcess; a remote server has no stderr of its
+	// own to report.
 	OnStderr func(line string)
 }
 
-// New wraps an already-connected transport (see the Client doc comment).
+// New wraps an already-connected stdio-style transport: w is where messages
+// are written, r is where the server's are read from (one JSON value per
+// line).
 func New(w io.Writer, r io.Reader) *Client {
+	return NewWithTransport(newStdioTransport(w, r))
+}
+
+// NewWithTransport wraps any Transport.
+func NewWithTransport(t Transport) *Client {
 	c := &Client{
-		w:        w,
+		t:        t,
 		pending:  make(map[int64]chan envelope),
 		readDone: make(chan struct{}),
 	}
-	go c.readLoop(r)
+	go c.readLoop()
 	return c
 }
 
-func (c *Client) readLoop(r io.Reader) {
+func (c *Client) readLoop() {
 	defer close(c.readDone)
 
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
-		}
-		traced := append([]byte(nil), line...)
+	for raw := range c.t.Incoming() {
 		if c.OnTrace != nil {
-			c.OnTrace("<-", traced)
+			c.OnTrace("<-", raw)
 		}
-
 		var env envelope
-		if err := json.Unmarshal(line, &env); err != nil {
+		if err := json.Unmarshal(raw, &env); err != nil {
 			// Not a JSON-RPC message -- most likely a server that logged
 			// to stdout by mistake instead of stderr. Already surfaced
 			// via OnTrace above; keep reading rather than tearing the
-			// connection down over one bad line.
+			// connection down over one bad message.
 			continue
 		}
 		c.dispatch(env)
 	}
 
 	c.mu.Lock()
-	c.readErr = scanner.Err()
+	c.readErr = c.t.Err()
 	if c.readErr == nil {
-		c.readErr = io.ErrClosedPipe // stdout closed with no scanner error = server exited
+		c.readErr = io.ErrClosedPipe
 	}
 	for id, ch := range c.pending {
 		close(ch)
@@ -135,7 +132,7 @@ func (c *Client) call(ctx context.Context, method string, params any, result any
 	c.pending[id] = ch
 	c.mu.Unlock()
 
-	if err := c.writeLine(data); err != nil {
+	if err := c.send(ctx, data); err != nil {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
@@ -173,21 +170,15 @@ func (c *Client) notify(method string, params any) error {
 	if err != nil {
 		return fmt.Errorf("mcp: encoding %s notification: %w", method, err)
 	}
-	return c.writeLine(data)
+	return c.send(context.Background(), data)
 }
 
-func (c *Client) writeLine(data []byte) error {
-	c.wMu.Lock()
-	defer c.wMu.Unlock()
-
+// send traces and delivers one outgoing message.
+func (c *Client) send(ctx context.Context, data []byte) error {
 	if c.OnTrace != nil {
 		c.OnTrace("->", data)
 	}
-	buf := make([]byte, len(data)+1)
-	copy(buf, data)
-	buf[len(data)] = '\n'
-	_, err := c.w.Write(buf)
-	return err
+	return c.t.Send(ctx, data)
 }
 
 // Initialize performs MCP's handshake: an "initialize" request followed
@@ -204,6 +195,9 @@ func (c *Client) Initialize(ctx context.Context, clientName, clientVersion strin
 	var result InitializeResult
 	if err := c.call(ctx, "initialize", params, &result); err != nil {
 		return InitializeResult{}, err
+	}
+	if setter, ok := c.t.(protocolVersionSetter); ok {
+		setter.SetProtocolVersion(result.ProtocolVersion)
 	}
 	if err := c.notify("notifications/initialized", map[string]any{}); err != nil {
 		return InitializeResult{}, fmt.Errorf("mcp: sending initialized notification: %w", err)
@@ -250,13 +244,97 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments map[string
 	return &result, nil
 }
 
+// paginate calls method repeatedly, following "nextCursor" until the server
+// stops returning one, and hands each page's raw result to collect.
+func (c *Client) paginate(ctx context.Context, method string, collect func(json.RawMessage) (next string, err error)) error {
+	cursor := ""
+	for {
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		var raw json.RawMessage
+		if err := c.call(ctx, method, params, &raw); err != nil {
+			return err
+		}
+		next, err := collect(raw)
+		if err != nil {
+			return fmt.Errorf("mcp: decoding %s result: %w", method, err)
+		}
+		if next == "" {
+			return nil
+		}
+		cursor = next
+	}
+}
+
+// ListResources returns every resource the server exposes. Only ask a server
+// that advertised the "resources" capability.
+func (c *Client) ListResources(ctx context.Context) ([]Resource, error) {
+	var all []Resource
+	err := c.paginate(ctx, "resources/list", func(raw json.RawMessage) (string, error) {
+		var page struct {
+			Resources  []Resource `json:"resources"`
+			NextCursor string     `json:"nextCursor,omitempty"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return "", err
+		}
+		all = append(all, page.Resources...)
+		return page.NextCursor, nil
+	})
+	return all, err
+}
+
+// ReadResource fetches one resource's contents by URI.
+func (c *Client) ReadResource(ctx context.Context, uri string) ([]ResourceContents, error) {
+	var result struct {
+		Contents []ResourceContents `json:"contents"`
+	}
+	if err := c.call(ctx, "resources/read", map[string]any{"uri": uri}, &result); err != nil {
+		return nil, err
+	}
+	return result.Contents, nil
+}
+
+// ListPrompts returns every prompt the server offers. Only ask a server that
+// advertised the "prompts" capability.
+func (c *Client) ListPrompts(ctx context.Context) ([]Prompt, error) {
+	var all []Prompt
+	err := c.paginate(ctx, "prompts/list", func(raw json.RawMessage) (string, error) {
+		var page struct {
+			Prompts    []Prompt `json:"prompts"`
+			NextCursor string   `json:"nextCursor,omitempty"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return "", err
+		}
+		all = append(all, page.Prompts...)
+		return page.NextCursor, nil
+	})
+	return all, err
+}
+
+// GetPrompt renders one prompt with the given arguments (may be nil).
+func (c *Client) GetPrompt(ctx context.Context, name string, arguments map[string]string) (*GetPromptResult, error) {
+	params := map[string]any{"name": name}
+	if len(arguments) > 0 {
+		params["arguments"] = arguments
+	}
+	var result GetPromptResult
+	if err := c.call(ctx, "prompts/get", params, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Close stops accepting new work: it fails any in-flight call with "client
 // is closed", releases anything still waiting in call(), and closes the
-// write side (w), which for a real process (see StartProcess) is stdin --
-// EOF on stdin is the MCP stdio transport's own signal for a server to
-// shut down. Close does not wait for the read side to finish; a caller
-// that also owns the underlying process (StartProcess's Process) is
-// responsible for waiting for/killing it -- see Process.Close.
+// transport -- for a real process (see StartProcess) that closes stdin, and
+// EOF on stdin is the MCP stdio transport's own signal for a server to shut
+// down. Close does not wait for the read side to finish; a caller that also
+// owns the underlying process (StartProcess's Process) is responsible for
+// waiting for/killing it -- see Process.Close.
 func (c *Client) Close() error {
 	c.mu.Lock()
 	if c.closed {
@@ -270,8 +348,5 @@ func (c *Client) Close() error {
 	}
 	c.mu.Unlock()
 
-	if closer, ok := c.w.(io.Closer); ok {
-		return closer.Close()
-	}
-	return nil
+	return c.t.Close()
 }

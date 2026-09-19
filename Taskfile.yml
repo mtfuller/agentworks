@@ -43,6 +43,17 @@ tasks:
       - echo "Running integration tests..."
       - go test -v ./tests/...
 
+  coverage-check:
+    desc: Fail if any package is below its coverage floor (scripts/coverage-floors.txt)
+    cmds:
+      - scripts/check-coverage.sh
+
+  scaffold-e2e:
+    desc: Scaffold, build, test, and export every template (needs network, node 22, python3)
+    deps: [build]
+    cmds:
+      - scripts/scaffold-e2e.sh ./{{.BINARY_NAME}}
+
   run:
     desc: Run the application
     cmds:

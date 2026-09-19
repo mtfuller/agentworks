@@ -32,6 +32,10 @@ jobs:
       - name: Test (race)
         run: go test -race ./...
 
+      # Floors are ratchets: see scripts/coverage-floors.txt.
+      - name: Coverage floors
+        run: scripts/check-coverage.sh
+
       # Dogfood the CI gates on the example project, so a change that would
       # break them for a real project fails here first.
       - name: Check the example project

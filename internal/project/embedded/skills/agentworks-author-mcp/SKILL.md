@@ -93,10 +93,13 @@ error behavior. Agents read this to know how to call it.
 ## Development loop
 
 1. `agentworks build mcp/<name>` if it has a `build:`, then `agentworks test mcp/<name>`.
-   With no `test:`, `test` runs a smoke check: start the server, run the MCP handshake, list
-   its tools (skipped with a warning if an `auth` variable is unset).
+   With no `test:`, `test` runs a smoke check: connect, run the MCP handshake, list what the
+   server offers (skipped with a warning if an `auth` variable is unset). A remote server is
+   smoke-tested only with `agentworks test --remote`, since that makes network calls.
 2. `agentworks doctor mcp/<name>` — checks binaries on PATH, entrypoint exists, and that
    `auth` variables are set (a warning unless `--strict`).
-3. `agentworks run mcp/<name>` — interactive MCP inspector against the real server (needs a
-   terminal; inherits your shell's env, so export `auth` vars first). Local servers only.
+3. `agentworks run mcp/<name>` — interactive MCP inspector against the real server, local or
+   remote (needs a terminal; uses your shell's env, so export `auth` vars first; a remote
+   server's `${VAR}` headers are expanded from it). If the server offers resources or
+   prompts, keys 1/2/3 switch between tools, resources, and prompts.
 4. `agentworks validate`, then `agentworks export`.

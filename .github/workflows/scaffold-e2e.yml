@@ -1,0 +1,48 @@
+name: Scaffold end-to-end
+
+# Scaffolds every template, installs and builds it, runs its own tests, and
+# exports it. Needs network (npm install), so it runs on its own rather than as
+# part of the fast unit-test job, and nightly to catch a dependency or toolchain
+# release that breaks a scaffold with no change here.
+on:
+  pull_request:
+    paths:
+      - "internal/scaffold/**"
+      - "internal/targets/mcpconfig/**"
+      - "internal/mcpclient/**"
+      - "scripts/scaffold-e2e.sh"
+      - ".github/workflows/scaffold-e2e.yml"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scaffolds:
+    name: Every scaffold builds, tests, and exports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build agentworks
+        run: go build -o "$RUNNER_TEMP/agentworks" .
+
+      - name: Scaffold, build, test, export
+        run: scripts/scaffold-e2e.sh "$RUNNER_TEMP/agentworks"

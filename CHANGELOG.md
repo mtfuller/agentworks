@@ -3,6 +3,32 @@
 All notable changes. See [COMPATIBILITY.md](COMPATIBILITY.md) for what counts as breaking.
 Before 1.0, a minor version may include breaking changes; each is marked **Breaking**.
 
+## v0.19.0
+
+Milestone 4 of [PLAN-1.0.md](PLAN-1.0.md): MCP transports and test coverage.
+
+### Added
+- **Remote MCP servers in `run` and `test`.** `agentworks run` connects to an http/sse mcp
+  artifact and `agentworks test --remote` smoke-tests one, in addition to local stdio
+  servers. `internal/mcpclient` now sits on a `Transport` interface with three
+  implementations: stdio, streamable HTTP (JSON or SSE replies, session id and protocol
+  version echoed, DELETE on close), and legacy SSE.
+- **Credential safety for remote servers.** Headers are never written to the traffic log or
+  an error message; a URL's query is stripped from errors; a header referencing an unset
+  `${VAR}` is left out rather than sent half-expanded; cross-host redirects are refused, and
+  an SSE `endpoint` on another host is rejected, because either would forward your headers.
+- **Resources and prompts in the inspector.** A server that offers them gets a section for
+  each (keys `1`/`2`/`3`): read a resource, render a prompt (its arguments in a form). The
+  smoke test also reports how many resources and prompts a server lists.
+- Coverage floors enforced in CI (`scripts/check-coverage.sh`) and a scaffold end-to-end job
+  (`scripts/scaffold-e2e.sh`, its own workflow, also nightly).
+
+### Changed
+- Coverage: `internal/inspector` 16% → 83%, `internal/mcpclient` 62% → 90%,
+  `internal/tui` 67% → 80%, `cmd` 30% → 75%. Command behavior is now tested in process.
+- The TUI's plugin import and preview show an import's warnings (an ignored field, a file a
+  command references that wasn't in the plugin), not only what was skipped.
+
 ## v0.18.0
 
 Milestones 1 and 2 of [PLAN-1.0.md](PLAN-1.0.md): freeze the formats, then import completeness.

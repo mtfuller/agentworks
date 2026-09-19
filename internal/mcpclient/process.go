@@ -2,18 +2,15 @@ package mcpclient
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"os/exec"
 	"time"
-
-	"github.com/mtfuller/agentworks/internal/version"
 )
 
 // killGrace is how long Process.Close waits for the server to exit on its
 // own (via stdin EOF) before force-killing it.
-const killGrace = 3 * time.Second
+var killGrace = 3 * time.Second
 
 // Process is a Client bound to a real child process -- a tool artifact's
 // declared "command", run the same way cmd/test.go and
@@ -65,30 +62,6 @@ func (p *Process) pipeStderr(r io.Reader) {
 			p.OnStderr(scanner.Text())
 		}
 	}
-}
-
-// Probe starts command as an MCP server, performs the initialize handshake,
-// lists its tools, and shuts it down -- the smallest end-to-end proof that a
-// server actually speaks MCP, used by `agentworks test` for mcp artifacts
-// that don't declare their own `test:`. Stderr is forwarded to onStderr if
-// non-nil so a failure isn't opaque.
-func Probe(ctx context.Context, command, dir string, env []string, onStderr func(string)) (InitializeResult, []Tool, error) {
-	p, err := StartProcess(command, dir, env)
-	if err != nil {
-		return InitializeResult{}, nil, err
-	}
-	p.OnStderr = onStderr
-	defer p.Close()
-
-	info, err := p.Initialize(ctx, "agentworks", version.GetShortVersion())
-	if err != nil {
-		return InitializeResult{}, nil, fmt.Errorf("initialize: %w", err)
-	}
-	tools, err := p.ListTools(ctx)
-	if err != nil {
-		return info, nil, fmt.Errorf("tools/list: %w", err)
-	}
-	return info, tools, nil
 }
 
 // Close closes the client (see Client.Close -- this closes stdin, the
