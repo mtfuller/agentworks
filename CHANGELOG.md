@@ -3,6 +3,29 @@
 All notable changes. See [COMPATIBILITY.md](COMPATIBILITY.md) for what counts as breaking.
 Before 1.0, a minor version may include breaking changes; each is marked **Breaking**.
 
+## v1.0.0-rc.1
+
+The release candidate for 1.0: no new features. What it asks of you is to use it and report
+what breaks. From 1.0, [COMPATIBILITY.md](COMPATIBILITY.md) applies without the pre-1.0
+allowance for breaking minor releases.
+
+### What 1.0 promises
+1. **Stable formats:** artifact frontmatter (the [field reference](docs/reference/frontmatter.md)),
+   `agentworks.yaml`, `agentworks.lock`, and the `--json` documents ([schemas](docs/schemas/)).
+2. **Exports that install:** checked against the vendors' schemas and real CLIs.
+3. **Symmetry:** what can be exported can be imported; dependencies are declared and checked.
+4. **Trustworthy testing:** local and remote MCP servers, and evals that check behavior.
+5. **Stated platforms:** Linux and macOS supported; Windows experimental.
+
+### Known limits
+- Copilot agents and hooks are checked against the Agent Plugins schema only; no headless
+  Copilot command loads them.
+- The Claude Code eval runner in `examples/eval-runners/` is tested against fixtures, not a
+  live authenticated `claude`.
+- `agentworks add` doesn't import `command`-sourced marketplace entries, or a Copilot
+  `plugin.json` with inline `mcpServers`.
+- The `targets` frontmatter field is deprecated and still only warns.
+
 ## v0.22.0
 
 Milestones 3 and 7 of [PLAN-1.0.md](PLAN-1.0.md): dependencies, and docs.

@@ -101,7 +101,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A tag with a hyphen (v1.0.0-rc.1) is a pre-release: it is not offered
+          # as "latest" and does not update the Homebrew tap.
+          PRE=""
+          case "${GITHUB_REF_NAME}" in *-*) PRE="--prerelease" ;; esac
           gh release create "${GITHUB_REF_NAME}" \
+            $PRE \
             --draft \
             --title "agentworks ${GITHUB_REF_NAME}" \
             --notes-file NOTES.md \

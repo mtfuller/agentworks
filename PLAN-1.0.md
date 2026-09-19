@@ -14,7 +14,7 @@ sets the design.
 | M5 Evals v2 | Done: json runner protocol, trace/tool-argument/activation assertions, trigger cases, judge-graded rubrics, `runs`/`pass_threshold`, timeouts, JUnit, reference Claude Code runner and judge (the runner is not verified against a live authenticated `claude`). |
 | M6 Conformance and platform | Done: vendored Agent Plugins schemas and conformance tests, nightly real-CLI checks (Claude, Copilot, Gemini), format metadata, stale merged entries, `doctor` sh check, macOS/Windows CI, `--json` for add/update/export/build, lint and govulncheck. Real-tool spikes found and fixed marketplace `owner`, remote transport names, Cursor/Gemini missing files. |
 | M3 Dependencies | Done: `requires:` (validate, export and marketplace closure, graph), `bins:` in doctor. The spike found no native subagent field for dependencies, so an agent's instructions list them. |
-| M7 Docs and RC | Mostly done: guides, docs index, dependency-free starter, pinned CI template. Not done: dogfooding on real projects, the release candidate. |
+| M7 Docs and RC | Done except dogfooding on real projects: guides, docs index, dependency-free starter, pinned CI template, pre-release handling in the release workflow. `v1.0.0-rc.1` is the release candidate; `v1.0.0` follows a soak with no blocking reports. |
 
 ## What 1.0 promises
 
