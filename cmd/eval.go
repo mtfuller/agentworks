@@ -209,7 +209,7 @@ type artifactEval struct {
 }
 
 func (s evalSettings) forArtifact(a *artifact.Artifact) (artifactEval, error) {
-	cfg := artifactEval{runner: s.runner, protocol: s.protocol, judge: s.judge, runs: s.runs, timeout: s.timeout}
+	cfg := artifactEval(s)
 	if r := a.ExtraString("eval_runner"); r != "" {
 		cfg.runner = r
 	}

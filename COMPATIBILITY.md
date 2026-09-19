@@ -36,8 +36,8 @@ described by a JSON Schema in [docs/schemas/](docs/schemas/).
 
 ## Platforms
 
-Linux and macOS are supported. Windows is experimental: it needs a POSIX `sh` (WSL or Git
-Bash) for declared commands, and its CI leg does not gate merges.
+Linux and macOS are supported. Windows is experimental (built and vetted in CI, tests not run): it needs a POSIX `sh` (WSL or Git
+Bash) for declared commands; the full test suite runs on Linux and macOS only.
 
 ## Not covered
 

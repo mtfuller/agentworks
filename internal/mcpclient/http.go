@@ -199,7 +199,7 @@ func (t *httpTransport) Send(ctx context.Context, msg []byte) error {
 	default: // 202 Accepted for a notification or response: no body of interest
 		defer cancel()
 		defer resp.Body.Close()
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 		return nil
 	}
 }
@@ -380,7 +380,7 @@ func (t *sseTransport) Send(ctx context.Context, msg []byte) error {
 	if resp.StatusCode/100 != 2 {
 		return httpStatusError(resp, false)
 	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	return nil
 }
 

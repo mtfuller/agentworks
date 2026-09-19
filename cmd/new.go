@@ -21,10 +21,10 @@ var (
 
 var newCmd = &cobra.Command{
 	Use:   "new [kind] [name]",
-	Short: "Scaffold a new agent, skill, tool, hook, or workflow",
-	Long: fmt.Sprintf(`Scaffold a new artifact in the current project.
+	Short: "Scaffold a new agent, skill, mcp server, or hook",
+	Long: `Scaffold a new artifact in the current project.
 
-Kind is one of: agent, skill, tool, hook, workflow.
+Kind is one of: agent, skill, mcp, hook.
 
 Name may be namespace-qualified ("team-a/csv-analyzer") to scope it under a
 team/org prefix instead of the flat top-level namespace -- it lands at
@@ -32,7 +32,7 @@ team/org prefix instead of the flat top-level namespace -- it lands at
 
 Pass --description (and kind/name as arguments) for a non-interactive run
 suitable for scripts. Leave any of kind, name, or --description out in an
-interactive terminal and a short wizard fills in the rest.`),
+interactive terminal and a short wizard fills in the rest.`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := projectRoot()

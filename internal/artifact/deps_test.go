@@ -1,6 +1,9 @@
 package artifact
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -83,5 +86,54 @@ func TestBinRequirements(t *testing.T) {
 	}
 	if msg := CheckBin(BinRequirement{Name: "sh"}); msg != "" {
 		t.Errorf("sh should be satisfied, got %q", msg)
+	}
+}
+
+func TestSyntaxErrorsForRequiresAndBins(t *testing.T) {
+	a := art(KindAgent, "", "bot", "skill:csv", "not-a-ref", "agent:bot")
+	a.Extra["bins"] = []string{"node>=20", "node >= 20"}
+	if errs := a.RequiresSyntaxErrors(); len(errs) != 2 {
+		t.Errorf("RequiresSyntaxErrors = %v, want the malformed one and the self-reference", errs)
+	}
+	if errs := a.BinsSyntaxErrors(); len(errs) != 1 {
+		t.Errorf("BinsSyntaxErrors = %v, want just the spaced one", errs)
+	}
+	if got := a.Bins(); len(got) != 1 || got[0].MinVersion != "20" {
+		t.Errorf("Bins = %v", got)
+	}
+}
+
+func TestCheckBinComparesVersions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell script as the fake binary")
+	}
+	dir := t.TempDir()
+	script := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script("fakebin", `echo "fakebin version 3.10.2"`)
+	script("nover", `echo "no digits here"`)
+	script("broken", `exit 1`)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if msg := CheckBin(BinRequirement{Name: "fakebin", MinVersion: "3.9"}); msg != "" {
+		t.Errorf("3.10.2 satisfies >=3.9, got %q", msg)
+	}
+	if msg := CheckBin(BinRequirement{Name: "fakebin", MinVersion: "3.11"}); !strings.Contains(msg, "3.10.2") {
+		t.Errorf("3.10.2 does not satisfy >=3.11, got %q", msg)
+	}
+	if msg := CheckBin(BinRequirement{Name: "nover", MinVersion: "1"}); !strings.Contains(msg, "couldn't be read") {
+		t.Errorf("unreadable version: %q", msg)
+	}
+	if msg := CheckBin(BinRequirement{Name: "broken", MinVersion: "1"}); !strings.Contains(msg, "failed") {
+		t.Errorf("failing --version: %q", msg)
+	}
+}
+
+func TestRefString(t *testing.T) {
+	if s := (Ref{KindMCP, "team-a", "jira"}).String(); s != "mcp:team-a/jira" {
+		t.Errorf("String() = %q", s)
 	}
 }

@@ -150,7 +150,7 @@ then to `0.1.0`. Plugin names are lowercased and slugged (`My Project_1` becomes
 
 Linux and macOS are supported. Declared commands (`command:`, `test:`, `build:`, the eval
 runners) run through a POSIX `sh`, so on Windows use WSL or Git Bash; `agentworks doctor`
-reports a missing `sh`. Windows is built and tested in CI on a best-effort basis, and an
+reports a missing `sh`. Windows is built and vetted in CI (its test suite is not run there), and an
 experimental `windows/amd64` binary is attached to each release.
 
 ## Sharing code between Node artifacts

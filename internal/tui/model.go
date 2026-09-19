@@ -257,12 +257,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "ctrl+d":
 				if m.pane == paneMarketplace {
-					m.marketplaceDetail.HalfViewDown()
+					m.marketplaceDetail.HalfPageDown()
 					return m, nil
 				}
 			case "ctrl+u":
 				if m.pane == paneMarketplace {
-					m.marketplaceDetail.HalfViewUp()
+					m.marketplaceDetail.HalfPageUp()
 					return m, nil
 				}
 			case "r":

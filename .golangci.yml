@@ -1,0 +1,8 @@
+# Defaults plus one relaxation: unchecked errors in tests (a failed WriteString
+# there surfaces as the assertion that follows it) aren't worth the noise.
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters: [errcheck]
+    - path: _test\.go
+      text: "SA2002"

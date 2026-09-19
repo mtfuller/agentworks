@@ -55,20 +55,14 @@ func WriteManifest(path, name string, owner Owner, meta Metadata, entries []Entr
 
 	out := writeDoc{
 		Name:    name,
-		Owner:   writeOwner{Name: owner.Name, Email: owner.Email, URL: owner.URL},
+		Owner:   writeOwner(owner),
 		Plugins: make([]writeEntry, len(entries)),
 	}
 	if meta.Description != "" || meta.Version != "" {
 		out.Metadata = &writeMetadata{Description: meta.Description, Version: meta.Version}
 	}
 	for i, e := range entries {
-		out.Plugins[i] = writeEntry{
-			Name:        e.Name,
-			DisplayName: e.DisplayName,
-			Description: e.Description,
-			Version:     e.Version,
-			Source:      e.Source,
-		}
+		out.Plugins[i] = writeEntry(e)
 	}
 
 	data, err := json.MarshalIndent(out, "", "  ")
