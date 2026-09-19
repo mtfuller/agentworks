@@ -4,6 +4,14 @@ Written from the post-v0.17 review. Where an item depends on a vendor detail tha
 couldn't be confirmed, it is marked as a **spike**: a short investigation whose outcome
 sets the design.
 
+## Status
+
+| Milestone | State |
+|---|---|
+| M1 Freeze the formats | Done (v0.18 content) |
+| M2 Import completeness | Done: MCP and hook import, path rewriting, safer updates, commit pinning, npm and generic git sources, Copilot layout, `SECURITY.md`. Not done: `command`-sourced marketplace entries (deliberately), Copilot `plugin.json` inline `mcpServers`. |
+| M3 to M7 | Not started |
+
 ## What 1.0 promises
 
 1. **Stable formats.** A project that works on 1.0 keeps working on 1.x: artifact

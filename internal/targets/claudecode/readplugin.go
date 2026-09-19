@@ -49,10 +49,17 @@ func ReadPluginMCPServers(dir string) ([]PluginMCPServer, error) {
 		return nil
 	}
 
-	if raw, err := readJSONObject(filepath.Join(dir, ".mcp.json")); err != nil {
-		return nil, err
-	} else if raw != nil {
-		if err := merge(mcpServersOf(raw), ".mcp.json"); err != nil {
+	// .mcp.json is Claude Code's file; mcp.json is the Agent Plugins one
+	// (GitHub Copilot). Both use the same {"mcpServers": {...}} shape.
+	for _, name := range []string{".mcp.json", "mcp.json"} {
+		raw, err := readJSONObject(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		if raw == nil {
+			continue
+		}
+		if err := merge(mcpServersOf(raw), name); err != nil {
 			return nil, err
 		}
 	}

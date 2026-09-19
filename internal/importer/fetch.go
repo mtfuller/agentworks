@@ -81,6 +81,14 @@ func fetchWithCommit(ctx context.Context, src Source, destDir string) (contentDi
 	extractDir := filepath.Join(destDir, "content")
 
 	switch src.Kind {
+	case SourceGit:
+		return fetchGitSource(ctx, src, destDir)
+	case SourceNPM:
+		version, err := fetchNPM(ctx, src, archivePath)
+		if err != nil {
+			return "", "", err
+		}
+		commit = version // for npm, "commit" is the exact version resolved
 	case SourceGitHub:
 		if err := fetchGitHub(ctx, src, archivePath); err != nil {
 			return "", "", err

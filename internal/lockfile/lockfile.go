@@ -40,11 +40,13 @@ const currentVersion = 1
 // importer to avoid a dependency cycle -- importer already sits below
 // cmd, which is where both packages meet).
 type SourceRef struct {
-	Type string `yaml:"type"` // "github" or "archive"
-	Repo string `yaml:"repo,omitempty"`
-	Ref  string `yaml:"ref,omitempty"`
-	Path string `yaml:"path,omitempty"`
-	URL  string `yaml:"url,omitempty"`
+	Type    string `yaml:"type"` // "github", "git", "npm", or "archive"
+	Repo    string `yaml:"repo,omitempty"`
+	Ref     string `yaml:"ref,omitempty"`
+	Path    string `yaml:"path,omitempty"`
+	URL     string `yaml:"url,omitempty"`
+	Package string `yaml:"package,omitempty"` // npm
+	Version string `yaml:"version,omitempty"` // npm: the version asked for, empty for "latest"
 }
 
 // ImportEntry records what `agentworks add` (or `agentworks update`) last
@@ -52,7 +54,8 @@ type SourceRef struct {
 type ImportEntry struct {
 	Kind   string    `yaml:"kind"`
 	Source SourceRef `yaml:"source"`
-	// Commit is the exact GitHub commit the artifact was imported from. The
+	// Commit is the exact commit the artifact was imported from (for an npm
+	// package, the exact version that "latest" or a range resolved to). The
 	// ref in Source may be a branch that has since moved; this is what was
 	// actually fetched, so `agentworks update` can say what moved.
 	Commit string `yaml:"commit,omitempty"`

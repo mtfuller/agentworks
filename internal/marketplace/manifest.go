@@ -79,6 +79,9 @@ type sourceObject struct {
 	URL  string `json:"url"`  // url, git-subdir, archive
 	Path string `json:"path"` // git-subdir
 	Ref  string `json:"ref"`  // github, url, git-subdir
+
+	Package string `json:"package"` // npm
+	Version string `json:"version"` // npm
 }
 
 func (r *rawSource) UnmarshalJSON(data []byte) error {
@@ -92,10 +95,10 @@ func (r *rawSource) UnmarshalJSON(data []byte) error {
 
 // resolve turns one marketplace.json plugin entry into an importer.Source.
 // A bare-string source is a relative path resolved against m's own repo;
-// "github" and "archive" objects map straight onto importer's two source
-// kinds; "url"/"git-subdir" (arbitrary git remotes) only resolve when the
-// URL happens to be github.com, since importer has no general git-clone
-// capability; "npm"/"command"/anything else is a clear per-entry error.
+// "github" and "archive" objects map straight onto importer's source kinds;
+// "url"/"git-subdir" resolve to GitHub's dependency-free path when the URL is
+// on github.com and otherwise to a generic git clone; "npm" resolves to an
+// npm-registry fetch; "command"/anything else is a clear per-entry error.
 func (e manifestEntry) resolve(m Marketplace) (importer.Source, error) {
 	if e.Source.isString {
 		p := strings.TrimPrefix(strings.TrimPrefix(e.Source.str, "./"), "/")
@@ -112,15 +115,39 @@ func (e manifestEntry) resolve(m Marketplace) (importer.Source, error) {
 		if repo, ok := githubRepoFromGitURL(obj.URL); ok {
 			return importer.Source{Kind: importer.SourceGitHub, Repo: repo, Ref: obj.Ref}, nil
 		}
-		return importer.Source{}, fmt.Errorf("%s: only GitHub-hosted git URLs are supported yet (got %s)", e.displayName(), obj.URL)
+		return gitSource(e, obj.URL, obj.Ref, "")
 	case "git-subdir":
 		if repo, ok := githubRepoFromGitURL(obj.URL); ok {
 			return importer.Source{Kind: importer.SourceGitHub, Repo: repo, Ref: obj.Ref, Path: obj.Path}, nil
 		}
-		return importer.Source{}, fmt.Errorf("%s: only GitHub-hosted git-subdir sources are supported yet (got %s)", e.displayName(), obj.URL)
+		return gitSource(e, obj.URL, obj.Ref, obj.Path)
+	case "npm":
+		if obj.Package == "" {
+			return importer.Source{}, fmt.Errorf("%s: an npm source needs a package name", e.displayName())
+		}
+		return importer.Source{Kind: importer.SourceNPM, Package: obj.Package, Version: obj.Version}, nil
 	default:
 		return importer.Source{}, fmt.Errorf("%s: %q sources aren't supported yet", e.displayName(), obj.Kind)
 	}
+}
+
+// gitSource builds a generic git Source, restricted (like a direct `add`) to
+// https and ssh remotes.
+func gitSource(e manifestEntry, rawURL, ref, path string) (importer.Source, error) {
+	src, ok, err := importer.ParseGitURL(rawURL)
+	if err != nil {
+		return importer.Source{}, fmt.Errorf("%s: %w", e.displayName(), err)
+	}
+	if !ok {
+		return importer.Source{}, fmt.Errorf("%s: %q isn't a git URL AgentWorks can clone (use https or ssh)", e.displayName(), rawURL)
+	}
+	if ref != "" {
+		src.Ref = ref
+	}
+	if path != "" {
+		src.Path = path
+	}
+	return src, nil
 }
 
 func githubRepoFromGitURL(raw string) (string, bool) {

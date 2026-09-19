@@ -22,13 +22,19 @@ var (
 
 var addCmd = &cobra.Command{
 	Use:   "add <url>",
-	Short: "Import a published skill or Claude Code plugin into this project",
-	Long: `Fetch a skill or Claude Code plugin from a URL and add it to this project as
-one or more local artifacts.
+	Short: "Import a published skill or plugin into this project",
+	Long: `Fetch a skill or plugin (Claude Code or GitHub Copilot format) and add it to
+this project as one or more local artifacts.
 
-Accepts a GitHub repo ("owner/repo", a full github.com URL, or a
-github.com/.../tree/<ref>/<path> browse URL), a raw.githubusercontent.com file
-URL, or a direct .zip/.tar.gz archive URL.
+Accepts:
+  owner/repo, a github.com URL, or a github.com/.../tree/<ref>/<path> URL
+  a raw.githubusercontent.com file URL
+  a direct .zip/.tar.gz archive URL
+  npm:@scope/name[@version]      from the npm registry, checksum-verified
+  any git remote over https or ssh -- https://gitlab.com/owner/repo,
+    git@host:owner/repo.git, https://host/x/y.git -- optionally with a
+    "#<ref>[:<path>]" suffix (a branch, tag, or commit, and a subdirectory);
+    this uses the git command
 
 Everything imported is filed under a namespace so plugin-sourced artifacts stay
 distinguishable from your own: by default the GitHub owner (obra/superpowers
@@ -102,7 +108,7 @@ fetch automatically when the unauthenticated download 404s.`,
 			color.Success("Imported %s %s at %s", a.Kind, a.DisplayName(), a.Dir)
 		}
 		if plan.Commit != "" {
-			color.Info("Pinned to %s@%s in %s", plan.Source.Repo, plan.Commit[:12], lockfile.FileName)
+			color.Info("Pinned %s at %s in %s", plan.Source, shortHash(plan.Commit), lockfile.FileName)
 		}
 		for _, u := range plan.Unsupported {
 			color.Warning("not imported: %s", u)

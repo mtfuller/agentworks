@@ -27,16 +27,17 @@ func TestCLIAddHelp(t *testing.T) {
 	}
 }
 
-// TestCLIAddRejectsUnsupportedURL exercises the real binary against an
-// unsupported git host. This never touches the network: ParseAddArgument
-// rejects a gitlab.com URL before any fetch is attempted.
+// TestCLIAddRejectsUnsupportedURL exercises the real binary against a URL it
+// can't interpret. This never touches the network: ParseAddArgument rejects a
+// gitlab.com web "tree" URL (whose ref/path syntax varies by host) before any
+// fetch is attempted, and points at the explicit #ref:path form.
 func TestCLIAddRejectsUnsupportedURL(t *testing.T) {
 	projectDir := t.TempDir()
 	if out, err := exec.Command("go", "run", "../main.go", "init", projectDir).CombinedOutput(); err != nil {
 		t.Fatalf("init failed: %v\nOutput: %s", err, out)
 	}
 
-	cmd := exec.Command("go", "run", "../main.go", "add", "https://gitlab.com/owner/repo", "--project", projectDir)
+	cmd := exec.Command("go", "run", "../main.go", "add", "https://gitlab.com/owner/repo/-/tree/main/plugins/x", "--project", projectDir)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -49,8 +50,8 @@ func TestCLIAddRejectsUnsupportedURL(t *testing.T) {
 	if !strings.Contains(output, "gitlab.com") {
 		t.Errorf("error output should name the unsupported host, got: %s", output)
 	}
-	if !strings.Contains(output, "GitHub") {
-		t.Errorf("error output should name what is supported, got: %s", output)
+	if !strings.Contains(output, "#<ref>:<path>") {
+		t.Errorf("error output should explain the explicit ref/path form, got: %s", output)
 	}
 }
 

@@ -57,7 +57,7 @@ func ReadAgentFile(path string) (*artifact.Artifact, error) {
 	}
 	fm.Kind = artifact.KindAgent
 	if fm.Name == "" {
-		fm.Name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		fm.Name = strings.TrimSuffix(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), ".agent")
 	}
 	return &artifact.Artifact{Frontmatter: fm, Body: body}, nil
 }

@@ -140,5 +140,8 @@ func importerSource(ref lockfile.SourceRef) importer.Source {
 		Ref:  ref.Ref,
 		Path: ref.Path,
 		URL:  ref.URL,
+
+		Package: ref.Package,
+		Version: ref.Version,
 	}
 }

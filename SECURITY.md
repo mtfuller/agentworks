@@ -29,6 +29,12 @@ happens when that content comes from somewhere else, through `agentworks add`.
 - **Content is pinned.** Every import records the source, the exact GitHub commit it
   resolved to, and a hash of what was fetched in `agentworks.lock`. `agentworks update` shows
   when upstream has moved and never overwrites your local edits without `--force`.
+- **Remote sources are constrained.** A git remote is cloned with the local `git`, over
+  https or ssh only (git's `ext::` transport, which runs commands, and local `file` remotes
+  are refused), with credential prompts disabled, and a `#<ref>:<path>` that would escape the
+  repository is rejected. An npm package's tarball is verified against the registry's own
+  checksum (sha512 integrity, or sha1 for old packages) and refused if the registry supplies
+  none. Neither proves the package is safe, only that you got what the registry described.
 - **Archives are extracted defensively.** Path traversal ("Zip Slip"), absolute paths,
   symlinks, and oversized archives are rejected or skipped, and only the execute bit of a
   file's permissions is kept: no setuid, setgid, sticky, or group/world-write bits.

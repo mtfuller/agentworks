@@ -26,12 +26,7 @@ type hookGroup struct {
 // own. A handler AgentWorks can't represent faithfully -- a non-command type,
 // or a group guarded by an `if` -- is reported in plan.Unsupported, never
 // imported in a broader form than the author wrote.
-func planHooks(root string, src Source, pluginDir, pluginName, ns string, plan *Plan) error {
-	hooks, err := claudecode.ReadPluginHooks(pluginDir)
-	if err != nil {
-		return err
-	}
-
+func planHooks(root string, src Source, pluginDir, pluginName, ns string, hooks []claudecode.PluginHook, plan *Plan) error {
 	var groups []*hookGroup
 	byKey := map[string]*hookGroup{}
 	for _, h := range hooks {

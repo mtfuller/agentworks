@@ -179,7 +179,13 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   decomposes it into local artifacts: a bare Agent Skill maps 1:1 (`agentskills.Read`),
   a plugin's `skills/*/SKILL.md` and `agents/*.md` the same way. Everything is resolved
   into an `importer.Plan` before anything is written, so a collision on artifact 4 of 5
-  never leaves the first 3 written. A plugin's MCP servers become mcp artifacts and its hook
+  never leaves the first 3 written. Sources: GitHub (codeload tarball), a direct archive URL,
+  `npm:` (registry tarball verified against `dist.integrity`/`shasum`), and any git remote
+  (`fetch_sources.go`: a shallow clone with the local `git`, transports limited to
+  https/ssh via `GIT_ALLOW_PROTOCOL` because git's `ext::` helper runs commands, prompts
+  disabled, `.git` removed so content hashes deterministically). Two plugin layouts share
+  `planPlugin` through a `pluginLayout` (Claude Code's `.claude-plugin/`, and Copilot's
+  `plugin.json` + `com.github.copilot/`); MCP servers read the same either way. A plugin's MCP servers become mcp artifacts and its hook
   handlers hook artifacts (`mcp.go`, `hooks.go`): neither has a directory in the fetched
   source (each is an entry inside a JSON file), so each is built in a *staging directory*
   (`Plan.newStage`) holding the files it references plus a marker of the raw entry
@@ -250,6 +256,9 @@ import (`add`/`update`); the marketplace publisher; and the CI surface (`--json`
   and a remote server has no "tool" code at all.
 
 **Deliberately deferred** (do this later, not by accident while doing something else):
+- **`command`-sourced marketplace entries** (`{"source":"command"}`): they'd run an
+  arbitrary command to produce the plugin, which is the opposite of the import trust model.
+- **A Copilot plugin.json's own `mcpServers` field** (only `mcp.json` is read for Copilot).
 - **Hook types other than `command`** (`prompt`, `agent`, `http`, `mcp_tool` in Claude
   Code) and hooks guarded by an `if` condition: reported in `Plan.Unsupported` on import,
   never approximated, because importing them without their condition or type would make a

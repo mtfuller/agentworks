@@ -12,6 +12,7 @@ import (
 	"github.com/mtfuller/agentworks/internal/targets/agentskills"
 	"github.com/mtfuller/agentworks/internal/targets/claudecode"
 	"github.com/mtfuller/agentworks/internal/targets/filecopy"
+	"github.com/mtfuller/agentworks/internal/targets/githubcopilot"
 )
 
 // Options customizes a Prepare call.
@@ -192,6 +193,9 @@ func (p *Plan) RecordLockEntries(root string, lf *lockfile.Lockfile) error {
 				Ref:  p.Source.Ref,
 				Path: p.Source.Path,
 				URL:  p.Source.URL,
+
+				Package: p.Source.Package,
+				Version: p.Source.Version,
 			},
 			Commit:        p.Commit,
 			SourceSubpath: p.Subpaths[a.Dir],
@@ -264,16 +268,19 @@ func (p *Plan) Overwrite(a *artifact.Artifact, dir string) error {
 // has already resolved any explicit ref/subpath) -- no recursive guessing
 // through subdirectories.
 func detect(root string, src Source, contentDir string, opts Options) (*Plan, error) {
-	if claudecode.IsMarketplaceDir(contentDir) {
+	if claudecode.IsMarketplaceDir(contentDir) || githubcopilot.IsMarketplaceDir(contentDir) {
 		return nil, fmt.Errorf("%s is a plugin marketplace, not a single plugin -- browse it with `agentworks tui`'s plugin browser (press \"p\"), or point at one of its plugins directly", src)
 	}
 	if claudecode.IsPluginDir(contentDir) {
-		return planPlugin(root, src, contentDir, opts)
+		return planPlugin(root, src, contentDir, opts, claudeLayout)
+	}
+	if githubcopilot.IsPluginDir(contentDir) {
+		return planPlugin(root, src, contentDir, opts, copilotLayout)
 	}
 	if agentskills.IsSkillDir(contentDir) {
 		return planSkill(root, src, contentDir, opts)
 	}
-	return nil, fmt.Errorf("%s doesn't look like a skill (no SKILL.md) or a Claude Code plugin (no .claude-plugin/plugin.json) at its root", src)
+	return nil, fmt.Errorf("%s doesn't look like a skill (no SKILL.md) or a plugin (no .claude-plugin/plugin.json or plugin.json) at its root", src)
 }
 
 // resolveNamespace picks the namespace an import is filed under: the

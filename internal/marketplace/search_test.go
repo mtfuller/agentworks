@@ -118,7 +118,7 @@ func TestSearchReturnsPartialResultsWhenASourceFails(t *testing.T) {
 func TestSearchSkipsUnresolvableEntries(t *testing.T) {
 	body := `{"name":"x","plugins":[
 		{"name":"good","description":"a fine plugin","source":"./plugins/good"},
-		{"name":"bad","description":"uses npm","source":{"source":"npm","package":"@acme/x"}}
+		{"name":"bad","description":"runs a command","source":{"source":"command","command":"my-tool path"}}
 	]}`
 	withMarketplaceTestServers(t, body, testAgentSkillsJSON, http.StatusOK, http.StatusOK)
 

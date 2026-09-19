@@ -33,11 +33,7 @@ func sensitiveName(name string) bool {
 // artifact -- a clean one-to-one mapping. A server that can't be imported
 // safely or faithfully is reported in plan.Unsupported instead of being
 // guessed at.
-func planMCPServers(root string, src Source, pluginDir, pluginName, ns string, plan *Plan) error {
-	servers, err := claudecode.ReadPluginMCPServers(pluginDir)
-	if err != nil {
-		return err
-	}
+func planMCPServers(root string, src Source, pluginDir, pluginName, ns string, servers []claudecode.PluginMCPServer, plan *Plan) error {
 	for _, s := range servers {
 		a, stage, warnings, unsupported, err := buildMCPArtifact(root, src, pluginDir, pluginName, ns, s, plan)
 		if err != nil {
@@ -182,10 +178,12 @@ func buildMCPArtifact(root string, src Source, pluginDir, pluginName, ns string,
 }
 
 // bundleWrapper matches the command AgentWorks' bundle export generates.
-var bundleWrapper = regexp.MustCompile(`^cd '?\$\{CLAUDE_PLUGIN_ROOT\}/(mcp/[^'\s]+)'? && (.+)$`)
+// Claude Code's form locates the directory with ${CLAUDE_PLUGIN_ROOT}; GitHub
+// Copilot's is relative to the plugin root.
+var bundleWrapper = regexp.MustCompile(`^cd '?(?:\$\{CLAUDE_PLUGIN_ROOT\}/)?(mcp/[^'\s]+)'? && (.+)$`)
 
 // unwrapBundleCommand recognizes `sh -c "cd '${CLAUDE_PLUGIN_ROOT}/mcp/<name>'
-// && <command>"` and returns the plugin-relative directory holding the
+// && <command>"` (or Copilot's `cd 'mcp/<name>' && <command>`) and returns the plugin-relative directory holding the
 // server's files and the original command.
 func unwrapBundleCommand(s claudecode.PluginMCPServer) (base, inner string, ok bool) {
 	if s.Type != "stdio" || (s.Command != "sh" && s.Command != "bash") || len(s.Args) != 2 || s.Args[0] != "-c" {

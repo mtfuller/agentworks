@@ -84,10 +84,10 @@ func TestResolveArchiveSource(t *testing.T) {
 func TestResolveUnsupportedTypes(t *testing.T) {
 	m := Marketplace{Repo: "some/marketplace", Ref: "main"}
 	tests := []string{
-		`{"source":"npm","package":"@acme/plugin"}`,
 		`{"source":"command","command":"my-tool path"}`,
-		`{"source":"url","url":"https://gitlab.com/team/plugin.git"}`,
-		`{"source":"git-subdir","url":"https://gitlab.com/team/mono.git","path":"plugin"}`,
+		`{"source":"npm"}`, // no package name
+		`{"source":"url","url":"ext::sh -c 'touch /tmp/pwn'"}`, // git's command-running transport
+		`{"source":"url","url":"file:///etc"}`,                 // local file transport
 	}
 	for _, raw := range tests {
 		e := manifestEntry{Name: "x"}
@@ -125,5 +125,31 @@ func TestResolveGitHubHostedURLAndGitSubdir(t *testing.T) {
 	}
 	if want := (importer.Source{Kind: importer.SourceGitHub, Repo: "owner/mono", Ref: "main", Path: "tools/x"}); src2 != want {
 		t.Errorf("resolve() = %+v, want %+v", src2, want)
+	}
+}
+
+func TestResolveNPMAndGenericGit(t *testing.T) {
+	m := Marketplace{Repo: "some/marketplace", Ref: "main"}
+	resolve := func(raw string) importer.Source {
+		t.Helper()
+		e := manifestEntry{Name: "x"}
+		if err := json.Unmarshal([]byte(raw), &e.Source); err != nil {
+			t.Fatalf("Unmarshal(%s) error = %v", raw, err)
+		}
+		src, err := e.resolve(m)
+		if err != nil {
+			t.Fatalf("resolve(%s) error = %v", raw, err)
+		}
+		return src
+	}
+
+	if got, want := resolve(`{"source":"npm","package":"@acme/plugin","version":"1.2.3"}`), (importer.Source{Kind: importer.SourceNPM, Package: "@acme/plugin", Version: "1.2.3"}); got != want {
+		t.Errorf("npm source = %+v, want %+v", got, want)
+	}
+	if got, want := resolve(`{"source":"url","url":"https://gitlab.com/team/plugin.git","ref":"v2"}`), (importer.Source{Kind: importer.SourceGit, URL: "https://gitlab.com/team/plugin.git", Ref: "v2"}); got != want {
+		t.Errorf("git url source = %+v, want %+v", got, want)
+	}
+	if got, want := resolve(`{"source":"git-subdir","url":"https://gitlab.com/team/mono.git","path":"plugin","ref":"main"}`), (importer.Source{Kind: importer.SourceGit, URL: "https://gitlab.com/team/mono.git", Ref: "main", Path: "plugin"}); got != want {
+		t.Errorf("git-subdir source = %+v, want %+v", got, want)
 	}
 }

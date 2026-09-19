@@ -64,8 +64,9 @@ something to run.
 
 ## Importing
 
-- `agentworks add <url>` — import a published Agent Skill or Claude Code plugin. Accepts
-  `owner/repo`, a repo/tree/blob URL, or an archive URL. Filed under a namespace (GitHub
+- `agentworks add <url>` — import a published Agent Skill or a Claude Code or GitHub Copilot
+  plugin. Accepts `owner/repo`, a repo/tree/blob URL, an archive URL, `npm:@scope/name`, or
+  any git remote over https/ssh (`https://gitlab.com/owner/repo`, optionally `#ref:path`). Filed under a namespace (GitHub
   owner by default, `--namespace` to override). Also imports a plugin's MCP servers and
   hooks (script files it references come along; a literal credential in a server's env or
   headers is never imported). Pins the source and exact commit in `agentworks.lock`

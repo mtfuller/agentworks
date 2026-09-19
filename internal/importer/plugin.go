@@ -7,19 +7,45 @@ import (
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/targets/agentskills"
 	"github.com/mtfuller/agentworks/internal/targets/claudecode"
+	"github.com/mtfuller/agentworks/internal/targets/githubcopilot"
 )
 
-// planPlugin builds a multi-artifact Plan for a Claude Code plugin,
+// pluginLayout is what differs between plugin formats: where the manifest and
+// agent files live and how hooks are declared. Skills (skills/<name>/SKILL.md)
+// and MCP servers (a .mcp.json or mcp.json of the same shape) are common.
+type pluginLayout struct {
+	manifest   func(dir string) (name, description string, err error)
+	agentFiles func(dir string) ([]string, error)
+	hooks      func(dir string) ([]claudecode.PluginHook, error)
+}
+
+// claudeLayout is a Claude Code plugin (.claude-plugin/plugin.json).
+var claudeLayout = pluginLayout{
+	manifest: claudecode.ReadPluginManifest,
+	agentFiles: func(dir string) ([]string, error) {
+		return filepath.Glob(filepath.Join(dir, "agents", "*.md"))
+	},
+	hooks: claudecode.ReadPluginHooks,
+}
+
+// copilotLayout is a GitHub Copilot (Agent Plugins) plugin.
+var copilotLayout = pluginLayout{
+	manifest:   githubcopilot.ReadPluginManifest,
+	agentFiles: githubcopilot.AgentFiles,
+	hooks:      githubcopilot.ReadPluginHooks,
+}
+
+// planPlugin builds a multi-artifact Plan for a plugin,
 // decomposing skills/*/SKILL.md and agents/*.md into individual artifacts,
 // each MCP server into an mcp artifact, and hook handlers into hook
 // artifacts (grouped by the script they run). See mcp.go and hooks.go for
 // what is and isn't representable; the rest is reported in Unsupported.
-func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan, error) {
+func planPlugin(root string, src Source, contentDir string, opts Options, layout pluginLayout) (*Plan, error) {
 	if opts.Name != "" {
 		return nil, fmt.Errorf("--name can only be used when importing a single skill, not a multi-artifact plugin")
 	}
 
-	pluginName, _, err := claudecode.ReadPluginManifest(contentDir)
+	pluginName, _, err := layout.manifest(contentDir)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +85,7 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		plan.Subpaths[a.Dir] = subpathOf(contentDir, dir)
 	}
 
-	agentFiles, err := filepath.Glob(filepath.Join(contentDir, "agents", "*.md"))
+	agentFiles, err := layout.agentFiles(contentDir)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +103,18 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		plan.Subpaths[a.Dir] = subpathOf(contentDir, path)
 	}
 
-	if err := planMCPServers(root, src, contentDir, pluginName, ns, plan); err != nil {
+	servers, err := claudecode.ReadPluginMCPServers(contentDir)
+	if err != nil {
 		return nil, err
 	}
-	if err := planHooks(root, src, contentDir, pluginName, ns, plan); err != nil {
+	if err := planMCPServers(root, src, contentDir, pluginName, ns, servers, plan); err != nil {
+		return nil, err
+	}
+	hooks, err := layout.hooks(contentDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := planHooks(root, src, contentDir, pluginName, ns, hooks, plan); err != nil {
 		return nil, err
 	}
 

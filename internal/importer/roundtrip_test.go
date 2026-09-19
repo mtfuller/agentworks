@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
@@ -161,5 +162,77 @@ func TestBundledScriptHookIsSkippedWhereItCannotWork(t *testing.T) {
 	}
 	if targets.UnsupportedReason("claude-code", hook) != "" {
 		t.Error("claude-code ships a hook's files and should accept it")
+	}
+}
+
+// The same property for a GitHub Copilot (Agent Plugins) bundle: agents live in
+// com.github.copilot/agents/, hooks in com.github.copilot/hooks/hooks.json, MCP
+// servers in mcp.json with a `cd 'mcp/<name>'` wrapper relative to the plugin root.
+func TestGitHubCopilotBundleRoundTrips(t *testing.T) {
+	srcRoot := newTestProject(t)
+
+	agent := &artifact.Artifact{
+		Frontmatter: artifact.Frontmatter{Kind: artifact.KindAgent, Name: "triager", Description: "Triages support tickets and assigns a priority."},
+		Body:        "# Triager\n\nRead the ticket and assign a priority.\n",
+		Dir:         filepath.Join(srcRoot, "agents", "triager"),
+	}
+	hook := &artifact.Artifact{
+		Frontmatter: artifact.Frontmatter{
+			Kind: artifact.KindHook, Name: "audit", Description: "Audits shell commands before they run.",
+			Extra: map[string]any{"handlers": []any{
+				map[string]any{"event": "preToolUse", "matcher": "bash", "command": "echo audit", "timeout": 12},
+			}},
+		},
+		Dir: filepath.Join(srcRoot, "hooks", "audit"),
+	}
+	server := &artifact.Artifact{
+		Frontmatter: artifact.Frontmatter{
+			Kind: artifact.KindMCP, Name: "greeter", Description: "Greets people by name over MCP.",
+			Extra: map[string]any{"command": "python3 src/server.py", "auth": []any{"GREETER_TOKEN"}},
+		},
+		Dir: filepath.Join(srcRoot, "mcp", "greeter"),
+	}
+	writeTestFile(t, filepath.Join(server.Dir, "src", "server.py"), "print('hi')\n", 0o644)
+	for _, a := range []*artifact.Artifact{agent, hook, server} {
+		if err := a.Save(); err != nil {
+			t.Fatalf("Save(%s) error = %v", a.Name, err)
+		}
+	}
+
+	exporter, err := targets.GetExporter("github-copilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugin, err := exporter.(targets.BundleExporter).ExportBundle("kit", "A kit for the round trip.", []*artifact.Artifact{agent, hook, server}, t.TempDir(), targets.ExportOptions{})
+	if err != nil {
+		t.Fatalf("ExportBundle() error = %v", err)
+	}
+
+	plan := planFor(t, plugin)
+	if len(plan.Unsupported) != 0 {
+		t.Fatalf("nothing AgentWorks exported should be unsupported on re-import: %v", plan.Unsupported)
+	}
+
+	gotAgent := find(t, plan, artifact.KindAgent, "triager")
+	if gotAgent.Description != agent.Description || !strings.Contains(gotAgent.Body, "assign a priority") {
+		t.Errorf("agent not carried: %+v / %q", gotAgent.Frontmatter, gotAgent.Body)
+	}
+
+	gotHook := find(t, plan, artifact.KindHook, "pretooluse-bash") // an inline hook has no directory to recover its original name from
+	handlers, _ := gotHook.HookHandlers()
+	want := []artifact.HookHandler{{Event: "preToolUse", Matcher: "bash", Command: "echo audit", Timeout: 12}}
+	if !sameHandlers(handlers, want) {
+		t.Errorf("hook handlers = %+v, want %+v", handlers, want)
+	}
+
+	gotServer := find(t, plan, artifact.KindMCP, "greeter")
+	if got := gotServer.ExtraString("command"); got != "python3 src/server.py" {
+		t.Errorf("mcp command = %q, want the original back", got)
+	}
+	if err := plan.Apply(); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(gotServer.Dir, "src", "server.py")); err != nil || string(data) != "print('hi')\n" {
+		t.Errorf("the server's files didn't survive the round trip: %q, %v", data, err)
 	}
 }

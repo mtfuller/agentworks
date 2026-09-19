@@ -40,6 +40,11 @@ Milestone 2 (import completeness), first part:
 - **Safer updates.** `update --apply` refuses to overwrite an artifact you edited since
   importing it unless `--force`; `update --diff` shows the change; `add --force` replaces an
   existing artifact. The lockfile records a `local_sha256` and the resolved GitHub `commit`.
+- **More sources** for `agentworks add` and marketplace entries: `npm:@scope/name[@version]`
+  (checksum-verified), and any git remote over https or ssh (`https://gitlab.com/owner/repo`,
+  `git@host:owner/repo.git`, with `#<ref>[:<path>]`). GitHub Copilot (Agent Plugins) plugins
+  are imported as well as Claude Code ones, including `mcp.json`, `com.github.copilot/`
+  agents and hooks.
 - `SECURITY.md` states the import trust model.
 
 ### Changed
