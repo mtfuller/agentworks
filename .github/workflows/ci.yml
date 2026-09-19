@@ -47,8 +47,27 @@ jobs:
           "$RUNNER_TEMP/agentworks" test
           "$RUNNER_TEMP/agentworks" eval
 
+  # golangci-lint is built with an older Go than "stable" and can't read the
+  # newest toolchain's export data, so it runs on the version go.mod declares.
   lint:
-    name: Lint and vulnerability scan
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  # Vulnerabilities in the standard library depend on the toolchain, so this
+  # runs on the newest one -- the same one releases are built with.
+  vulncheck:
+    name: Vulnerability scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,10 +76,6 @@ jobs:
         with:
           go-version: stable
           cache: true
-
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
 
       - name: govulncheck
         run: |
