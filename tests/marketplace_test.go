@@ -100,8 +100,13 @@ func TestMarketplaceGroupsByNamespace(t *testing.T) {
 	if err := json.Unmarshal(ghData, &ghDoc); err != nil {
 		t.Fatalf("parsing %s: %v", ghPath, err)
 	}
-	if ghDoc.Schema == "" {
-		t.Error("github-copilot marketplace.json $schema is empty, want the agent-plugins.org schema URL")
+	if ghDoc.Schema != "" {
+		t.Errorf("github-copilot marketplace.json $schema = %q, want none (no marketplace schema exists)", ghDoc.Schema)
+	}
+	var raw map[string]any
+	_ = json.Unmarshal(ghData, &raw)
+	if _, ok := raw["owner"]; !ok {
+		t.Error("github-copilot marketplace.json has no owner; Copilot CLI rejects that")
 	}
 	if len(ghDoc.Plugins) != 2 {
 		t.Fatalf("github-copilot plugins = %d, want 2", len(ghDoc.Plugins))

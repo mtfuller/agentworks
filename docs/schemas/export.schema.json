@@ -1,0 +1,64 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/export.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "export",
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "outputs": {
+      "items": {
+        "properties": {
+          "members": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "members"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "format",
+    "outputs",
+    "warnings"
+  ],
+  "title": "agentworks export --json",
+  "type": "object"
+}

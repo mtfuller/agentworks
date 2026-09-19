@@ -157,8 +157,11 @@ func TestServerForRemote(t *testing.T) {
 		if s.Type != transport || s.URL != "https://example.com/mcp" || s.Command != "" {
 			t.Errorf("%s: got %+v, want a remote entry with no command", transport, s)
 		}
-		if s.Headers["Authorization"] != "Bearer ${TOKEN}" || s.Env["TOKEN"] != "${TOKEN}" {
-			t.Errorf("%s: headers/env not carried through: %+v", transport, s)
+		if s.Headers["Authorization"] != "Bearer ${TOKEN}" {
+			t.Errorf("%s: headers not carried through: %+v", transport, s)
+		}
+		if s.Env != nil {
+			t.Errorf("%s: a remote server has no process to give an environment to, got %v", transport, s.Env)
 		}
 	}
 }

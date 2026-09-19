@@ -85,6 +85,9 @@ fetch automatically when the unauthenticated download 404s.`,
 		defer plan.Close()
 
 		if addDryRun {
+			if jsonFlag {
+				return emitJSON(newAddDoc(plan, true))
+			}
 			fmt.Print(plan.Describe())
 			return nil
 		}
@@ -120,8 +123,45 @@ fetch automatically when the unauthenticated download 404s.`,
 		if err := recordImports(root, plan); err != nil {
 			color.Warning("imported successfully, but failed to update %s: %v", lockfile.FileName, err)
 		}
+		if jsonFlag {
+			return emitJSON(newAddDoc(plan, false))
+		}
 		return nil
 	},
+}
+
+type addDoc struct {
+	envelope
+	Source string `json:"source"`
+	// Commit is the exact commit imported ("" for a source that names none).
+	Commit string `json:"commit,omitempty"`
+	// DryRun is true when nothing was written: Imported is what would be.
+	DryRun      bool      `json:"dry_run"`
+	Imported    []addItem `json:"imported"`
+	NotImported []string  `json:"not_imported"`
+	Warnings    []string  `json:"warnings"`
+}
+
+type addItem struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func newAddDoc(plan *importer.Plan, dryRun bool) addDoc {
+	doc := addDoc{
+		envelope:    newEnvelope("add", true),
+		Source:      plan.Source.String(),
+		Commit:      plan.Commit,
+		DryRun:      dryRun,
+		Imported:    make([]addItem, 0, len(plan.Artifacts)),
+		NotImported: append([]string{}, plan.Unsupported...),
+		Warnings:    append([]string{}, plan.Warnings...),
+	}
+	for _, a := range plan.Artifacts {
+		doc.Imported = append(doc.Imported, addItem{Kind: string(a.Kind), Name: a.DisplayName(), Path: itemPath(a)})
+	}
+	return doc
 }
 
 // recordImports pins what was actually written for every artifact in plan

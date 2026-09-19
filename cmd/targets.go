@@ -24,7 +24,7 @@ Check this before investing effort in an artifact meant for a specific vendor.`,
 		if jsonFlag {
 			doc := targetsDoc{envelope: newEnvelope("targets", true), Targets: make([]targetItem, 0, len(all))}
 			for _, t := range all {
-				item := targetItem{ID: t.ID, Name: t.Name, Notes: t.Notes, Supports: []string{}}
+				item := targetItem{ID: t.ID, Name: t.Name, Notes: t.Notes, Format: t.Format, Verified: t.Verified, Supports: []string{}}
 				for _, k := range artifact.Kinds() {
 					if targets.Supports(t.ID, k) {
 						item.Supports = append(item.Supports, string(k))
@@ -65,6 +65,7 @@ Check this before investing effort in an artifact meant for a specific vendor.`,
 				status = "export implemented"
 			}
 			color.Info("%s (%s) — %s. %s", t.Name, t.ID, status, t.Notes)
+			color.Info("  format: %s (verified %s)", t.Format, t.Verified)
 		}
 		return nil
 	},
@@ -81,6 +82,8 @@ type targetItem struct {
 	Supports          []string `json:"supports"`
 	ExportImplemented bool     `json:"export_implemented"`
 	Notes             string   `json:"notes"`
+	Format            string   `json:"format"`
+	Verified          string   `json:"verified"`
 }
 
 func init() {

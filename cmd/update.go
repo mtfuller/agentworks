@@ -54,8 +54,13 @@ overrides that. Use --diff first to see what would be lost.`,
 		if err != nil {
 			return err
 		}
+		doc := updateDoc{Apply: updateApply, Artifacts: []updateItem{}}
 		if len(lf.Imports) == 0 {
 			color.Info("No imported artifacts recorded in %s -- nothing to check.", lockfile.FileName)
+			if jsonFlag {
+				doc.envelope = newEnvelope("update", true)
+				return emitJSON(doc)
+			}
 			return nil
 		}
 
@@ -67,14 +72,17 @@ overrides that. Use --diff first to see what would be lost.`,
 		var upToDate, changed, failed int
 		for _, key := range keys {
 			entry := lf.Imports[key]
+			item := updateItem{Artifact: key, Status: "up-to-date"}
 			res, err := checkImport(root, key, entry)
 			if err != nil {
 				color.Error("%s: %v", key, err)
 				failed++
+				doc.Artifacts = append(doc.Artifacts, updateItem{Artifact: key, Status: "failed", Error: err.Error()})
 				continue
 			}
 			func() {
 				defer res.plan.Close()
+				defer func() { doc.Artifacts = append(doc.Artifacts, item) }()
 
 				if res.newHash == entry.ContentSHA256 {
 					color.Success("%s: up to date", key)
@@ -83,12 +91,14 @@ overrides that. Use --diff first to see what would be lost.`,
 				}
 
 				changed++
+				item.Status = "changed"
 				color.Warning("%s: upstream changed (%s)", key, describeChange(entry, res))
 				edited := locallyEdited(root, key, entry)
+				item.LocallyEdited = edited
 				if edited {
 					color.Warning("%s: you have edited this since it was imported", key)
 				}
-				if updateDiff {
+				if updateDiff && !jsonFlag {
 					if err := printUpdateDiff(root, key, res); err != nil {
 						color.Warning("%s: couldn't produce a diff: %v", key, err)
 					}
@@ -99,13 +109,18 @@ overrides that. Use --diff first to see what would be lost.`,
 				if edited && !updateForce {
 					color.Error("%s: not updated -- it has local changes that --apply would discard (re-run with --diff to see them, --force to overwrite)", key)
 					failed++
+					item.Status = "failed"
+					item.Error = "has local changes that --apply would discard"
 					return
 				}
 				if err := applyUpdate(root, lf, key, entry, res); err != nil {
 					color.Error("%s: %v", key, err)
 					failed++
+					item.Status = "failed"
+					item.Error = err.Error()
 					return
 				}
+				item.Status = "updated"
 				color.Success("%s: updated", key)
 			}()
 		}
@@ -115,11 +130,40 @@ overrides that. Use --diff first to see what would be lost.`,
 		}
 
 		color.Info("%d up to date, %d changed, %d failed", upToDate, changed, failed)
+		var failErr error
 		if failed > 0 {
-			return fmt.Errorf("%d artifact(s) failed to check/update", failed)
+			failErr = fmt.Errorf("%d artifact(s) failed to check/update", failed)
 		}
-		return nil
+		if jsonFlag {
+			doc.envelope = newEnvelope("update", failErr == nil)
+			doc.UpToDate, doc.Changed, doc.Failed = upToDate, changed, failed
+			if err := emitJSON(doc); err != nil {
+				return err
+			}
+		}
+		return failErr
 	},
+}
+
+type updateDoc struct {
+	envelope
+	// Apply is whether --apply was given; without it nothing is written.
+	Apply     bool         `json:"apply"`
+	UpToDate  int          `json:"up_to_date"`
+	Changed   int          `json:"changed"`
+	Failed    int          `json:"failed"`
+	Artifacts []updateItem `json:"artifacts"`
+}
+
+type updateItem struct {
+	// Artifact is the artifact's key in agentworks.lock.
+	Artifact string `json:"artifact"`
+	// Status is up-to-date, changed (upstream differs; not applied), updated
+	// (changed and applied), or failed.
+	Status string `json:"status"`
+	// LocallyEdited is true when the local copy was edited since import.
+	LocallyEdited bool   `json:"locally_edited,omitempty"`
+	Error         string `json:"error,omitempty"`
 }
 
 // resolveUpdateKeys turns update's path arguments into agentworks.lock

@@ -49,8 +49,11 @@ func TestExportTool(t *testing.T) {
 	if !ok {
 		t.Fatalf("mcp.json missing server entry, got: %+v", doc)
 	}
-	if server.Command != "sh" || len(server.Args) != 2 || server.Args[1] != "python3 src/main.py" {
-		t.Errorf("server = %+v, want sh -c \"python3 src/main.py\"", server)
+	// The server's files are shipped under .cursor/mcp-servers/<name>/ and the
+	// command locates them through Cursor's ${workspaceFolder}.
+	want := "cd '${workspaceFolder}/.cursor/mcp-servers/jira-fetch' && python3 src/main.py"
+	if server.Command != "sh" || len(server.Args) != 2 || server.Args[1] != want {
+		t.Errorf("server = %+v, want sh -c %q", server, want)
 	}
 	if server.Env["JIRA_API_TOKEN"] != "${JIRA_API_TOKEN}" {
 		t.Errorf("server.Env[JIRA_API_TOKEN] = %q, want ${JIRA_API_TOKEN}", server.Env["JIRA_API_TOKEN"])

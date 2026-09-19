@@ -274,3 +274,32 @@ func TestJSONVersionAndTestDocumentsMatchTheirSchemas(t *testing.T) {
 	testOut, _, _ := runJSON(t, "test", "--project", dir)
 	assertMatchesSchema(t, "test", testOut)
 }
+
+func TestJSONExportBuildAndUpdateDocuments(t *testing.T) {
+	dir := jsonProject(t)
+	out := filepath.Join(t.TempDir(), "dist")
+
+	stdout, _, exit := runJSON(t, "export", "--out", out, "--project", dir)
+	doc := decodeDoc(t, stdout)
+	if exit != 0 || doc["command"] != "export" || doc["ok"] != true {
+		t.Fatalf("export doc = %v, exit %d", doc, exit)
+	}
+	if outputs, _ := doc["outputs"].([]any); len(outputs) == 0 {
+		t.Errorf("export doc lists no outputs: %v", doc)
+	}
+
+	stdout, _, exit = runJSON(t, "build", "--project", dir)
+	doc = decodeDoc(t, stdout)
+	if exit != 0 || doc["command"] != "build" || doc["ok"] != true {
+		t.Fatalf("build doc = %v, exit %d", doc, exit)
+	}
+	if arts, ok := doc["artifacts"].([]any); !ok || len(arts) != 0 {
+		t.Errorf("build doc artifacts = %v, want an empty list (no build commands declared)", doc["artifacts"])
+	}
+
+	stdout, _, exit = runJSON(t, "update", "--project", dir)
+	doc = decodeDoc(t, stdout)
+	if exit != 0 || doc["command"] != "update" || doc["ok"] != true {
+		t.Fatalf("update doc = %v, exit %d", doc, exit)
+	}
+}

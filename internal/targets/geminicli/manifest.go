@@ -31,10 +31,18 @@ type server struct {
 	URL     string            `json:"url,omitempty"`
 	HTTPURL string            `json:"httpUrl,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
+	// Cwd is where a stdio server runs. Gemini's default working directory for
+	// an extension's server is undocumented, so a server that ships files sets
+	// it to ${extensionPath}, which Gemini substitutes with the extension's
+	// directory.
+	Cwd string `json:"cwd,omitempty"`
 }
 
-func serverFrom(s mcpconfig.Server) server {
+func serverFrom(s mcpconfig.Server, remote bool) server {
 	out := server{Command: s.Command, Args: s.Args, Env: s.Env, Headers: s.Headers}
+	if !remote && s.Command != "" {
+		out.Cwd = "${extensionPath}"
+	}
 	switch s.Type {
 	case mcpconfig.TransportHTTP:
 		out.HTTPURL = s.URL

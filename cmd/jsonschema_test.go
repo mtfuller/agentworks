@@ -23,6 +23,10 @@ var jsonDocTypes = map[string]any{
 	"targets":     targetsDoc{},
 	"marketplace": marketplaceCheckDoc{},
 	"version":     versionDoc{},
+	"add":         addDoc{},
+	"update":      updateDoc{},
+	"export":      exportDoc{},
+	"build":       buildDoc{},
 	"error":       errorDoc{},
 }
 

@@ -55,7 +55,7 @@ func exportSkill(a *artifact.Artifact, outDir string, opts targets.ExportOptions
 		return "", fmt.Errorf("clearing %s: %w", pluginDir, err)
 	}
 
-	if err := writePluginManifest(pluginDir, a); err != nil {
+	if err := writePluginManifest(pluginDir, a, opts.Meta); err != nil {
 		return "", err
 	}
 	// Per the Agent Plugins spec, skills live under skills/<name>/.
@@ -79,7 +79,7 @@ func exportMCP(a *artifact.Artifact, outDir string, opts targets.ExportOptions) 
 	if err := os.RemoveAll(pluginDir); err != nil {
 		return "", fmt.Errorf("clearing %s: %w", pluginDir, err)
 	}
-	if err := writePluginManifest(pluginDir, a); err != nil {
+	if err := writePluginManifest(pluginDir, a, opts.Meta); err != nil {
 		return "", err
 	}
 	// Unlike skills, a tool has no skills/ wrapping: mcp.json's `command`

@@ -22,11 +22,12 @@ import (
 // doesn't sequence them -- and members can be any of agent/skill/mcp/hook,
 // not just agent/mcp.
 func (exporter) ExportBundle(name, description string, artifacts []*artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
+	name = targets.PluginName(name)
 	pluginDir := filepath.Join(outDir, name)
 	if err := os.RemoveAll(pluginDir); err != nil {
 		return "", fmt.Errorf("clearing %s: %w", pluginDir, err)
 	}
-	if err := writeClaudePluginManifestNamed(pluginDir, name, description); err != nil {
+	if err := writeClaudePluginManifestNamed(pluginDir, name, description, opts.Meta.VersionFor(""), opts.Meta); err != nil {
 		return "", err
 	}
 

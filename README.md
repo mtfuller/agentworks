@@ -134,8 +134,22 @@ an artifact is named: `agentworks validate`/`export`'s path argument. An unnames
 binary refuses a project whose format is newer than it understands, so an old install never
 misreads a new project. See [COMPATIBILITY.md](COMPATIBILITY.md) for what is kept stable.
 
+Publishing metadata is optional and lives in `agentworks.yaml` too: `version`, `author`
+(`name`, `email`, `url`), `license`, `homepage`, and `repository`. Exports carry them into
+each plugin manifest and the `marketplace.json`; Claude Code's `--strict` validator warns
+on a plugin with no author. A plugin's version falls back to the artifact's own `version:`,
+then to `0.1.0`. Plugin names are lowercased and slugged (`My Project_1` becomes
+`my-project-1`), since both vendors restrict them.
+
 `agentworks add`/`export` write an `agentworks.lock` at the project root -- see
 "Drift and supply-chain safety" below.
+
+## Platforms
+
+Linux and macOS are supported. Declared commands (`command:`, `test:`, `build:`, the eval
+runners) run through a POSIX `sh`, so on Windows use WSL or Git Bash; `agentworks doctor`
+reports a missing `sh`. Windows is built and tested in CI on a best-effort basis, and an
+experimental `windows/amd64` binary is attached to each release.
 
 ## Sharing code between Node artifacts
 
@@ -375,8 +389,10 @@ so `agentworks status` reports on them too.
 
 The two `marketplace.json` locations are the ones Claude Code and GitHub Copilot CLI
 document: `.claude-plugin/marketplace.json`, and `.github/plugin/marketplace.json` (Copilot
-CLI reads either). The Copilot one carries the [Agent Plugins](https://agent-plugins.org)
-`$schema`, and every plugin directory under `plugins/github-copilot/` is an Agent Plugin.
+CLI reads either). Every plugin directory under `plugins/github-copilot/` is an
+[Agent Plugin](https://agent-plugins.org). Both marketplace files always name an `owner`
+(the manifest's `author`, else the project name), because both CLIs reject one without it;
+no `$schema` is written, since no marketplace schema exists.
 
 `agentworks marketplace --check` writes nothing: it regenerates into a temporary
 directory and exits non-zero if the committed `plugins/` or either `marketplace.json`
@@ -394,8 +410,8 @@ human-readable messages go to stderr, so `agentworks validate --json | jq` is sa
                    "errors": ["..."], "warnings": [], "notices": [] } ] }
 ```
 
-`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`, `version`, and
-`marketplace --check` support it. Every document has `schema_version`, `command`, and `ok` (true exactly when the
+`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`, `version`, `add`,
+`update`, `export`, `build`, and `marketplace --check` support it. Every document has `schema_version`, `command`, and `ok` (true exactly when the
 command exits 0); a failure that happens before a command can build its own document still
 yields `{"ok": false, "error": "..."}` on stdout. `schema_version` changes only for a
 breaking change (a removed or retyped field), so ignore keys you don't recognize. Paths are

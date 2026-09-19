@@ -356,6 +356,29 @@ If this changes — a stable, documented, file-based ChatGPT format emerges — 
 investigation then; don't assume today's reasoning still holds without checking, this
 area was unusually volatile even within the week it was researched.
 
+### Vendor conformance (M6)
+
+Exports are checked against the vendors' real formats, not only our own fixtures:
+
+- `internal/targets/testdata/agentplugins/` vendors the Agent Plugins 1.0.0 `plugin` and
+  `mcp` JSON Schemas (there is no marketplace schema). `githubcopilot/schema_conformance_test.go`
+  validates every exporter output against them. The schemas are closed
+  (`additionalProperties: false`), so a stray field fails: a remote MCP entry allows only
+  `type`, `url`, `headers`; remote types are `streamable-http` and `sse`, not `http`.
+  The plugin-name pattern uses a lookahead RE2 can't compile, so the test rewrites it.
+- `tests/conformance_test.go` (gated by `AGENTWORKS_CONFORMANCE=1`, run nightly by
+  `.github/workflows/conformance.yml`) hands output to the real CLIs: `claude plugin validate
+  --strict`, `copilot plugin marketplace add` (with `COPILOT_HOME`), and `gemini extensions
+  install --consent`. Copilot's install summary counts only skills and accepts an invalid
+  `mcp.json`, and nothing headless verifies agents or hooks there, so the schema test is the
+  real check for those.
+- Each target carries `Format` and `Verified` in `internal/targets/registry.go`, shown by
+  `agentworks targets`. Update the date when a target is re-checked.
+- A local MCP server's files ship with Cursor (`.cursor/mcp-servers/<name>`, addressed via
+  `${workspaceFolder}`) and Gemini (`${extensionPath}` + `cwd`), so the entry can run.
+- A whole-project export to Cursor or Gemini clears their merged files first (only if the
+  lockfile shows a prior export for that target), so removed servers/hooks don't linger.
+
 ### Cursor and Gemini CLI: what's real vs. deferred
 
 Researched (Sept 2026, against cursor.com/docs and geminicli.com/

@@ -1,6 +1,7 @@
 package claudecode
 
 import (
+	"github.com/mtfuller/agentworks/internal/targets"
 	"os"
 	"path/filepath"
 	"testing"
@@ -63,7 +64,7 @@ func TestReadAgentFileMissing(t *testing.T) {
 
 func TestReadPluginManifest(t *testing.T) {
 	pluginDir := t.TempDir()
-	if err := writeClaudePluginManifestNamed(pluginDir, "demo-kit", "A demo kit."); err != nil {
+	if err := writeClaudePluginManifestNamed(pluginDir, "demo-kit", "A demo kit.", "0.1.0", targets.PluginMeta{}); err != nil {
 		t.Fatalf("writeClaudePluginManifestNamed() error = %v", err)
 	}
 
@@ -90,7 +91,7 @@ func TestIsPluginDir(t *testing.T) {
 	if IsPluginDir(dir) {
 		t.Error("IsPluginDir() = true for an empty directory, want false")
 	}
-	if err := writeClaudePluginManifestNamed(dir, "demo", "x"); err != nil {
+	if err := writeClaudePluginManifestNamed(dir, "demo", "x", "0.1.0", targets.PluginMeta{}); err != nil {
 		t.Fatalf("writeClaudePluginManifestNamed() error = %v", err)
 	}
 	if !IsPluginDir(dir) {

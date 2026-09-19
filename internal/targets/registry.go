@@ -6,6 +6,8 @@ package targets
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 )
@@ -21,6 +23,12 @@ type Target struct {
 	// GetExporter.
 	Supports []artifact.Kind
 	Notes    string
+	// Format names the vendor format an export is written against and
+	// Verified is when it was last checked against the real tool (or its
+	// published schema), as YYYY-MM-DD. Vendor formats move; a stale date is
+	// the cue to rerun the conformance suite (see COMPATIBILITY.md).
+	Format   string
+	Verified string
 }
 
 // registry is the static set of vendors AgentWorks knows about. Adding a
@@ -29,30 +37,40 @@ type Target struct {
 var registry = []Target{
 	{
 		ID:       "claude-code",
+		Format:   "Claude Code plugin (.claude-plugin/plugin.json), checked with `claude plugin validate --strict`",
+		Verified: "2026-09-18",
 		Name:     "Claude Code",
 		Supports: artifact.Kinds(),
 		Notes:    "Every kind has a real exporter: skills (Agent Skills format), tools (MCP server), agents and hooks (each a small plugin).",
 	},
 	{
 		ID:       "chatgpt",
+		Format:   "Agent Skills archive (.skill / skills.zip)",
+		Verified: "2026-09-18",
 		Name:     "ChatGPT",
 		Supports: []artifact.Kind{artifact.KindSkill},
 		Notes:    "Skill uploads only, by design -- see AGENTS.md, \"ChatGPT: why skills only.\"",
 	},
 	{
 		ID:       "github-copilot",
+		Format:   "Agent Plugins 1.0.0 (plugin.json + mcp.json JSON Schemas, vendored in internal/targets/testdata/agentplugins)",
+		Verified: "2026-09-18",
 		Name:     "GitHub Copilot",
 		Supports: []artifact.Kind{artifact.KindAgent, artifact.KindSkill, artifact.KindMCP, artifact.KindHook},
 		Notes:    "Every supported kind has a real exporter: skills, tools (MCP server via Agent Plugins' mcp.json), agents and hooks (com.github.copilot/ namespace).",
 	},
 	{
 		ID:       "cursor",
+		Format:   "Loose project files: .cursor/rules, agents, mcp.json, hooks.json",
+		Verified: "2026-09-18",
 		Name:     "Cursor",
 		Supports: []artifact.Kind{artifact.KindSkill, artifact.KindAgent, artifact.KindMCP, artifact.KindHook},
 		Notes:    "Every supported kind has a real exporter, but none are plugins -- Cursor has no bundle/plugin format, so each is a loose project-scoped file: skills as a project rule (.cursor/rules/<name>.mdc), agents as a real subagent file (.cursor/agents/<name>.md, name/description only -- see AGENTS.md), tools as .cursor/mcp.json, hooks as .cursor/hooks.json.",
 	},
 	{
 		ID:       "gemini-cli",
+		Format:   "Gemini CLI extension (gemini-extension.json) + .gemini/agents + settings.json fragment",
+		Verified: "2026-09-18",
 		Name:     "Gemini CLI",
 		Supports: []artifact.Kind{artifact.KindSkill, artifact.KindAgent, artifact.KindMCP, artifact.KindHook},
 		Notes:    "Skills and tools export as a Gemini CLI extension (gemini-extension.json, + GEMINI.md and supporting files for a skill), agents as a real subagent file (.gemini/agents/<name>.md, with real tools:/model: mapping -- see AGENTS.md), hooks as a .gemini/settings.json fragment meant to be merged by hand (Gemini CLI hooks live only in settings.json, not an extension-scoped format).",
@@ -111,6 +129,67 @@ type ExportOptions struct {
 	// Zip additionally packages the export output as a .zip alongside the
 	// exported directory.
 	Zip bool
+	// Meta describes the publisher, for the plugin manifests that carry it.
+	Meta PluginMeta
+}
+
+// Author is who published a plugin.
+type Author struct {
+	Name  string
+	Email string
+	URL   string
+}
+
+// IsZero reports whether no author details are set.
+func (a Author) IsZero() bool { return a == Author{} }
+
+// PluginMeta is the publisher information a project supplies (in
+// agentworks.yaml) for the plugins it exports. Every field is optional.
+type PluginMeta struct {
+	// Version is the plugin's version. When empty, a plugin built from one
+	// artifact uses that artifact's version, and a bundle uses DefaultVersion.
+	Version    string
+	Author     Author
+	License    string
+	Homepage   string
+	Repository string
+}
+
+// DefaultVersion is the version of a bundle plugin when neither the project
+// nor anything else names one, matching an artifact's own default.
+const DefaultVersion = "0.1.0"
+
+// VersionFor picks the version to write into a plugin manifest.
+func (m PluginMeta) VersionFor(artifactVersion string) string {
+	switch {
+	case m.Version != "":
+		return m.Version
+	case artifactVersion != "":
+		return artifactVersion
+	}
+	return DefaultVersion
+}
+
+var pluginNameInvalid = regexp.MustCompile(`[^a-z0-9.-]+`)
+
+// PluginName converts s to a name every plugin format accepts: lowercase
+// letters, digits, hyphens, and periods, starting and ending alphanumeric, no
+// "--" or "..", at most 64 characters. Agent Plugins' schema is strict about
+// this (a project directory called "My Project" would otherwise export a
+// manifest the schema rejects). An input that yields nothing becomes "plugin".
+func PluginName(s string) string {
+	name := pluginNameInvalid.ReplaceAllString(strings.ToLower(s), "-")
+	for strings.Contains(name, "--") || strings.Contains(name, "..") {
+		name = strings.ReplaceAll(strings.ReplaceAll(name, "--", "-"), "..", ".")
+	}
+	name = strings.Trim(name, "-.")
+	if len(name) > 64 {
+		name = strings.Trim(name[:64], "-.")
+	}
+	if name == "" {
+		return "plugin"
+	}
+	return name
 }
 
 // Exporter turns an artifact into a target's native on-disk format under

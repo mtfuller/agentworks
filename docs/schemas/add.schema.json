@@ -1,0 +1,72 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/add.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "add",
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "imported": {
+      "items": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "not_imported": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "source": {
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "source",
+    "dry_run",
+    "imported",
+    "not_imported",
+    "warnings"
+  ],
+  "title": "agentworks add --json",
+  "type": "object"
+}

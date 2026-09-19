@@ -34,6 +34,16 @@ type Manifest struct {
 	Format      int    `yaml:"format,omitempty"`
 	Name        string `yaml:"name"`
 	Description string `yaml:"description,omitempty"`
+	// Version, Author, License, Homepage, and Repository describe the plugin
+	// this project publishes. They are written into every exported plugin
+	// manifest and into a marketplace's owner block. All are optional; without
+	// them the vendors' validators note the omission (a warning) and a
+	// marketplace's owner falls back to the project name.
+	Version    string  `yaml:"version,omitempty"`
+	Author     *Author `yaml:"author,omitempty"`
+	License    string  `yaml:"license,omitempty"`
+	Homepage   string  `yaml:"homepage,omitempty"`
+	Repository string  `yaml:"repository,omitempty"`
 	// Targets lists the vendor targets this project exports to. It is the
 	// only place targets are configured -- artifacts don't carry their own
 	// -- and `agentworks export` falls back to it when --target isn't given.
@@ -43,6 +53,13 @@ type Manifest struct {
 	// when an individual artifact doesn't declare its own "eval_runner".
 	// Left unset, an artifact with no runner of its own is skipped.
 	Eval *EvalConfig `yaml:"eval,omitempty"`
+}
+
+// Author is who publishes a project's plugins.
+type Author struct {
+	Name  string `yaml:"name,omitempty"`
+	Email string `yaml:"email,omitempty"`
+	URL   string `yaml:"url,omitempty"`
 }
 
 // EvalConfig is a project's default behavior-eval settings.

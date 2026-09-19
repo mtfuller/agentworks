@@ -40,6 +40,22 @@ jobs:
             done
           done
 
+      # Experimental: built so it can be tried, but not part of the tested
+      # matrix's guarantees (see COMPATIBILITY.md).
+      - name: Build (windows/amd64, experimental)
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          PKG=github.com/mtfuller/agentworks/internal/version
+          mkdir -p dist/agentworks_windows_amd64
+          GOOS=windows GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA}" \
+            -o dist/agentworks_windows_amd64/agentworks.exe ./main.go
+          cp LICENSE README.md dist/agentworks_windows_amd64/
+          (cd dist/agentworks_windows_amd64 && zip -q "../../agentworks_${VERSION}_windows_amd64.zip" agentworks.exe LICENSE README.md)
+          shasum -a 256 "agentworks_${VERSION}_windows_amd64.zip" >> SHA256SUMS.windows
+
       - name: Package
         run: |
           VERSION="${GITHUB_REF_NAME}"
@@ -51,6 +67,7 @@ jobs:
               shasum -a 256 "agentworks_${VERSION}_${OS}_${ARCH}.tar.gz" >> SHA256SUMS
             done
           done
+          cat SHA256SUMS.windows >> SHA256SUMS
 
       - name: Draft release notes
         run: |
@@ -88,5 +105,5 @@ jobs:
             --draft \
             --title "agentworks ${GITHUB_REF_NAME}" \
             --notes-file NOTES.md \
-            agentworks_*.tar.gz \
+            agentworks_*.tar.gz agentworks_*.zip \
             SHA256SUMS

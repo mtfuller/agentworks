@@ -45,3 +45,48 @@ jobs:
           "$RUNNER_TEMP/agentworks" validate --strict
           "$RUNNER_TEMP/agentworks" doctor
           "$RUNNER_TEMP/agentworks" eval
+
+  lint:
+    name: Lint and vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  # The tool is pure Go, but the commands artifacts declare run through a POSIX
+  # shell -- macOS has one, and Windows gets Git Bash (preinstalled on the
+  # runner). Windows is experimental: see COMPATIBILITY.md.
+  portable:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...

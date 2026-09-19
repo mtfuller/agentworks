@@ -36,7 +36,7 @@ func exportAgent(a *artifact.Artifact, outDir string, opts targets.ExportOptions
 	if err := os.RemoveAll(pluginDir); err != nil {
 		return "", fmt.Errorf("clearing %s: %w", pluginDir, err)
 	}
-	if err := writeClaudePluginManifest(pluginDir, a); err != nil {
+	if err := writeClaudePluginManifest(pluginDir, a, opts.Meta); err != nil {
 		return "", err
 	}
 	if err := writeClaudeAgentFile(filepath.Join(pluginDir, "agents", a.Name+".md"), a); err != nil {

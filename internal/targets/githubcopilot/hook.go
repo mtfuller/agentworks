@@ -43,7 +43,7 @@ func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 	if err := os.RemoveAll(pluginDir); err != nil {
 		return "", fmt.Errorf("clearing %s: %w", pluginDir, err)
 	}
-	if err := writePluginManifest(pluginDir, a); err != nil {
+	if err := writePluginManifest(pluginDir, a, opts.Meta); err != nil {
 		return "", err
 	}
 	if err := writeCopilotHooksDoc(pluginDir, doc); err != nil {

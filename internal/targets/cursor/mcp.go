@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
+	"github.com/mtfuller/agentworks/internal/targets/filecopy"
 	"github.com/mtfuller/agentworks/internal/targets/mcpconfig"
 )
 
@@ -21,9 +22,27 @@ import (
 // instead of overwriting it -- otherwise exporting N servers would leave only
 // the last.
 func exportMCP(a *artifact.Artifact, outDir string) (string, error) {
-	server, err := mcpconfig.ServerFor(a)
+	// A local server's files are shipped next to mcp.json and located through
+	// ${workspaceFolder} (the project root, per Cursor's docs), which Cursor
+	// interpolates in a server's command and args. Without this the command
+	// would name files that aren't there.
+	filesDir := filepath.Join(".cursor", "mcp-servers", a.Name)
+	var (
+		server mcpconfig.Server
+		err    error
+	)
+	if mcpconfig.IsRemote(a) {
+		server, err = mcpconfig.ServerFor(a)
+	} else {
+		server, err = mcpconfig.ServerForDir(a, "${workspaceFolder}/"+filepath.ToSlash(filesDir))
+	}
 	if err != nil {
 		return "", err
+	}
+	if !mcpconfig.IsRemote(a) {
+		if err := filecopy.CopyArtifactFiles(a, filepath.Join(outDir, filesDir)); err != nil {
+			return "", err
+		}
 	}
 
 	path := filepath.Join(outDir, ".cursor", "mcp.json")

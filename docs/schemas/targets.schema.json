@@ -19,6 +19,9 @@
           "export_implemented": {
             "type": "boolean"
           },
+          "format": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -33,6 +36,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "verified": {
+            "type": "string"
           }
         },
         "required": [
@@ -40,7 +46,9 @@
           "name",
           "supports",
           "export_implemented",
-          "notes"
+          "notes",
+          "format",
+          "verified"
         ],
         "type": "object"
       },

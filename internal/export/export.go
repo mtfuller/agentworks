@@ -117,6 +117,13 @@ func ResolveTargets(root string, explicit []string) ([]string, error) {
 func Run(req Request, lf *lockfile.Lockfile) (Result, error) {
 	var res Result
 
+	// Publisher details (version, author, ...) come from the manifest and are
+	// optional; a project without a readable manifest simply has none.
+	var meta targets.PluginMeta
+	if m, err := project.Load(req.Root); err == nil {
+		meta = PluginMeta(m)
+	}
+
 	arts := req.Artifacts
 	if arts == nil {
 		found, errs := project.Discover(req.Root)
@@ -146,7 +153,7 @@ func Run(req Request, lf *lockfile.Lockfile) (Result, error) {
 		}
 		return res, exportSkills(req, name, arts, lf, &res)
 	case FormatPlugin, "":
-		return res, exportPlugins(req, name, arts, lf, &res)
+		return res, exportPlugins(req, name, arts, meta, lf, &res)
 	default:
 		return res, fmt.Errorf("unknown export format %q", req.Format)
 	}
@@ -211,7 +218,7 @@ func Namespaces(arts []*artifact.Artifact) []string {
 	return out
 }
 
-func exportPlugins(req Request, name string, arts []*artifact.Artifact, lf *lockfile.Lockfile, res *Result) error {
+func exportPlugins(req Request, name string, arts []*artifact.Artifact, meta targets.PluginMeta, lf *lockfile.Lockfile, res *Result) error {
 	if len(req.Targets) == 0 {
 		return fmt.Errorf("no export targets given")
 	}
@@ -228,8 +235,11 @@ func exportPlugins(req Request, name string, arts []*artifact.Artifact, lf *lock
 			continue
 		}
 		targetOut := filepath.Join(req.OutDir, target)
-		opts := targets.ExportOptions{Zip: req.Zip}
+		opts := targets.ExportOptions{Zip: req.Zip, Meta: meta}
 		bundler, canBundle := exporter.(targets.BundleExporter)
+		if !canBundle && req.Artifacts == nil {
+			clearMergedFiles(lf, target, targetOut)
+		}
 
 		for _, g := range groups {
 			var bundleable, standalone []*artifact.Artifact
@@ -450,4 +460,33 @@ func HashDirs(dirs []string) (string, error) {
 		fmt.Fprintf(h, "%s\n%s\n", dir, dh)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// mergedFiles are the loose-target files every artifact of a kind merges its
+// entry into: one shared file per target, not one file per artifact.
+var mergedFiles = map[string][]string{
+	"cursor":     {".cursor/mcp.json", ".cursor/hooks.json"},
+	"gemini-cli": {".gemini/settings.json"},
+}
+
+// clearMergedFiles is what keeps a whole-project export from leaving stale
+// entries behind: a server or hook removed from the project would otherwise
+// live on in the merged file forever, since each export only ever adds or
+// replaces its own entry. It only acts when the lockfile shows this target
+// was exported before, so a file that was never AgentWorks' output (an
+// existing .cursor/mcp.json in a project root passed as --out) is left alone.
+func clearMergedFiles(lf *lockfile.Lockfile, target, outDir string) {
+	previous := false
+	for _, e := range lf.Exports {
+		if e.Target == target {
+			previous = true
+			break
+		}
+	}
+	if !previous {
+		return
+	}
+	for _, rel := range mergedFiles[target] {
+		_ = os.Remove(filepath.Join(outDir, filepath.FromSlash(rel)))
+	}
 }

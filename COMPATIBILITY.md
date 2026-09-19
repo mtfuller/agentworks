@@ -34,6 +34,11 @@ described by a JSON Schema in [docs/schemas/](docs/schemas/).
 - Removing a field, retyping it, or changing what it means bumps `schema_version`.
 - The schemas are generated from the Go types and checked against real output in the tests.
 
+## Platforms
+
+Linux and macOS are supported. Windows is experimental: it needs a POSIX `sh` (WSL or Git
+Bash) for declared commands, and its CI leg does not gate merges.
+
 ## Not covered
 
 - **The text of human-readable output** (messages, table layout, colors, the TUI). Use

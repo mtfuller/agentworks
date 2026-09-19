@@ -149,6 +149,22 @@ var shellCommandFields = []string{"command", "test", "build", "eval_runner", "ju
 func doctorChecks(a *artifact.Artifact, env []string) []doctorIssue {
 	var issues []doctorIssue
 
+	// Every declared command runs through "sh -c", so a machine with no sh
+	// (a stock Windows install) can't run any of them -- say so once, plainly,
+	// instead of as a confusing failure per command. Git Bash or WSL supply it.
+	for _, field := range shellCommandFields {
+		if a.ExtraString(field) == "" {
+			continue
+		}
+		if _, err := exec.LookPath("sh"); err != nil {
+			issues = append(issues, doctorIssue{
+				fatal:   true,
+				message: "\"sh\" is not on PATH; AgentWorks runs declared commands through a POSIX shell (on Windows, use WSL or Git Bash)",
+			})
+		}
+		break
+	}
+
 	for _, field := range shellCommandFields {
 		command := a.ExtraString(field)
 		if command == "" {

@@ -144,22 +144,26 @@ func looksSensitiveHeader(name string) bool {
 //
 // A remote (http/sse) server is just its `url` and `headers`.
 //
-// Environment: each name in `auth` (required secret variables) is passed
-// through as an unresolved ${VAR} reference, never a literal value -- both
-// Claude Code and Agent Plugins expand ${VAR} from the real environment at
-// startup, so no secret is baked into generated config. `env` (non-secret
-// literals) is merged in alongside; `auth` wins on a name collision.
+// Environment (stdio only): each name in `auth` (required secret variables)
+// is passed through as an unresolved ${VAR} reference, never a literal value
+// -- both Claude Code and Agent Plugins expand ${VAR} from the real
+// environment at startup, so no secret is baked into generated config. `env`
+// (non-secret literals) is merged in alongside; `auth` wins on a name
+// collision. A remote server gets no env block at all.
 func ServerFor(a *artifact.Artifact) (Server, error) {
 	if err := Validate(a); err != nil {
 		return Server{}, err
 	}
 
 	if IsRemote(a) {
+		// No env: there is no process to give one to, and Agent Plugins' schema
+		// allows only type, url, and headers on a remote entry. A credential
+		// reaches the server through a header's ${VAR} reference (which is what
+		// `auth` names, for `doctor` and `run`), not through the environment.
 		return Server{
 			Type:    TransportOf(a),
 			URL:     a.ExtraString("url"),
 			Headers: a.ExtraStringMap("headers"),
-			Env:     envFor(a),
 		}, nil
 	}
 

@@ -48,7 +48,7 @@ agentworks.yaml; pass --target (repeatable) to override it for one run.
 The skill formats are vendor-neutral and need no target. Pass paths to
 export only those artifacts rather than the whole project. Vendors with no
 plugin format (chatgpt, cursor, gemini-cli) get each artifact
-exported on its own instead, and workflows always become their own plugin.
+exported on its own instead.
 
 Before exporting, every artifact being exported (the whole project unless
 paths are given) that declares a "build:" command is built, so bundled output
@@ -123,6 +123,24 @@ like dist/main.js is fresh. If any build fails, nothing is exported. Pass
 		for _, w := range res.Warnings {
 			color.Warning("%s", w)
 		}
+		if jsonFlag {
+			doc := exportDoc{
+				envelope: newEnvelope("export", runErr == nil),
+				Format:   string(format),
+				Outputs:  make([]exportOutput, 0, len(res.Outputs)),
+				Warnings: append([]string{}, res.Warnings...),
+			}
+			for _, o := range res.Outputs {
+				doc.Outputs = append(doc.Outputs, exportOutput{Target: o.Target, Name: o.Name, Path: o.Path, Members: o.Members})
+			}
+			if runErr != nil {
+				doc.Error = runErr.Error()
+			}
+			if err := emitJSON(doc); err != nil {
+				return err
+			}
+			return runErr
+		}
 		for _, o := range res.Outputs {
 			label := o.Name
 			if o.Target != "" {
@@ -132,6 +150,24 @@ like dist/main.js is fresh. If any build fails, nothing is exported. Pass
 		}
 		return runErr
 	},
+}
+
+type exportDoc struct {
+	envelope
+	Format   string         `json:"format"`
+	Outputs  []exportOutput `json:"outputs"`
+	Warnings []string       `json:"warnings"`
+	// Error is why the export failed, when ok is false. Outputs still lists
+	// whatever was written before the failure.
+	Error string `json:"error,omitempty"`
+}
+
+type exportOutput struct {
+	// Target is the vendor target ("" for the vendor-neutral skill formats).
+	Target  string `json:"target,omitempty"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Members int    `json:"members"`
 }
 
 // splitCSV flattens repeated and comma-separated flag values

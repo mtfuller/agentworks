@@ -1,0 +1,65 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/update.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apply": {
+      "type": "boolean"
+    },
+    "artifacts": {
+      "items": {
+        "properties": {
+          "artifact": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "locally_edited": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "changed": {
+      "type": "integer"
+    },
+    "command": {
+      "const": "update",
+      "type": "string"
+    },
+    "failed": {
+      "type": "integer"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "up_to_date": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "apply",
+    "up_to_date",
+    "changed",
+    "failed",
+    "artifacts"
+  ],
+  "title": "agentworks update --json",
+  "type": "object"
+}

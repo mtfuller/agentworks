@@ -3,6 +3,33 @@
 All notable changes. See [COMPATIBILITY.md](COMPATIBILITY.md) for what counts as breaking.
 Before 1.0, a minor version may include breaking changes; each is marked **Breaking**.
 
+## v0.21.0
+
+Milestone 6 of [PLAN-1.0.md](PLAN-1.0.md): vendor conformance and platform.
+
+### Added
+- **Publishing metadata** in `agentworks.yaml`: `version`, `author`, `license`, `homepage`,
+  `repository`. Carried into plugin manifests and `marketplace.json`.
+- **Schema conformance tests**: every Copilot export is validated against the vendored Agent
+  Plugins 1.0.0 `plugin` and `mcp` schemas.
+- **Vendor conformance job** (`AGENTWORKS_CONFORMANCE=1`, nightly workflow): `claude plugin
+  validate --strict`, Copilot `plugin marketplace add`, Gemini `extensions install`.
+- `agentworks targets` shows each target's format and when it was last verified.
+- `--json` for `add`, `update`, `export`, and `build` (schemas in `docs/schemas/`).
+- `doctor` reports a missing `sh`. macOS and Windows CI legs, `golangci-lint` and
+  `govulncheck` in CI, and an experimental `windows/amd64` release binary.
+
+### Fixed
+- **Marketplaces Claude Code and Copilot rejected**: `marketplace.json` had no `owner`, and
+  carried a `$schema` that doesn't exist. Both are corrected; both real CLIs now accept it.
+- Copilot `mcp.json` used `http` for remote servers (the schema says `streamable-http`) and
+  wrote `env` on remote entries (not allowed).
+- Plugin names are slugged to the vendors' allowed pattern.
+- Local MCP servers exported to Cursor and Gemini CLI now ship their files, so the entry can
+  actually run.
+- A whole-project export to Cursor or Gemini no longer leaves removed servers or hooks in the
+  merged files.
+
 ## v0.20.0
 
 Milestone 5 of [PLAN-1.0.md](PLAN-1.0.md): evals v2.

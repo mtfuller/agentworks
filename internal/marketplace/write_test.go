@@ -15,7 +15,7 @@ func TestWriteManifestRoundTripsAsReadableMarketplace(t *testing.T) {
 		{Name: "myproject", Description: "Bundle of 2 artifacts: a, b", Source: "./plugins/claude-code/myproject"},
 		{Name: "team-a", DisplayName: "Team A", Description: "Bundle of 1 artifact: c", Source: "./plugins/claude-code/team-a"},
 	}
-	if err := WriteManifest(path, "", "myproject", entries); err != nil {
+	if err := WriteManifest(path, "myproject", Owner{}, Metadata{}, entries); err != nil {
 		t.Fatalf("WriteManifest() error = %v", err)
 	}
 
@@ -56,12 +56,8 @@ func TestWriteManifestRoundTripsAsReadableMarketplace(t *testing.T) {
 	}
 }
 
-func TestWriteManifestOmitsEmptySchema(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "marketplace.json")
-	if err := WriteManifest(path, "", "myproject", nil); err != nil {
-		t.Fatalf("WriteManifest() error = %v", err)
-	}
+func readRaw(t *testing.T, path string) map[string]any {
+	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading written manifest: %v", err)
@@ -70,35 +66,61 @@ func TestWriteManifestOmitsEmptySchema(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if _, ok := raw["$schema"]; ok {
-		t.Error("$schema present in output, want omitted when schema arg is empty")
+	return raw
+}
+
+// Claude Code and Copilot CLI both reject a marketplace.json with no owner
+// ("owner: Required"), so one is always written -- the project name when
+// the project names no author -- and there is never a "$schema", since the
+// Agent Plugins spec defines none for a marketplace.
+func TestWriteManifestAlwaysWritesAnOwnerAndNoSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "marketplace.json")
+	if err := WriteManifest(path, "myproject", Owner{}, Metadata{}, nil); err != nil {
+		t.Fatalf("WriteManifest() error = %v", err)
+	}
+	raw := readRaw(t, path)
+	owner, ok := raw["owner"].(map[string]any)
+	if !ok || owner["name"] != "myproject" {
+		t.Errorf("owner = %v, want an object named for the project", raw["owner"])
+	}
+	if _, has := raw["$schema"]; has {
+		t.Error("$schema must not be written: no marketplace schema exists")
+	}
+	if _, has := raw["metadata"]; has {
+		t.Error("an empty metadata block should be omitted")
+	}
+	if plugins, ok := raw["plugins"].([]any); !ok || len(plugins) != 0 {
+		t.Errorf("plugins = %v, want an empty list (not null)", raw["plugins"])
 	}
 }
 
-func TestWriteManifestIncludesSchemaWhenGiven(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "marketplace.json")
-	const schema = "https://agent-plugins.org/schemas/1.0.0/marketplace.schema.json"
-	if err := WriteManifest(path, schema, "myproject", nil); err != nil {
-		t.Fatalf("WriteManifest() error = %v", err)
-	}
-	data, err := os.ReadFile(path)
+func TestWriteManifestOwnerMetadataAndVersions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "marketplace.json")
+	err := WriteManifest(path, "kit",
+		Owner{Name: "Ada", Email: "ada@example.com", URL: "https://example.com"},
+		Metadata{Description: "A kit.", Version: "1.2.3"},
+		[]Entry{{Name: "kit", Description: "d", Version: "1.2.3", Source: "./plugins/claude-code/kit"}})
 	if err != nil {
-		t.Fatalf("reading written manifest: %v", err)
+		t.Fatal(err)
 	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
+	raw := readRaw(t, path)
+	owner := raw["owner"].(map[string]any)
+	if owner["name"] != "Ada" || owner["email"] != "ada@example.com" || owner["url"] != "https://example.com" {
+		t.Errorf("owner = %v", owner)
 	}
-	if raw["$schema"] != schema {
-		t.Errorf("$schema = %v, want %q", raw["$schema"], schema)
+	meta := raw["metadata"].(map[string]any)
+	if meta["description"] != "A kit." || meta["version"] != "1.2.3" {
+		t.Errorf("metadata = %v", meta)
+	}
+	if plugin := raw["plugins"].([]any)[0].(map[string]any); plugin["version"] != "1.2.3" {
+		t.Errorf("plugin entry = %v, want its version", plugin)
 	}
 }
 
 func TestWriteManifestCreatesParentDirs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".github", "plugin", "marketplace.json")
-	if err := WriteManifest(path, "", "myproject", nil); err != nil {
+	if err := WriteManifest(path, "myproject", Owner{}, Metadata{}, nil); err != nil {
 		t.Fatalf("WriteManifest() error = %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {

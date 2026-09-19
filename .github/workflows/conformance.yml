@@ -1,0 +1,39 @@
+name: Vendor conformance
+
+# Hands what AgentWorks generates to the vendors' own CLIs. Vendor formats move
+# without notice, so this runs nightly (and on demand) rather than on every PR;
+# a failure here means a vendor changed, not necessarily that a PR broke
+# something. See COMPATIBILITY.md.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install the vendor CLIs
+        run: npm install -g @anthropic-ai/claude-code @github/copilot @google/gemini-cli
+
+      - name: Conformance tests
+        env:
+          AGENTWORKS_CONFORMANCE: '1'
+        run: go test -count=1 -v ./tests -run 'Claude|Copilot|Gemini'
+
+      - name: Schema conformance (Agent Plugins)
+        run: go test -count=1 ./internal/targets/...

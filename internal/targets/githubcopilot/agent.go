@@ -40,7 +40,7 @@ func exportAgent(a *artifact.Artifact, outDir string, opts targets.ExportOptions
 	if err := os.RemoveAll(pluginDir); err != nil {
 		return "", fmt.Errorf("clearing %s: %w", pluginDir, err)
 	}
-	if err := writePluginManifest(pluginDir, a); err != nil {
+	if err := writePluginManifest(pluginDir, a, opts.Meta); err != nil {
 		return "", err
 	}
 	path := filepath.Join(pluginDir, "com.github.copilot", "agents", a.Name+".agent.md")

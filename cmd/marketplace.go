@@ -10,18 +10,12 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/color"
+	"github.com/mtfuller/agentworks/internal/export"
 	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/marketplace"
 	"github.com/mtfuller/agentworks/internal/project"
 	"github.com/mtfuller/agentworks/internal/targets"
 )
-
-// marketplaceGHSchema is the $schema value written into the GitHub Copilot
-// marketplace.json, mirroring the agent-plugins.org plugin.schema.json /
-// mcp.schema.json constants in internal/targets/githubcopilot/plugin.go.
-// claude-code's marketplace.json gets no $schema, matching that its own
-// plugin.json doesn't declare one either.
-const marketplaceGHSchema = "https://agent-plugins.org/schemas/1.0.0/marketplace.schema.json"
 
 // marketplaceTarget is one vendor this command knows how to publish a
 // repo-level marketplace.json for. Only claude-code and github-copilot
@@ -30,12 +24,11 @@ const marketplaceGHSchema = "https://agent-plugins.org/schemas/1.0.0/marketplace
 type marketplaceTarget struct {
 	id           string
 	manifestPath string // project-root-relative
-	schema       string
 }
 
 var marketplaceTargets = []marketplaceTarget{
 	{id: "claude-code", manifestPath: filepath.Join(".claude-plugin", "marketplace.json")},
-	{id: "github-copilot", manifestPath: filepath.Join(".github", "plugin", "marketplace.json"), schema: marketplaceGHSchema},
+	{id: "github-copilot", manifestPath: filepath.Join(".github", "plugin", "marketplace.json")},
 }
 
 var (
@@ -105,11 +98,11 @@ marketplace being republished.`,
 		}
 
 		if marketplaceCheck {
-			return checkMarketplace(selected, found, m.Name, root, pluginsRoot)
+			return checkMarketplace(selected, found, m, root, pluginsRoot)
 		}
 
 		for _, mt := range selected {
-			if err := publishMarketplaceTarget(mt, found, m.Name, root, pluginsRoot, lf); err != nil {
+			if err := publishMarketplaceTarget(mt, found, m, root, pluginsRoot, lf); err != nil {
 				return err
 			}
 		}
@@ -127,7 +120,7 @@ marketplace being republished.`,
 // read from the real project; only the output destination differs, which is
 // why publishMarketplaceTarget takes the output root separately and skips
 // lockfile bookkeeping when handed no lockfile.
-func checkMarketplace(selected []marketplaceTarget, found []*artifact.Artifact, projectName, root, pluginsRoot string) error {
+func checkMarketplace(selected []marketplaceTarget, found []*artifact.Artifact, m *project.Manifest, root, pluginsRoot string) error {
 	stage, err := os.MkdirTemp("", "agentworks-marketplace-check-*")
 	if err != nil {
 		return err
@@ -140,7 +133,7 @@ func checkMarketplace(selected []marketplaceTarget, found []*artifact.Artifact, 
 	for _, mt := range selected {
 		// Progress messages from the generator are noise for a check.
 		if err := quietly(func() error {
-			return publishMarketplaceTarget(mt, found, projectName, stage, stagePlugins, nil)
+			return publishMarketplaceTarget(mt, found, m, stage, stagePlugins, nil)
 		}); err != nil {
 			return err
 		}
@@ -228,7 +221,9 @@ func resolveMarketplaceTargets(requested []string) ([]marketplaceTarget, error) 
 
 // publishMarketplaceTarget regenerates one vendor's plugin output and
 // marketplace.json from the current state of the project.
-func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, projectName, root, pluginsRoot string, lf *lockfile.Lockfile) error {
+func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, m *project.Manifest, root, pluginsRoot string, lf *lockfile.Lockfile) error {
+	projectName := m.Name
+	meta := export.PluginMeta(m)
 	exporter, err := targets.GetExporter(mt.id)
 	if err != nil {
 		return err
@@ -274,7 +269,7 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 			warnSecurityRisk(a)
 		}
 
-		out, err := bundler.ExportBundle(name, bundleDescription(members), members, targetOut, targets.ExportOptions{})
+		out, err := bundler.ExportBundle(name, bundleDescription(members), members, targetOut, targets.ExportOptions{Meta: meta})
 		if err != nil {
 			return fmt.Errorf("%s: bundling %q: %w", mt.id, name, err)
 		}
@@ -293,16 +288,35 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 		if err != nil {
 			return err
 		}
-		entries = append(entries, marketplace.Entry{Name: name, Description: bundleDescription(members), Source: src})
+		entries = append(entries, marketplace.Entry{Name: targets.PluginName(name), Description: bundleDescription(members), Version: meta.VersionFor(""), Source: src})
 		color.Success("%s: exported %s (%d artifact(s)) to %s", mt.id, name, len(members), out)
 	}
 
 	manifestPath := filepath.Join(root, mt.manifestPath)
-	if err := marketplace.WriteManifest(manifestPath, mt.schema, projectName, entries); err != nil {
+	if err := marketplace.WriteManifest(manifestPath, targets.PluginName(projectName), marketplaceOwner(m), marketplace.Metadata{Description: marketplaceDescription(m), Version: meta.Version}, entries); err != nil {
 		return err
 	}
 	color.Success("%s: wrote %s (%d plugin(s))", mt.id, mt.manifestPath, len(entries))
 	return nil
+}
+
+// marketplaceOwner is who the marketplace is published by: the project's
+// author, or (Claude Code and Copilot CLI both require an owner) the project
+// name when it names none.
+func marketplaceOwner(m *project.Manifest) marketplace.Owner {
+	if m.Author != nil && m.Author.Name != "" {
+		return marketplace.Owner{Name: m.Author.Name, Email: m.Author.Email, URL: m.Author.URL}
+	}
+	return marketplace.Owner{Name: m.Name}
+}
+
+// marketplaceDescription is the marketplace's description: the project's own,
+// or (both vendors' validators ask for one) a plain statement of what it is.
+func marketplaceDescription(m *project.Manifest) string {
+	if m.Description != "" {
+		return m.Description
+	}
+	return "Plugins published from the " + m.Name + " project."
 }
 
 func filterByTarget(all []*artifact.Artifact, targetID string) []*artifact.Artifact {

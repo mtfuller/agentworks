@@ -45,16 +45,53 @@ command; artifacts without one are skipped.`,
 			toRun = found
 		}
 
-		ran, failed := runBuilds(toRun)
+		results := runBuildResults(toRun)
+		ran, failed := 0, 0
+		doc := buildDoc{Artifacts: []buildItem{}}
+		for _, r := range results {
+			ran++
+			if r.Error != "" {
+				failed++
+			}
+			doc.Artifacts = append(doc.Artifacts, r.buildItem)
+		}
 
 		if ran == 0 {
 			color.Info("No artifacts declare a `build:` command.")
 		}
+		var failErr error
 		if failed > 0 {
-			return fmt.Errorf("%d artifact(s) failed to build", failed)
+			failErr = fmt.Errorf("%d artifact(s) failed to build", failed)
 		}
-		return nil
+		if jsonFlag {
+			doc.envelope = newEnvelope("build", failErr == nil)
+			if err := emitJSON(doc); err != nil {
+				return err
+			}
+		}
+		return failErr
 	},
+}
+
+type buildDoc struct {
+	envelope
+	Artifacts []buildItem `json:"artifacts"`
+}
+
+// buildItem is one artifact whose build command ran. Artifacts declaring no
+// build command aren't listed.
+type buildItem struct {
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Command string `json:"command"`
+	Built   bool   `json:"built"`
+	// Error is the failure, when Built is false.
+	Error string `json:"error,omitempty"`
+}
+
+type buildResult struct {
+	buildItem
 }
 
 // runBuilds runs each artifact's declared "build:" command from within its
@@ -62,26 +99,40 @@ command; artifacts without one are skipped.`,
 // builds ran and how many of those failed, and keeps going after a failure
 // so one run surfaces every broken build.
 func runBuilds(arts []*artifact.Artifact) (ran, failed int) {
+	for _, r := range runBuildResults(arts) {
+		ran++
+		if r.Error != "" {
+			failed++
+		}
+	}
+	return ran, failed
+}
+
+// runBuildResults is runBuilds with a record of each build that ran.
+func runBuildResults(arts []*artifact.Artifact) []buildResult {
+	var results []buildResult
 	for _, a := range arts {
 		buildCommand := a.ExtraString("build")
 		if buildCommand == "" {
 			continue
 		}
-		ran++
 		color.Info("Building %s (%s): %s", a.Name, a.Kind, buildCommand)
+		r := buildResult{buildItem{Kind: string(a.Kind), Name: a.Name, Path: itemPath(a), Command: buildCommand}}
 
 		c := exec.Command("sh", "-c", buildCommand)
 		c.Dir = a.Dir
-		c.Stdout = os.Stdout
+		c.Stdout = stdoutForChildren()
 		c.Stderr = os.Stderr
 		if err := c.Run(); err != nil {
 			color.Error("%s: build failed: %v", a.Name, err)
-			failed++
-			continue
+			r.Error = err.Error()
+		} else {
+			r.Built = true
+			color.Success("%s: build succeeded", a.Name)
 		}
-		color.Success("%s: build succeeded", a.Name)
+		results = append(results, r)
 	}
-	return ran, failed
+	return results
 }
 
 func init() {
