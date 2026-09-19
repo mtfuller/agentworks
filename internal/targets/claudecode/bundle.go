@@ -55,7 +55,8 @@ func (exporter) ExportBundle(name, description string, artifacts []*artifact.Art
 					return "", fmt.Errorf("bundling mcp server %q: %w", m.QualifiedName(), err)
 				}
 			}
-			server, err := mcpconfig.ServerForDir(m, mcpDir)
+			// Located through ${CLAUDE_PLUGIN_ROOT}: see exportMCP.
+			server, err := mcpconfig.ServerForDir(m, pluginRootVar+"/"+filepath.ToSlash(mcpDir))
 			if err != nil {
 				return "", fmt.Errorf("bundling mcp server %q: %w", m.QualifiedName(), err)
 			}
@@ -71,7 +72,14 @@ func (exporter) ExportBundle(name, description string, artifacts []*artifact.Art
 		}
 	}
 	if len(hooks) > 0 {
-		doc, err := buildHooksDoc(hooks)
+		dirs := map[*artifact.Artifact]string{}
+		for _, h := range hooks {
+			dirs[h] = flat[h]
+			if err := copyHookFiles(h, pluginDir, flat[h]); err != nil {
+				return "", fmt.Errorf("bundling hook %q: %w", h.QualifiedName(), err)
+			}
+		}
+		doc, err := buildHooksDoc(hooks, dirs)
 		if err != nil {
 			return "", err
 		}

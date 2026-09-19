@@ -46,6 +46,9 @@ func (f Frontmatter) ExtraString(key string) string {
 // ExtraStringSlice returns Extra[key] as a []string, or nil if unset/not a
 // sequence of strings.
 func (f Frontmatter) ExtraStringSlice(key string) []string {
+	if typed, ok := f.Extra[key].([]string); ok { // assigned in code, not parsed from YAML
+		return typed
+	}
 	raw, ok := f.Extra[key].([]any)
 	if !ok {
 		return nil
@@ -62,6 +65,9 @@ func (f Frontmatter) ExtraStringSlice(key string) []string {
 // ExtraStringMap returns Extra[key] as a map[string]string, or nil if
 // unset/not a string-to-string mapping. Non-string values are skipped.
 func (f Frontmatter) ExtraStringMap(key string) map[string]string {
+	if typed, ok := f.Extra[key].(map[string]string); ok { // assigned in code, not parsed from YAML
+		return typed
+	}
 	raw, ok := f.Extra[key].(map[string]any)
 	if !ok {
 		return nil

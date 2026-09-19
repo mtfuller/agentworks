@@ -91,6 +91,21 @@ func Supports(id string, kind artifact.Kind) bool {
 	return false
 }
 
+// UnsupportedReason explains why target id can't export artifact a even though
+// it supports a's kind, or returns "" if it can. Exporters skip such an
+// artifact with a warning rather than emitting output that can't work.
+//
+// Today that is a hook whose command uses ${ARTIFACT_DIR} to run a bundled
+// script: claude-code ships the files and resolves the path via
+// ${CLAUDE_PLUGIN_ROOT}, but no other target documents a plugin-root variable
+// (github-copilot's hooks docs name none) or a place for a hook's files.
+func UnsupportedReason(id string, a *artifact.Artifact) string {
+	if a.Kind == artifact.KindHook && id != "claude-code" && a.UsesArtifactDir() {
+		return "its command runs a bundled script (" + artifact.ArtifactDirVar + "), which " + id + " has no way to locate"
+	}
+	return ""
+}
+
 // ExportOptions customizes an export run.
 type ExportOptions struct {
 	// Zip additionally packages the export output as a .zip alongside the

@@ -288,3 +288,48 @@ func TestFetchRespectsContextCancellation(t *testing.T) {
 		t.Fatal("Fetch() with a cancelled context expected error, got nil")
 	}
 }
+
+// GitHub names a tarball's root "<repo>-<commit sha>", which is how a fetch
+// learns what a moving ref (a branch, "latest") actually resolved to.
+func TestPrepareRecordsTheResolvedCommit(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	body := buildTarGzBytes(t, "demo-"+sha, map[string]string{
+		"SKILL.md": "---\nname: pinned\ndescription: A skill used to check the commit is recorded.\n---\n\nbody\n",
+	})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	root := newTestProject(t)
+	plan, err := Prepare(context.Background(), root, Source{Kind: SourceGitHub, Repo: "owner/demo", Ref: "main"}, Options{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	defer plan.Close()
+
+	if plan.Commit != sha {
+		t.Errorf("Commit = %q, want the sha from the tarball's root directory", plan.Commit)
+	}
+	prov, _ := plan.Artifacts[0].Extra["source"].(map[string]any)
+	if prov["commit"] != sha {
+		t.Errorf("provenance = %v, want the commit recorded in the artifact's source block", prov)
+	}
+}
+
+func TestPrepareOfAnArchiveURLHasNoCommit(t *testing.T) {
+	body := buildTarGzBytes(t, "kit-main", map[string]string{
+		"SKILL.md": "---\nname: plain\ndescription: A skill from an archive URL with no commit to record.\n---\n\nbody\n",
+	})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer ts.Close()
+	withTestServer(t, ts)
+
+	plan, err := Prepare(context.Background(), newTestProject(t), Source{Kind: SourceArchive, URL: ts.URL + "/kit.tar.gz"}, Options{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	defer plan.Close()
+	if plan.Commit != "" {
+		t.Errorf("Commit = %q, want none for an archive URL", plan.Commit)
+	}
+}

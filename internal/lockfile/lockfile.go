@@ -52,13 +52,23 @@ type SourceRef struct {
 type ImportEntry struct {
 	Kind   string    `yaml:"kind"`
 	Source SourceRef `yaml:"source"`
+	// Commit is the exact GitHub commit the artifact was imported from. The
+	// ref in Source may be a branch that has since moved; this is what was
+	// actually fetched, so `agentworks update` can say what moved.
+	Commit string `yaml:"commit,omitempty"`
 	// SourceSubpath is this artifact's path relative to Source's own
 	// fetched root -- "" for a bare single-artifact import, or e.g.
 	// "skills/foo" when Source is a multi-artifact plugin. Lets
 	// `agentworks update` find the same spot again after a fresh fetch.
 	SourceSubpath string `yaml:"source_subpath,omitempty"`
 	ContentSHA256 string `yaml:"content_sha256"`
-	Imported      string `yaml:"imported"` // YYYY-MM-DD, UTC
+	// LocalSHA256 is a hash of the artifact directory exactly as
+	// `agentworks add`/`update` wrote it. If the directory no longer hashes to
+	// this, someone edited it since, and `update --apply` will not overwrite
+	// it without --force. Empty for an entry written before this field
+	// existed, which is treated as unedited.
+	LocalSHA256 string `yaml:"local_sha256,omitempty"`
+	Imported    string `yaml:"imported"` // YYYY-MM-DD, UTC
 }
 
 // ExportEntry records what `agentworks export` last wrote for one

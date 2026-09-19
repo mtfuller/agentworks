@@ -194,3 +194,105 @@ func TestExtractRejectsOversizeTotal(t *testing.T) {
 		t.Fatal("Unzip() with oversize total content expected error, got nil")
 	}
 }
+
+// Scripts must stay runnable (a hook or MCP server is often exec'd directly),
+// but no other archive-supplied permission bit may be trusted.
+func TestExtractKeepsOnlyTheExecuteBit(t *testing.T) {
+	modes := map[string]int64{
+		"plain.txt":  0o644,
+		"run.sh":     0o755,
+		"partial.sh": 0o700,  // owner-execute only
+		"setuid.sh":  0o4755, // setuid + executable
+		"open.txt":   0o666,  // world-writable
+		"secret.txt": 0o600,  // private
+	}
+	want := map[string]os.FileMode{
+		"plain.txt": 0o644, "run.sh": 0o755, "partial.sh": 0o755,
+		"setuid.sh": 0o755, "open.txt": 0o644, "secret.txt": 0o644,
+	}
+
+	// tar
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for name, mode := range modes {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: 1, Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		tw.Write([]byte("x"))
+	}
+	tw.Close()
+	gz.Close()
+	tarPath := filepath.Join(t.TempDir(), "a.tar.gz")
+	if err := os.WriteFile(tarPath, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tarDest := t.TempDir()
+	if err := UntarGz(tarPath, tarDest); err != nil {
+		t.Fatalf("UntarGz() error = %v", err)
+	}
+
+	// zip
+	zipPath := filepath.Join(t.TempDir(), "a.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(zf)
+	for name, mode := range modes {
+		hdr := &zip.FileHeader{Name: name}
+		hdr.SetMode(os.FileMode(mode))
+		w, err := zw.CreateHeader(hdr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.Write([]byte("x"))
+	}
+	zw.Close()
+	zf.Close()
+	zipDest := t.TempDir()
+	if err := Unzip(zipPath, zipDest); err != nil {
+		t.Fatalf("Unzip() error = %v", err)
+	}
+
+	for format, dest := range map[string]string{"tar": tarDest, "zip": zipDest} {
+		for name, wantMode := range want {
+			info, err := os.Stat(filepath.Join(dest, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Compare ignoring group/other write, which the process umask may clear.
+			if got := info.Mode().Perm() &^ 0o022; got != wantMode&^0o022 {
+				t.Errorf("%s: %s extracted as %v, want %v", format, name, info.Mode().Perm(), wantMode)
+			}
+			if info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+				t.Errorf("%s: %s kept a setuid/setgid/sticky bit", format, name)
+			}
+		}
+	}
+}
+
+func TestCopyFileKeepsOnlyTheExecuteBit(t *testing.T) {
+	dir := t.TempDir()
+	for name, mode := range map[string]os.FileMode{"a.txt": 0o644, "run.sh": 0o755, "secret": 0o600} {
+		src := filepath.Join(dir, "src-"+name)
+		if err := os.WriteFile(src, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(src, mode); err != nil {
+			t.Fatal(err)
+		}
+		dst := filepath.Join(dir, "dst-"+name)
+		if err := CopyFile(src, dst); err != nil {
+			t.Fatalf("CopyFile(%s) error = %v", name, err)
+		}
+		info, err := os.Stat(dst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantExec := mode&0o111 != 0
+		if gotExec := info.Mode()&0o111 != 0; gotExec != wantExec {
+			t.Errorf("%s: executable = %v, want %v (mode %v)", name, gotExec, wantExec, info.Mode())
+		}
+	}
+}

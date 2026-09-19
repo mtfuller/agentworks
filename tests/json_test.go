@@ -170,7 +170,7 @@ func TestJSONErrorOutsideAProjectIsStillJSON(t *testing.T) {
 
 func TestStatusFailOnDrift(t *testing.T) {
 	dir := jsonProject(t)
-	runAgentworks(t, "export", "--project", dir)
+	runAgentworks(t, "export", "--project", dir, "--out", filepath.Join(dir, "dist"))
 
 	if _, _, exit := runJSON(t, "status", "--fail-on-drift", "--project", dir); exit != 0 {
 		t.Fatalf("status --fail-on-drift on a fresh export exited %d, want 0", exit)

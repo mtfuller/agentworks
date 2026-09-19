@@ -3,6 +3,7 @@ package artifact
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // HookHandler is one thing a hook does: run Command when Event fires, optionally
@@ -86,4 +87,21 @@ func decodeHandlers(dir string, raw any) ([]HookHandler, error) {
 		}
 	}
 	return handlers, nil
+}
+
+// ArtifactDirVar is a placeholder a hook command may use for the directory
+// holding the hook artifact's own files -- how a hook refers to a script it
+// bundles. Exporters that can ship those files replace it with the target's
+// real path; others skip the hook (see targets.UnsupportedReason).
+const ArtifactDirVar = "${ARTIFACT_DIR}"
+
+// UsesArtifactDir reports whether any of the artifact's commands refers to
+// ArtifactDirVar, i.e. depends on files bundled with it.
+func (a *Artifact) UsesArtifactDir() bool {
+	for _, c := range a.Commands() {
+		if strings.Contains(c, ArtifactDirVar) {
+			return true
+		}
+	}
+	return false
 }

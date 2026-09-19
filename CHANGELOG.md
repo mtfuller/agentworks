@@ -25,10 +25,37 @@ Milestone 1 of [PLAN-1.0.md](PLAN-1.0.md): freeze the formats.
   types and validated against real output in the tests.
 - `COMPATIBILITY.md` and this changelog.
 
+Milestone 2 (import completeness), first part:
+
+- **Import MCP servers and hooks from a plugin.** `agentworks add` now turns a Claude Code
+  plugin's `.mcp.json` / `plugin.json` `mcpServers` into `mcp` artifacts, and its
+  `hooks/hooks.json` / `plugin.json` `hooks` into `hook` artifacts (handlers that run the
+  same script are grouped). Files referenced through `${CLAUDE_PLUGIN_ROOT}` are copied into
+  the artifact and the reference rewritten; a literal credential in a server's env or
+  headers is never imported; a prompt-type hook, or one guarded by an `if`, is reported and
+  skipped. Importing your own claude-code bundle round-trips.
+- **Bundled hook scripts.** A hook command may use `${ARTIFACT_DIR}`; claude-code export
+  ships the hook's files under `hook-files/<name>/` and resolves the path. Other targets
+  skip such a hook with a warning.
+- **Safer updates.** `update --apply` refuses to overwrite an artifact you edited since
+  importing it unless `--force`; `update --diff` shows the change; `add --force` replaces an
+  existing artifact. The lockfile records a `local_sha256` and the resolved GitHub `commit`.
+- `SECURITY.md` states the import trust model.
+
 ### Changed
+- **Claude Code MCP export** locates a plugin's server files through `${CLAUDE_PLUGIN_ROOT}`
+  (as Claude Code's docs require) instead of assuming the server starts in the plugin
+  directory. This was likely broken for installed plugins.
+- Extracted and copied files keep their execute bit (and only that): imported scripts used
+  to lose it, so a hook or server exec'd directly would not run.
 - Hooks that share an event and matcher are merged into one matcher block in Claude Code's
   `hooks.json`, instead of one block per hook artifact.
 - The security lint reads every hook handler's command, not just `command`.
+
+### Fixed
+- `update` failed for any artifact added with `--namespace`, because it re-planned under the
+  source's default namespace.
+- The tests wrote `dist/` into `tests/` and it was committed by mistake; removed and ignored.
 
 ### Removed
 - **Breaking:** the per-artifact `targets:` key is deprecated (warned about). Targets live in

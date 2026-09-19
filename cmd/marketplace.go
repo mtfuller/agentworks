@@ -308,9 +308,14 @@ func publishMarketplaceTarget(mt marketplaceTarget, all []*artifact.Artifact, pr
 func filterByTarget(all []*artifact.Artifact, targetID string) []*artifact.Artifact {
 	var out []*artifact.Artifact
 	for _, a := range all {
-		if targets.Supports(targetID, a.Kind) {
-			out = append(out, a)
+		if !targets.Supports(targetID, a.Kind) {
+			continue
 		}
+		if reason := targets.UnsupportedReason(targetID, a); reason != "" {
+			color.Warning("%s: skipping %s (%s) -- %s", targetID, a.DisplayName(), a.Kind, reason)
+			continue
+		}
+		out = append(out, a)
 	}
 	return out
 }

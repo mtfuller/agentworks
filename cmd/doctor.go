@@ -154,7 +154,7 @@ func doctorChecks(a *artifact.Artifact, env []string) []doctorIssue {
 		if command == "" {
 			continue
 		}
-		bin := firstShellWord(command)
+		bin := commandBin(a, field, command)
 		if bin == "" {
 			continue
 		}
@@ -172,7 +172,7 @@ func doctorChecks(a *artifact.Artifact, env []string) []doctorIssue {
 			if h.Command == a.ExtraString("command") {
 				continue // already checked above
 			}
-			if bin := firstShellWord(h.Command); bin != "" {
+			if bin := commandBin(a, "command", h.Command); bin != "" {
 				if _, err := exec.LookPath(bin); err != nil {
 					issues = append(issues, doctorIssue{
 						fatal:   true,
@@ -211,6 +211,23 @@ func doctorChecks(a *artifact.Artifact, env []string) []doctorIssue {
 	}
 
 	return issues
+}
+
+// commandBin returns the program a declared command would run, resolved the
+// way it will actually be run: ${ARTIFACT_DIR} is the artifact's directory,
+// quotes around the program are dropped, and a relative path resolves against
+// the artifact's directory -- where test:, build:, eval_runner:, and an MCP
+// server's command run. (A hook's command runs from the harness's working
+// directory instead, so its relative paths are left alone.) A program with no
+// slash is looked up on PATH.
+func commandBin(a *artifact.Artifact, field, command string) string {
+	command = strings.ReplaceAll(command, artifact.ArtifactDirVar, a.Dir)
+	bin := strings.NewReplacer(`"`, "", `'`, "").Replace(firstShellWord(command))
+	runsInArtifactDir := field != "command" || a.Kind != artifact.KindHook
+	if runsInArtifactDir && bin != "" && !filepath.IsAbs(bin) && strings.Contains(bin, "/") {
+		bin = filepath.Join(a.Dir, bin)
+	}
+	return bin
 }
 
 // firstShellWord returns the first whitespace-separated word of a shell

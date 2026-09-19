@@ -237,6 +237,8 @@ func exportPlugins(req Request, name string, arts []*artifact.Artifact, lf *lock
 				switch {
 				case !targets.Supports(target, a.Kind):
 					res.Warnings = append(res.Warnings, fmt.Sprintf("%s: skipping %s (%s) -- %s doesn't support this kind", target, a.DisplayName(), a.Kind, target))
+				case targets.UnsupportedReason(target, a) != "":
+					res.Warnings = append(res.Warnings, fmt.Sprintf("%s: skipping %s (%s) -- %s", target, a.DisplayName(), a.Kind, targets.UnsupportedReason(target, a)))
 				default:
 					bundleable = append(bundleable, a)
 				}

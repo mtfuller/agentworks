@@ -32,10 +32,17 @@ type Options struct {
 // yet. Nothing is written to disk until Apply() is called, so a collision
 // on artifact 4 of 5 never leaves the first 3 written with no way back.
 type Plan struct {
-	Source      Source
-	PluginName  string // "" for a bare-skill import
+	Source     Source
+	PluginName string // "" for a bare-skill import
+	// Commit is the exact GitHub commit the fetch resolved to ("" for an
+	// archive URL, which doesn't name one). A branch or tag moves; this is
+	// what was actually imported.
+	Commit      string
 	Artifacts   []*artifact.Artifact
-	Unsupported []string // e.g. "hooks/hooks.json (hook import not supported yet)"
+	Unsupported []string // things in the source AgentWorks can't represent, e.g. a prompt-type hook
+	// Warnings are things that were imported but need a human's attention: an
+	// ignored field, a file a command references that wasn't in the plugin.
+	Warnings []string
 
 	// HashSources maps each artifact's (plan-computed) Dir to the raw
 	// fetched location its content came from -- a directory for a skill,
@@ -51,8 +58,33 @@ type Plan struct {
 	// spot again after a fresh Fetch of the same Source.
 	Subpaths map[string]string
 
-	tempDir string
-	srcDirs map[string]string // artifact.Dir -> fetched dir to copy supporting files from
+	tempDir   string
+	extraTemp []string          // staging directories for MCP/hook artifacts, removed by Close
+	srcDirs   map[string]string // artifact.Dir -> fetched dir to copy supporting files from
+}
+
+// newStage makes a scratch directory for an artifact that has no directory of
+// its own in the fetched source (an MCP server or hook is an entry inside a
+// JSON file): it holds the files that entry references, plus a marker of the
+// raw entry, and is what gets hashed for the lockfile and copied into the
+// project.
+func (p *Plan) newStage() (string, error) {
+	dir, err := os.MkdirTemp("", "agentworks-import-stage-*")
+	if err != nil {
+		return "", fmt.Errorf("creating staging dir: %w", err)
+	}
+	p.extraTemp = append(p.extraTemp, dir)
+	return dir, nil
+}
+
+// addArtifact registers a staged artifact (see newStage). subpath is the
+// virtual locator `agentworks update` uses to find it again in a fresh fetch,
+// e.g. "mcp:db-server" or "hook:script:scripts/format.sh".
+func (p *Plan) addArtifact(a *artifact.Artifact, stage, subpath string) {
+	p.Artifacts = append(p.Artifacts, a)
+	p.srcDirs[a.Dir] = stage
+	p.HashSources[a.Dir] = stage
+	p.Subpaths[a.Dir] = subpath
 }
 
 // Describe renders a human-readable summary of what Apply would do.
@@ -67,7 +99,10 @@ func (p *Plan) Describe() string {
 		fmt.Fprintf(&b, "  + %s %s -> %s\n", a.Kind, a.DisplayName(), a.Dir)
 	}
 	for _, u := range p.Unsupported {
-		fmt.Fprintf(&b, "  ! %s\n", u)
+		fmt.Fprintf(&b, "  ! not imported: %s\n", u)
+	}
+	for _, w := range p.Warnings {
+		fmt.Fprintf(&b, "  ~ %s\n", w)
 	}
 	return b.String()
 }
@@ -98,9 +133,30 @@ func (p *Plan) Apply() error {
 			return err
 		}
 		if src, ok := p.srcDirs[a.Dir]; ok {
-			if err := filecopy.CopyDirExcept(src, a.Dir, "SKILL.md", a.Kind.FileName()); err != nil {
+			if err := filecopy.CopyDirExcept(src, a.Dir, "SKILL.md", a.Kind.FileName(), importMarker); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// ApplyForce is Apply that replaces an artifact already on disk instead of
+// refusing: for `agentworks add --force`, which re-imports over an existing
+// artifact. Two planned artifacts resolving to the same directory is still an
+// error, since that is a conflict inside the plan rather than with the
+// project.
+func (p *Plan) ApplyForce() error {
+	seen := make(map[string]bool, len(p.Artifacts))
+	for _, a := range p.Artifacts {
+		if seen[a.Dir] {
+			return fmt.Errorf("two artifacts both resolve to %s -- rename one and retry", a.Dir)
+		}
+		seen[a.Dir] = true
+	}
+	for _, a := range p.Artifacts {
+		if err := p.Overwrite(a, a.Dir); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -124,6 +180,10 @@ func (p *Plan) RecordLockEntries(root string, lf *lockfile.Lockfile) error {
 		if err != nil {
 			return err
 		}
+		local, err := lockfile.HashDir(a.Dir)
+		if err != nil {
+			return err
+		}
 		lf.SetImport(key, lockfile.ImportEntry{
 			Kind: string(a.Kind),
 			Source: lockfile.SourceRef{
@@ -133,8 +193,10 @@ func (p *Plan) RecordLockEntries(root string, lf *lockfile.Lockfile) error {
 				Path: p.Source.Path,
 				URL:  p.Source.URL,
 			},
+			Commit:        p.Commit,
 			SourceSubpath: p.Subpaths[a.Dir],
 			ContentSHA256: hash,
+			LocalSHA256:   local,
 			Imported:      imported,
 		})
 	}
@@ -144,10 +206,18 @@ func (p *Plan) RecordLockEntries(root string, lf *lockfile.Lockfile) error {
 // Close removes the plan's fetched temp directory. Safe to call on a Plan
 // with no temp dir (e.g. one built directly in a test).
 func (p *Plan) Close() error {
-	if p.tempDir == "" {
-		return nil
+	var firstErr error
+	for _, dir := range p.extraTemp {
+		if err := os.RemoveAll(dir); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	return os.RemoveAll(p.tempDir)
+	if p.tempDir != "" {
+		if err := os.RemoveAll(p.tempDir); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // Overwrite writes exactly one artifact from the plan to dir, replacing
@@ -182,7 +252,7 @@ func (p *Plan) Overwrite(a *artifact.Artifact, dir string) error {
 		return err
 	}
 	if src, ok := p.srcDirs[orig]; ok {
-		if err := filecopy.CopyDirExcept(src, dir, "SKILL.md", a.Kind.FileName()); err != nil {
+		if err := filecopy.CopyDirExcept(src, dir, "SKILL.md", a.Kind.FileName(), importMarker); err != nil {
 			return err
 		}
 	}

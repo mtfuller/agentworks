@@ -103,7 +103,7 @@ func TestExportHookHandlersMatcherAndTimeout(t *testing.T) {
 		{"event": "PreToolUse", "matcher": "Edit", "command": "check-edit.sh"},
 		{"event": "SessionStart", "command": "hello.sh"},
 	})
-	doc, err := buildHooksDoc([]*artifact.Artifact{a})
+	doc, err := buildHooksDoc([]*artifact.Artifact{a}, nil)
 	if err != nil {
 		t.Fatalf("buildHooksDoc() error = %v", err)
 	}
@@ -139,9 +139,67 @@ func TestExportHookRejectsNoHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := buildHooksDoc([]*artifact.Artifact{a}); err == nil {
+	if _, err := buildHooksDoc([]*artifact.Artifact{a}, nil); err == nil {
 		t.Fatal("buildHooksDoc() on a hook with no handlers expected an error")
 	}
 }
 
 func containsStr(s, sub string) bool { return strings.Contains(s, sub) }
+
+func TestExportHookShipsBundledFilesAndResolvesTheArtifactDir(t *testing.T) {
+	a, err := scaffold.New(t.TempDir(), artifact.KindHook, "guard", scaffold.Options{Description: "Guard tool use."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Extra = map[string]any{"handlers": []map[string]any{
+		{"event": "PreToolUse", "command": `"${ARTIFACT_DIR}"/scripts/check.sh --strict`},
+	}}
+	script := filepath.Join(a.Dir, "scripts", "check.sh")
+	if err := os.MkdirAll(filepath.Dir(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	dest, err := (exporter{}).Export(a, t.TempDir(), targets.ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dest, "hooks", "hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `"${CLAUDE_PLUGIN_ROOT}/hook-files/guard"/scripts/check.sh --strict`
+	var doc claudeHooksDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if got := doc.Hooks["PreToolUse"][0].Hooks[0].Command; got != want {
+		t.Errorf("command = %q, want %q", got, want)
+	}
+	if strings.Contains(string(data), "ARTIFACT_DIR") {
+		t.Errorf("the placeholder must not survive export: %s", data)
+	}
+	shipped := filepath.Join(dest, "hook-files", "guard", "scripts", "check.sh")
+	if info, err := os.Stat(shipped); err != nil {
+		t.Errorf("the hook's script wasn't shipped: %v", err)
+	} else if info.Mode()&0o111 == 0 {
+		t.Error("the shipped script lost its executable bit")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "hook-files", "guard", "hook.md")); err == nil {
+		t.Error("the hook's own manifest should not be shipped alongside its files")
+	}
+}
+
+func TestExportHookWithoutBundledFilesShipsNoFiles(t *testing.T) {
+	a := newTestHook(t, []string{"PreToolUse"}, "gofmt -l .")
+	dest, err := (exporter{}).Export(a, t.TempDir(), targets.ExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "hook-files")); err == nil {
+		t.Error("an inline hook has no files to ship, but hook-files/ was created")
+	}
+}

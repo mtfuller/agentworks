@@ -2,7 +2,6 @@ package importer
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
@@ -11,12 +10,10 @@ import (
 )
 
 // planPlugin builds a multi-artifact Plan for a Claude Code plugin,
-// decomposing skills/*/SKILL.md and agents/*.md into individual artifacts.
-// Tools (.mcp.json) and hooks (hooks/hooks.json) are reported in
-// Unsupported rather than imported -- collapsing a merged hooks.json or
-// mcp.json back into "the original N artifacts" is inherently
-// lossy/ambiguous (the same many-to-one problem as the export side, in
-// reverse), unlike skills and agents which are a clean file per artifact.
+// decomposing skills/*/SKILL.md and agents/*.md into individual artifacts,
+// each MCP server into an mcp artifact, and hook handlers into hook
+// artifacts (grouped by the script they run). See mcp.go and hooks.go for
+// what is and isn't representable; the rest is reported in Unsupported.
 func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan, error) {
 	if opts.Name != "" {
 		return nil, fmt.Errorf("--name can only be used when importing a single skill, not a multi-artifact plugin")
@@ -80,15 +77,15 @@ func planPlugin(root string, src Source, contentDir string, opts Options) (*Plan
 		plan.Subpaths[a.Dir] = subpathOf(contentDir, path)
 	}
 
-	if _, err := os.Stat(filepath.Join(contentDir, "hooks", "hooks.json")); err == nil {
-		plan.Unsupported = append(plan.Unsupported, "hooks/hooks.json (hook import not supported yet)")
+	if err := planMCPServers(root, src, contentDir, pluginName, ns, plan); err != nil {
+		return nil, err
 	}
-	if _, err := os.Stat(filepath.Join(contentDir, ".mcp.json")); err == nil {
-		plan.Unsupported = append(plan.Unsupported, ".mcp.json (tool import not supported yet)")
+	if err := planHooks(root, src, contentDir, pluginName, ns, plan); err != nil {
+		return nil, err
 	}
 
 	if len(plan.Artifacts) == 0 && len(plan.Unsupported) == 0 {
-		return nil, fmt.Errorf("%s: plugin has no importable skills or agents", src)
+		return nil, fmt.Errorf("%s: plugin has nothing importable (no skills, agents, MCP servers, or hooks)", src)
 	}
 	return plan, nil
 }

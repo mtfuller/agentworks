@@ -17,6 +17,7 @@ var (
 	addNamespace string
 	addDryRun    bool
 	addYes       bool
+	addForce     bool
 )
 
 var addCmd = &cobra.Command{
@@ -36,8 +37,15 @@ one.
 
 A bare Agent Skill (a directory with SKILL.md at its root) becomes one skill
 artifact. A Claude Code plugin (.claude-plugin/plugin.json at its root) is
-decomposed into one artifact per skill/agent it contains; tools and hooks
-inside a fetched plugin aren't supported yet and are reported, not imported.
+decomposed into one artifact per skill, agent, and MCP server it contains, and
+its hook handlers into hook artifacts (grouped by the script they run). Files
+an MCP server or hook references through ${CLAUDE_PLUGIN_ROOT} are copied into
+the artifact and the reference rewritten. Anything AgentWorks can't represent
+faithfully -- a prompt-type hook, a hook guarded by an "if", an MCP server with
+a literal credential in its env or headers -- is reported and not imported.
+
+If an artifact already exists at the destination, the import fails; --force
+replaces it instead.
 
 With no URL, in an interactive terminal, this launches the marketplace search
 pane instead (the same one "agentworks tui"'s "p" key opens).
@@ -83,14 +91,24 @@ fetch automatically when the unauthenticated download 404s.`,
 			return fmt.Errorf("import aborted")
 		}
 
-		if err := plan.Apply(); err != nil {
+		apply := plan.Apply
+		if addForce {
+			apply = plan.ApplyForce
+		}
+		if err := apply(); err != nil {
 			return err
 		}
 		for _, a := range plan.Artifacts {
 			color.Success("Imported %s %s at %s", a.Kind, a.DisplayName(), a.Dir)
 		}
+		if plan.Commit != "" {
+			color.Info("Pinned to %s@%s in %s", plan.Source.Repo, plan.Commit[:12], lockfile.FileName)
+		}
 		for _, u := range plan.Unsupported {
-			color.Warning("%s", u)
+			color.Warning("not imported: %s", u)
+		}
+		for _, w := range plan.Warnings {
+			color.Warning("%s", w)
 		}
 
 		if err := recordImports(root, plan); err != nil {
@@ -120,5 +138,6 @@ func init() {
 	addCmd.Flags().StringVar(&addName, "name", "", "override the derived artifact name (single-skill imports only)")
 	addCmd.Flags().StringVar(&addNamespace, "namespace", "", "namespace to file imported artifacts under (default: the source's GitHub owner)")
 	addCmd.Flags().BoolVar(&addDryRun, "dry-run", false, "show what would be imported without writing anything")
+	addCmd.Flags().BoolVar(&addForce, "force", false, "replace an artifact that already exists at the destination instead of failing")
 	addCmd.Flags().BoolVar(&addYes, "yes", false, "skip the confirmation prompt when imported content declares a shell command (required in non-interactive use)")
 }

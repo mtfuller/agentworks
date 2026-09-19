@@ -66,11 +66,15 @@ something to run.
 
 - `agentworks add <url>` — import a published Agent Skill or Claude Code plugin. Accepts
   `owner/repo`, a repo/tree/blob URL, or an archive URL. Filed under a namespace (GitHub
-  owner by default, `--namespace` to override). Pins the source in `agentworks.lock`
+  owner by default, `--namespace` to override). Also imports a plugin's MCP servers and
+  hooks (script files it references come along; a literal credential in a server's env or
+  headers is never imported). Pins the source and exact commit in `agentworks.lock`
   (commit that file). Any declared shell command asks for confirmation; read it first.
+  `--force` replaces an artifact that already exists.
   With no argument in an interactive terminal, opens the plugin browser.
 - `agentworks update [path...]` — compare imported artifacts against upstream. Reports
-  drift only; `--apply` overwrites local copies with the fresh upstream content.
+  drift only; `--diff` shows what would change; `--apply` overwrites local copies with the
+  fresh upstream content, but not one you have edited since importing it unless `--force`.
 
 ## Other
 

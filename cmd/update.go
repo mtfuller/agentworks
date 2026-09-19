@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +21,8 @@ import (
 var (
 	updateApply bool
 	updateYes   bool
+	updateForce bool
+	updateDiff  bool
 )
 
 var updateCmd = &cobra.Command{
@@ -27,13 +32,18 @@ var updateCmd = &cobra.Command{
 paths) from the source it was imported from, and compare its content
 against what was pinned at import time.
 
-With no --apply, this only reports drift -- nothing is written. With
+With no --apply, this only reports drift -- nothing is written. --diff also
+prints what --apply would change, as a diff against your local copy. With
 --apply, a changed artifact is overwritten with the freshly fetched
 content (its local name/namespace/directory are kept; if upstream itself
 renamed the artifact, this fails rather than silently moving it -- re-run
 'agentworks add' by hand in that case). The same shell-command confirmation
 gate 'agentworks add' uses applies here too when the refreshed content
-declares one.`,
+declares one.
+
+If you have edited an imported artifact since it was imported, --apply
+refuses to overwrite it, since that would discard your changes; --force
+overrides that. Use --diff first to see what would be lost.`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := projectRoot()
@@ -57,30 +67,47 @@ declares one.`,
 		var upToDate, changed, failed int
 		for _, key := range keys {
 			entry := lf.Imports[key]
-			newHash, err := fetchAndHash(entry)
+			res, err := checkImport(root, key, entry)
 			if err != nil {
 				color.Error("%s: %v", key, err)
 				failed++
 				continue
 			}
+			func() {
+				defer res.plan.Close()
 
-			if newHash == entry.ContentSHA256 {
-				color.Success("%s: up to date", key)
-				upToDate++
-				continue
-			}
+				if res.newHash == entry.ContentSHA256 {
+					color.Success("%s: up to date", key)
+					upToDate++
+					return
+				}
 
-			changed++
-			color.Warning("%s: upstream changed (%s -> %s)", key, shortHash(entry.ContentSHA256), shortHash(newHash))
-			if !updateApply {
-				continue
-			}
-			if err := applyUpdate(root, lf, key, entry); err != nil {
-				color.Error("%s: %v", key, err)
-				failed++
-				continue
-			}
-			color.Success("%s: updated", key)
+				changed++
+				color.Warning("%s: upstream changed (%s)", key, describeChange(entry, res))
+				edited := locallyEdited(root, key, entry)
+				if edited {
+					color.Warning("%s: you have edited this since it was imported", key)
+				}
+				if updateDiff {
+					if err := printUpdateDiff(root, key, res); err != nil {
+						color.Warning("%s: couldn't produce a diff: %v", key, err)
+					}
+				}
+				if !updateApply {
+					return
+				}
+				if edited && !updateForce {
+					color.Error("%s: not updated -- it has local changes that --apply would discard (re-run with --diff to see them, --force to overwrite)", key)
+					failed++
+					return
+				}
+				if err := applyUpdate(root, lf, key, entry, res); err != nil {
+					color.Error("%s: %v", key, err)
+					failed++
+					return
+				}
+				color.Success("%s: updated", key)
+			}()
 		}
 
 		if err := lf.Save(root); err != nil {
@@ -130,67 +157,136 @@ func resolveUpdateKeys(root string, lf *lockfile.Lockfile, args []string) ([]str
 	return keys, nil
 }
 
-// fetchAndHash re-fetches entry's locked source and content-hashes the
-// same subpath within it that was hashed at import time (see
-// importer.Plan.HashSources/Subpaths), so the comparison is apples to
-// apples regardless of whether entry came from a bare skill or one
-// artifact out of a multi-artifact plugin.
-func fetchAndHash(entry lockfile.ImportEntry) (string, error) {
-	tempDir, err := os.MkdirTemp("", "agentworks-update-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(tempDir)
-
-	contentDir, err := importer.Fetch(context.Background(), importerSource(entry.Source), tempDir)
-	if err != nil {
-		return "", err
-	}
-	hashSrc := contentDir
-	if entry.SourceSubpath != "" {
-		hashSrc = filepath.Join(contentDir, entry.SourceSubpath)
-	}
-	return lockfile.HashDir(hashSrc)
+// importCheck is a freshly fetched view of one locked import: the re-resolved
+// plan, the artifact within it this lock entry refers to, and that artifact's
+// upstream content hash.
+type importCheck struct {
+	plan    *importer.Plan
+	target  *artifact.Artifact
+	newHash string
 }
 
-// applyUpdate re-resolves entry's source into a fresh Plan, locates the
-// specific artifact this locked entry refers to by its recorded subpath
-// (robust to upstream renaming other siblings in the same plugin), and
-// overwrites the existing local artifact at key with its content --
-// keeping the local directory/name so nothing that already references
-// this artifact (a workflow step, another export) breaks silently.
-func applyUpdate(root string, lf *lockfile.Lockfile, key string, entry lockfile.ImportEntry) error {
+// checkImport re-fetches entry's locked source, finds the same artifact again
+// by its recorded subpath (robust to upstream renaming sibling artifacts in
+// the same plugin), and hashes the same content that was hashed at import
+// time -- so the comparison is apples to apples whether entry came from a bare
+// skill, a plugin's skill or agent, or an MCP server or hook entry in a
+// plugin's JSON. The caller closes res.plan.
+func checkImport(root, key string, entry lockfile.ImportEntry) (*importCheck, error) {
 	src := importerSource(entry.Source)
-	plan, err := importer.Prepare(context.Background(), root, src, importer.Options{})
+	// Re-plan under the namespace the artifact already lives in. Without this
+	// the plan falls back to the source's default namespace, which differs
+	// whenever the artifact was added with --namespace, and the refreshed
+	// artifact would then fail to validate against its own directory.
+	plan, err := importer.Prepare(context.Background(), root, src, importer.Options{Namespace: namespaceOfKey(key)})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer plan.Close()
-
 	target, hashSrc, ok := findBySubpath(plan, entry.SourceSubpath)
 	if !ok {
-		return fmt.Errorf("re-fetched %s no longer has the content this artifact was imported from (expected at %q)", src, entry.SourceSubpath)
+		plan.Close()
+		return nil, fmt.Errorf("re-fetched %s no longer has the content this artifact was imported from (expected at %q)", src, entry.SourceSubpath)
 	}
+	newHash, err := lockfile.HashDir(hashSrc)
+	if err != nil {
+		plan.Close()
+		return nil, err
+	}
+	return &importCheck{plan: plan, target: target, newHash: newHash}, nil
+}
 
-	ok2, err := securityGate(src.String(), []*artifact.Artifact{target}, updateYes)
+// namespaceOfKey extracts the namespace from a lockfile import key such as
+// "mcp/kit/db" (kind directory, namespace, name). A key with no namespace
+// level -- an artifact imported before imports were namespaced -- yields "",
+// which Prepare treats as "use the source's default".
+func namespaceOfKey(key string) string {
+	parts := strings.Split(key, "/")
+	if len(parts) == 3 {
+		return parts[1]
+	}
+	return ""
+}
+
+// locallyEdited reports whether the artifact at key has changed on disk since
+// it was last imported or updated. An entry with no recorded local hash
+// (written before it existed) or an artifact that can't be read is treated as
+// unedited, so this never blocks on missing information.
+func locallyEdited(root, key string, entry lockfile.ImportEntry) bool {
+	if entry.LocalSHA256 == "" {
+		return false
+	}
+	current, err := lockfile.HashDir(filepath.Join(root, filepath.FromSlash(key)))
+	return err == nil && current != entry.LocalSHA256
+}
+
+// applyUpdate overwrites the existing local artifact at key with the freshly
+// fetched content, keeping the local directory/name so nothing that already
+// references this artifact (another export, a `requires:`) breaks silently.
+func applyUpdate(root string, lf *lockfile.Lockfile, key string, entry lockfile.ImportEntry, res *importCheck) error {
+	src := importerSource(entry.Source)
+	ok, err := securityGate(src.String(), []*artifact.Artifact{res.target}, updateYes)
 	if err != nil {
 		return err
 	}
-	if !ok2 {
+	if !ok {
 		return fmt.Errorf("update aborted")
 	}
 
 	existingDir := filepath.Join(root, filepath.FromSlash(key))
-	if err := plan.Overwrite(target, existingDir); err != nil {
+	if err := res.plan.Overwrite(res.target, existingDir); err != nil {
 		return err
 	}
+	for _, w := range res.plan.Warnings {
+		color.Warning("%s", w)
+	}
 
-	newHash, err := lockfile.HashDir(hashSrc)
+	local, err := lockfile.HashDir(existingDir)
 	if err != nil {
 		return err
 	}
-	entry.ContentSHA256 = newHash
+	entry.ContentSHA256 = res.newHash
+	entry.LocalSHA256 = local
+	entry.Commit = res.plan.Commit
 	lf.SetImport(key, entry)
+	return nil
+}
+
+// printUpdateDiff shows what --apply would do to the local artifact: it
+// renders the upstream artifact into a scratch directory exactly as Overwrite
+// would write it, then diffs that against the local copy. Uses the system
+// diff; without one it lists nothing rather than guessing.
+func printUpdateDiff(root, key string, res *importCheck) error {
+	scratch, err := os.MkdirTemp("", "agentworks-update-diff-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(scratch)
+
+	// Render a copy: Overwrite mutates the artifact's Dir, and the real apply
+	// may still follow.
+	clone := *res.target
+	// Keep the artifact's <kind>/<namespace>/<name> layout: Overwrite validates
+	// the artifact against the directory it is written into.
+	rendered := filepath.Join(scratch, filepath.FromSlash(key))
+	if err := res.plan.Overwrite(&clone, rendered); err != nil {
+		return err
+	}
+
+	diffBin, err := exec.LookPath("diff")
+	if err != nil {
+		return fmt.Errorf("no diff binary on PATH")
+	}
+	local := filepath.Join(root, filepath.FromSlash(key))
+	out, err := exec.Command(diffBin, "-ruN", "--label", "local/"+key, "--label", "upstream/"+key, local, rendered).CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			return fmt.Errorf("diff failed: %v", err)
+		}
+	}
+	// diff prints absolute directory names in its headers for a -r run; the
+	// labels above only cover the files' own header lines, so strip the rest.
+	fmt.Print(strings.ReplaceAll(strings.ReplaceAll(string(out), local, "local/"+key), rendered, "upstream/"+key))
 	return nil
 }
 
@@ -206,6 +302,15 @@ func findBySubpath(plan *importer.Plan, subpath string) (a *artifact.Artifact, h
 	return nil, "", false
 }
 
+// describeChange says what moved: the commit, when both sides know it, and
+// otherwise the content hash.
+func describeChange(entry lockfile.ImportEntry, res *importCheck) string {
+	if entry.Commit != "" && res.plan.Commit != "" && entry.Commit != res.plan.Commit {
+		return "commit " + shortHash(entry.Commit) + " -> " + shortHash(res.plan.Commit)
+	}
+	return "content " + shortHash(entry.ContentSHA256) + " -> " + shortHash(res.newHash)
+}
+
 func shortHash(h string) string {
 	if len(h) > 12 {
 		return h[:12]
@@ -215,6 +320,8 @@ func shortHash(h string) string {
 
 func init() {
 	rootCmd.AddCommand(updateCmd)
+	updateCmd.Flags().BoolVar(&updateForce, "force", false, "with --apply, overwrite an artifact even if you have edited it since it was imported")
+	updateCmd.Flags().BoolVar(&updateDiff, "diff", false, "print what --apply would change, as a diff against your local copy")
 	updateCmd.Flags().BoolVar(&updateApply, "apply", false, "overwrite artifacts that have changed upstream (default is report-only)")
 	updateCmd.Flags().BoolVar(&updateYes, "yes", false, "skip the confirmation prompt when refreshed content declares a shell command (required in non-interactive use)")
 }

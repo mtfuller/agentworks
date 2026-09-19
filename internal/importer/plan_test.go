@@ -141,26 +141,20 @@ func TestPlanPluginDecomposes(t *testing.T) {
 func TestPlanReportsUnsupported(t *testing.T) {
 	root := newTestProject(t)
 	fixture := writePluginFixture(t)
-	if err := os.MkdirAll(filepath.Join(fixture, "hooks"), 0o755); err != nil {
-		t.Fatalf("mkdir hooks: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(fixture, "hooks", "hooks.json"), []byte(`{"hooks":{}}`), 0o644); err != nil {
-		t.Fatalf("writing hooks.json: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(fixture, ".mcp.json"), []byte(`{"mcpServers":{}}`), 0o644); err != nil {
-		t.Fatalf("writing .mcp.json: %v", err)
-	}
+	writeTestFile(t, filepath.Join(fixture, "hooks", "hooks.json"), `{"hooks":{"Stop":[{"hooks":[{"type":"prompt","prompt":"Is it done?"}]}]}}`, 0o644)
+	writeTestFile(t, filepath.Join(fixture, ".mcp.json"), `{"mcpServers":{"broken":{"type":"stdio"}}}`, 0o644)
 
 	src := Source{Kind: SourceGitHub, Repo: "owner/demo-kit"}
 	plan, err := detect(root, src, fixture, Options{})
 	if err != nil {
 		t.Fatalf("detect() error = %v", err)
 	}
+	defer plan.Close()
 	if len(plan.Artifacts) != 3 {
 		t.Errorf("len(Artifacts) = %d, want 3 (skills/agents still planned)", len(plan.Artifacts))
 	}
 	if len(plan.Unsupported) != 2 {
-		t.Fatalf("len(Unsupported) = %d, want 2 (hooks + tools), got %v", len(plan.Unsupported), plan.Unsupported)
+		t.Fatalf("len(Unsupported) = %d, want 2 (the prompt hook and the command-less server), got %v", len(plan.Unsupported), plan.Unsupported)
 	}
 }
 

@@ -78,7 +78,7 @@ var extraFields = []Field{
 
 	// Hook.
 	{Name: "events", Type: TypeList, Kinds: []Kind{KindHook}, Doc: "Shorthand: the lifecycle events that trigger `command`. Use the target vendor's own event names."},
-	{Name: "handlers", Type: TypeObjects, Kinds: []Kind{KindHook}, Doc: "Explicit handlers: a list of `{event, matcher, command, timeout}`. `matcher` filters the event (a regex for tool events on most vendors); `timeout` is seconds. Use either this or the `events` + `command` shorthand, not both."},
+	{Name: "handlers", Type: TypeObjects, Kinds: []Kind{KindHook}, Doc: "Explicit handlers: a list of `{event, matcher, command, timeout}`. `matcher` filters the event (a regex for tool events on most vendors); `timeout` is seconds. Use either this or the `events` + `command` shorthand, not both. A command may use `${ARTIFACT_DIR}` for the directory holding the hook's own files (a bundled script); claude-code ships them and resolves the path, and other targets skip such a hook with a warning."},
 }
 
 // FieldsFor returns every supported field for kind, common fields first.

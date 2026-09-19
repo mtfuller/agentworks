@@ -179,7 +179,21 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   decomposes it into local artifacts: a bare Agent Skill maps 1:1 (`agentskills.Read`),
   a plugin's `skills/*/SKILL.md` and `agents/*.md` the same way. Everything is resolved
   into an `importer.Plan` before anything is written, so a collision on artifact 4 of 5
-  never leaves the first 3 written. Imports are namespaced (`Source.DefaultNamespace()`:
+  never leaves the first 3 written. A plugin's MCP servers become mcp artifacts and its hook
+  handlers hook artifacts (`mcp.go`, `hooks.go`): neither has a directory in the fetched
+  source (each is an entry inside a JSON file), so each is built in a *staging directory*
+  (`Plan.newStage`) holding the files it references plus a marker of the raw entry
+  (`importMarker`); that directory is what's hashed for the lockfile and copied into the
+  project. `${CLAUDE_PLUGIN_ROOT}` references are rewritten (`rewrite.go`): to `.` for an
+  MCP server (it runs from its own directory) and to `${ARTIFACT_DIR}` for a hook. A literal
+  credential in a server's env or headers is never written: that server is reported, by
+  field name only, and skipped. AgentWorks' own claude-code bundles are recognized
+  (`hook-files/<name>/`, and the `sh -c "cd '${CLAUDE_PLUGIN_ROOT}/mcp/<name>' && …"` wrapper)
+  so importing your own marketplace round-trips (`roundtrip_test.go`). A lockfile entry
+  pins the resolved commit and a `local_sha256` of the artifact as written, which is how
+  `update --apply` refuses to overwrite your edits without `--force`; `update` re-plans the
+  source under the artifact's existing namespace and matches by the entry's subpath
+  (`mcp:<server>`, `hook:<identity>` for staged artifacts). Imports are namespaced (`Source.DefaultNamespace()`:
   the GitHub owner). `marketplace` searches agentskills.codes plus the Claude Code
   (`anthropics/claude-plugins-official`) and GitHub Copilot (`github/awesome-copilot`)
   catalogs — only permissively licensed plugins, license verified rather than assumed —
@@ -236,14 +250,15 @@ import (`add`/`update`); the marketplace publisher; and the CI surface (`--json`
   and a remote server has no "tool" code at all.
 
 **Deliberately deferred** (do this later, not by accident while doing something else):
-- **Importing MCP servers and hooks from a fetched plugin** (`.mcp.json`,
-  `hooks/hooks.json`). Skills and agents are a clean file-per-artifact mapping; a merged
-  `hooks.json` needs a richer hook model first (matchers, handler types, timeouts — the
-  hook kind has none), and both need `${CLAUDE_PLUGIN_ROOT}`-style path rewriting plus
-  copying the referenced scripts. Reported per plugin as "not supported yet"
-  (`Plan.Unsupported`), not silently dropped. Also deferred: decomposing GitHub Copilot's
-  own plugin layout, non-GitHub git hosts, npm/command-sourced marketplace entries, and a
-  `--force` for re-importing over an existing artifact.
+- **Hook types other than `command`** (`prompt`, `agent`, `http`, `mcp_tool` in Claude
+  Code) and hooks guarded by an `if` condition: reported in `Plan.Unsupported` on import,
+  never approximated, because importing them without their condition or type would make a
+  hook fire more broadly than its author intended.
+- **Bundled hook scripts on targets other than claude-code.** A hook whose command uses
+  `${ARTIFACT_DIR}` needs its files shipped and located at run time. claude-code does both
+  (`hook-files/<name>/`, resolved via `${CLAUDE_PLUGIN_ROOT}`); no other target documents a
+  plugin-root variable (github-copilot's hooks docs name none), so `targets.
+  UnsupportedReason` makes export skip such a hook with a warning.
 - **`agentworks run` and the smoke test for remote (http/sse) servers** — needs an HTTP
   transport in `internal/mcpclient`.
 - **`tools:`/`model:` mapping for `github-copilot` and `cursor` agents.** Neither vendor's

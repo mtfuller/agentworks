@@ -21,7 +21,10 @@ const (
 // Unzip extracts the zip archive at archivePath into destDir, which is
 // created if it doesn't exist. Path-traversal entries (Zip Slip) and
 // symlinks are rejected/skipped rather than followed; extracted files and
-// directories always get 0o644/0o755, never an archive-supplied mode.
+// directories never get an archive-supplied mode either: files are 0o644,
+// or 0o755 if the archive marked them executable (see filePerm), and
+// directories 0o755. setuid, setgid, sticky, and group/other-write bits are
+// never carried over.
 func Unzip(archivePath, destDir string) error {
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
@@ -74,7 +77,7 @@ func extractZipEntry(f *zip.File, target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
-	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm(f.Mode()))
 	if err != nil {
 		return err
 	}
@@ -137,7 +140,7 @@ func UntarGz(archivePath, destDir string) error {
 			if total > maxArchiveBytes {
 				return fmt.Errorf("%s: extracted content exceeds %d bytes", archivePath, maxArchiveBytes)
 			}
-			if err := extractTarEntry(tr, target); err != nil {
+			if err := extractTarEntry(tr, target, os.FileMode(hdr.Mode)); err != nil {
 				return fmt.Errorf("extracting %s: %w", hdr.Name, err)
 			}
 		default:
@@ -147,11 +150,11 @@ func UntarGz(archivePath, destDir string) error {
 	}
 }
 
-func extractTarEntry(r io.Reader, target string) error {
+func extractTarEntry(r io.Reader, target string, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
-	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm(mode))
 	if err != nil {
 		return err
 	}
@@ -159,6 +162,17 @@ func extractTarEntry(r io.Reader, target string) error {
 
 	_, err = io.Copy(out, r)
 	return err
+}
+
+// filePerm is the permission an extracted or copied file gets: 0o755 if the
+// source had any execute bit (scripts must stay runnable -- a hook or MCP
+// server is often invoked directly), otherwise 0o644. Nothing else from the
+// source's mode is trusted.
+func filePerm(mode os.FileMode) os.FileMode {
+	if mode&0o111 != 0 {
+		return 0o755
+	}
+	return 0o644
 }
 
 // safeJoin resolves name against destDir the way an archive entry's path is

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/targets"
@@ -36,7 +37,7 @@ type claudeHookAction struct {
 // plus hooks/hooks.json, one matcher entry per declared event, each
 // running the hook's declared command.
 func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
-	doc, err := buildHooksDoc([]*artifact.Artifact{a})
+	doc, err := buildHooksDoc([]*artifact.Artifact{a}, nil)
 	if err != nil {
 		return "", err
 	}
@@ -51,6 +52,9 @@ func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 	if err := writeHooksDoc(pluginDir, doc); err != nil {
 		return "", err
 	}
+	if err := copyHookFiles(a, pluginDir, a.Name); err != nil {
+		return "", err
+	}
 
 	if opts.Zip {
 		return filecopy.ZipDir(pluginDir)
@@ -62,7 +66,12 @@ func exportHook(a *artifact.Artifact, outDir string, opts targets.ExportOptions)
 // hooks.json document. Handlers for the same event and matcher share one
 // matcher block (appended, never overwritten), so bundling several hooks
 // together doesn't drop all but the last one that happens to share an event.
-func buildHooksDoc(hooks []*artifact.Artifact) (claudeHooksDoc, error) {
+//
+// A hook that runs a bundled script uses ${ARTIFACT_DIR}; here that becomes
+// ${CLAUDE_PLUGIN_ROOT}/hook-files/<dir>, where copyHookFiles puts the hook's
+// files. dirs maps each hook to its <dir> (unique within a bundle); a hook
+// missing from it, or a nil map, uses its own name.
+func buildHooksDoc(hooks []*artifact.Artifact, dirs map[*artifact.Artifact]string) (claudeHooksDoc, error) {
 	doc := claudeHooksDoc{Hooks: map[string][]claudeHookMatcher{}}
 	for _, h := range hooks {
 		handlers, err := h.HookHandlers()
@@ -73,7 +82,12 @@ func buildHooksDoc(hooks []*artifact.Artifact) (claudeHooksDoc, error) {
 			return claudeHooksDoc{}, fmt.Errorf("%s declares no hook handlers -- set \"handlers\", or \"events\" and \"command\", before exporting", h.Dir)
 		}
 		for _, hd := range handlers {
-			action := claudeHookAction{Type: "command", Command: hd.Command, Timeout: hd.Timeout}
+			dir := dirs[h]
+			if dir == "" {
+				dir = h.Name
+			}
+			command := strings.ReplaceAll(hd.Command, artifact.ArtifactDirVar, hookFilesRoot+"/"+dir)
+			action := claudeHookAction{Type: "command", Command: command, Timeout: hd.Timeout}
 			blocks := doc.Hooks[hd.Event]
 			placed := false
 			for i := range blocks {
@@ -90,6 +104,19 @@ func buildHooksDoc(hooks []*artifact.Artifact) (claudeHooksDoc, error) {
 		}
 	}
 	return doc, nil
+}
+
+// hookFilesRoot is where, inside the plugin, a hook's bundled files live
+// (under a per-hook subdirectory) and how a hook command locates them.
+const hookFilesRoot = pluginRootVar + "/hook-files"
+
+// copyHookFiles ships a hook's own files into the plugin, but only for a hook
+// that uses ${ARTIFACT_DIR} -- otherwise nothing refers to them.
+func copyHookFiles(h *artifact.Artifact, pluginDir, dir string) error {
+	if !h.UsesArtifactDir() {
+		return nil
+	}
+	return filecopy.CopyArtifactFiles(h, filepath.Join(pluginDir, "hook-files", dir))
 }
 
 func writeHooksDoc(pluginDir string, doc claudeHooksDoc) error {

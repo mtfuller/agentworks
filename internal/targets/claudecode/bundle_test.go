@@ -125,8 +125,8 @@ func TestExportBundle(t *testing.T) {
 	if err := json.Unmarshal(mcpData, &mcpFile); err != nil {
 		t.Fatalf("parsing .mcp.json: %v", err)
 	}
-	if got := mcpFile.MCPServers["t1"].Args[1]; got != "cd 'mcp/t1' && python3 src/main.py" {
-		t.Errorf(".mcp.json t1 command = %q, want cd-wrapped command", got)
+	if got := mcpFile.MCPServers["t1"].Args[1]; got != "cd '${CLAUDE_PLUGIN_ROOT}/mcp/t1' && python3 src/main.py" {
+		t.Errorf(".mcp.json t1 command = %q, want a command that cds via ${CLAUDE_PLUGIN_ROOT}", got)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "mcp", "t1")); err != nil {
 		t.Errorf("mcp/t1 dir not written: %v", err)

@@ -93,7 +93,11 @@ func copyFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", filepath.Dir(dst), err)
 	}
-	out, err := os.Create(dst)
+	info, err := in.Stat()
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", src, err)
+	}
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm(info.Mode()))
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", dst, err)
 	}
@@ -158,3 +162,7 @@ func ZipDirTo(srcDir, zipPath string, withBase bool) (string, error) {
 	}
 	return zipPath, nil
 }
+
+// CopyFile copies one file to dst (creating parent directories), keeping only
+// its execute bit -- see filePerm.
+func CopyFile(src, dst string) error { return copyFile(src, dst) }

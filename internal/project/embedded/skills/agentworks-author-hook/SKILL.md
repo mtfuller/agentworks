@@ -66,6 +66,10 @@ Rules:
   event. All four hook-capable targets support `matcher` and `timeout` (AgentWorks converts
   seconds to Gemini CLI's milliseconds). Cursor honors `matcher` only on some events; see its
   docs.
+- A hook can bundle a script: put it in the hook's directory and refer to it as
+  `"${ARTIFACT_DIR}"/scripts/check.sh` in the command. claude-code ships the files and
+  resolves the path; other targets skip such a hook with a warning (they have no documented
+  way to locate a plugin's files), so use an inline command for a hook meant for them.
 - If several hooks share an event, all run; none replaces another.
 
 ## Safety

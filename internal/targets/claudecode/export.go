@@ -61,7 +61,10 @@ func exportSkill(a *artifact.Artifact, outDir string, opts targets.ExportOptions
 }
 
 func exportMCP(a *artifact.Artifact, outDir string, opts targets.ExportOptions) (string, error) {
-	server, err := mcpconfig.ServerFor(a)
+	// A plugin's MCP server isn't started in the plugin directory, so its
+	// files are located through ${CLAUDE_PLUGIN_ROOT}, which Claude Code
+	// expands in an MCP server's command/args/env before running it.
+	server, err := mcpconfig.ServerForDir(a, pluginRootVar)
 	if err != nil {
 		return "", err
 	}

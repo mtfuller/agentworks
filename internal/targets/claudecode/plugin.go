@@ -21,6 +21,10 @@ type pluginManifest struct {
 
 // writeClaudePluginManifest is the common case: a plugin built from one
 // artifact, named/described after it.
+// pluginRootVar is what Claude Code expands to the plugin's install directory
+// in hook commands and MCP server command/args/env.
+const pluginRootVar = "${CLAUDE_PLUGIN_ROOT}"
+
 func writeClaudePluginManifest(pluginDir string, a *artifact.Artifact) error {
 	return writeClaudePluginManifestNamed(pluginDir, a.Name, a.Description)
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -36,7 +37,7 @@ func Prepare(ctx context.Context, root string, src Source, opts Options) (*Plan,
 		return nil, fmt.Errorf("creating temp dir: %w", err)
 	}
 
-	contentDir, err := Fetch(ctx, src, tempDir)
+	contentDir, commit, err := fetchWithCommit(ctx, src, tempDir)
 	if err != nil {
 		os.RemoveAll(tempDir)
 		return nil, err
@@ -48,6 +49,14 @@ func Prepare(ctx context.Context, root string, src Source, opts Options) (*Plan,
 		return nil, err
 	}
 	plan.tempDir = tempDir
+	plan.Commit = commit
+	if commit != "" {
+		for _, a := range plan.Artifacts {
+			if prov, ok := a.Extra["source"].(map[string]any); ok {
+				prov["commit"] = commit
+			}
+		}
+	}
 	return plan, nil
 }
 
@@ -55,37 +64,56 @@ func Prepare(ctx context.Context, root string, src Source, opts Options) (*Plan,
 // holds the content, after unwrapping a single top-level directory (as
 // GitHub's tarballs always have) and descending into src.Path, if set.
 func Fetch(ctx context.Context, src Source, destDir string) (string, error) {
+	contentDir, _, err := fetchWithCommit(ctx, src, destDir)
+	return contentDir, err
+}
+
+// commitPattern picks the commit SHA out of a GitHub tarball's top-level
+// directory name, which is "<repo>-<40-hex-sha>" for a branch, tag, or SHA.
+var commitPattern = regexp.MustCompile(`-([0-9a-f]{40})$`)
+
+// fetchWithCommit is Fetch that also reports the commit the download resolved
+// to (empty for a non-GitHub source, or an archive that doesn't name one).
+// A branch or tag is a moving target; the commit is what was actually
+// imported, and what `agentworks update` compares against.
+func fetchWithCommit(ctx context.Context, src Source, destDir string) (contentDir, commit string, err error) {
 	archivePath := filepath.Join(destDir, "archive")
 	extractDir := filepath.Join(destDir, "content")
 
 	switch src.Kind {
 	case SourceGitHub:
 		if err := fetchGitHub(ctx, src, archivePath); err != nil {
-			return "", err
+			return "", "", err
 		}
 	case SourceArchive:
 		if err := download(ctx, src.URL, archivePath, ""); err != nil {
-			return "", err
+			return "", "", err
 		}
 	default:
-		return "", fmt.Errorf("unsupported source kind %q", src.Kind)
+		return "", "", fmt.Errorf("unsupported source kind %q", src.Kind)
 	}
 
 	if err := extractArchive(archivePath, extractDir); err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	contentDir, err := stripSingleRoot(extractDir)
+	root, err := stripSingleRoot(extractDir)
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	contentDir = root
+	if src.Kind == SourceGitHub {
+		if m := commitPattern.FindStringSubmatch(filepath.Base(root)); m != nil {
+			commit = m[1]
+		}
 	}
 	if src.Path != "" {
 		contentDir = filepath.Join(contentDir, src.Path)
 		if _, err := os.Stat(contentDir); err != nil {
-			return "", fmt.Errorf("%s: path %q not found: %w", src, src.Path, err)
+			return "", "", fmt.Errorf("%s: path %q not found: %w", src, src.Path, err)
 		}
 	}
-	return contentDir, nil
+	return contentDir, commit, nil
 }
 
 // fetchGitHub downloads a repo as a codeload tarball -- no local git

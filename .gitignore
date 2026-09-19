@@ -11,6 +11,9 @@
 # Built binary
 agentworks
 
+# agentworks export output (an export run from the wrong directory lands here)
+dist/
+
 # Test binary, built with `go test -c`
 *.test
 
