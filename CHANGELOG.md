@@ -3,6 +3,37 @@
 All notable changes. See [COMPATIBILITY.md](COMPATIBILITY.md) for what counts as breaking.
 Before 1.0, a minor version may include breaking changes; each is marked **Breaking**.
 
+## v0.20.0
+
+Milestone 5 of [PLAN-1.0.md](PLAN-1.0.md): evals v2.
+
+### Added
+- **A json runner protocol.** `eval_protocol: json` (frontmatter, or `eval.protocol` in
+  `agentworks.yaml`): the runner prints one object, `{text, tool_calls, activated, usage}`.
+  The text protocol remains the default, so existing runners are unaffected.
+- **Trace assertions:** `tool_called`, `tool_not_called`, and `tool_args` (exact `equals`, or
+  regex `matches`, on a call's arguments), and `activated` / `not_activated`.
+- **Trigger cases:** `should_trigger: true|false` tests whether an artifact is chosen for a
+  prompt, i.e. whether its description works, and says which way a failure is wrong.
+- **Rubrics** graded by a judge command (`judge_runner`, or `eval.judge_runner`) that reads a
+  JSON request and prints `{pass, reason}`. AgentWorks still never calls a model.
+- **Reliability:** `runs` and `pass_threshold` for nondeterministic cases, a per-run `timeout`
+  (default 120s), and `--junit <file>` for CI test reporting. `eval --json` gains `runs`,
+  `passes`, `duration_ms`, `usage`, and a `skipped` count (additive).
+- The runner and judge see `AGENTWORKS_ARTIFACT_NAME`, `_KIND`, `_DIR`, and
+  `AGENTWORKS_EVAL_CASE`, `_PROTOCOL`, `_ROLE`.
+- `examples/eval-runners/`: a Claude Code json-protocol runner and a rubric judge, tested
+  against fixtures. They fail loudly on an error from `claude`, including an authentication
+  failure, which `claude -p` reports as an ordinary-looking result.
+
+### Changed
+- **Breaking:** eval case files are parsed strictly. An unknown key (for example a typo like
+  `contians:`), a case that asserts nothing, or a duplicate case name is now an error instead
+  of a case that silently passes for any response.
+- A timed-out runner is killed along with every process it started, instead of leaving them
+  running.
+- The starter example's `researcher` agent demonstrates the json protocol.
+
 ## v0.19.0
 
 Milestone 4 of [PLAN-1.0.md](PLAN-1.0.md): MCP transports and test coverage.

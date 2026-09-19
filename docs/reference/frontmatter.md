@@ -25,6 +25,8 @@ removed in a later minor version (see COMPATIBILITY.md).
 | `build` | string |  | Shell command `agentworks build` runs from the artifact's directory. `agentworks export` runs it first. |
 | `entrypoint` | string |  | Path (relative to the artifact) to its main file. `agentworks doctor` checks it exists. |
 | `eval_runner` | string |  | Shell command `agentworks eval` pipes each case's prompt to; its stdout is what the assertions check. Falls back to the project's `eval.default_runner`. |
+| `eval_protocol` | string |  | How the eval runner reports a response: `text` (stdout is the response) or `json` (one JSON object that also reports tool calls and activations, needed by the tool and trigger assertions). Falls back to the project's `eval.protocol`. |
+| `judge_runner` | string |  | Shell command that grades `rubric` assertions: reads a JSON request on stdin, prints a JSON verdict. Falls back to the project's `eval.judge_runner`. |
 | `source` | object |  | Provenance written by `agentworks add` (where an imported artifact came from). Not meant to be edited by hand. |
 | `targets` | list of strings |  | *Deprecated:* targets are set once in agentworks.yaml, not per artifact. Ignored. Targets live in `agentworks.yaml`. |
 | `tools` | list of strings |  | What the agent may do, from a closed vendor-agnostic set (`agentworks validate` lists the values). Mapped to Claude Code's and Gemini CLI's real tool fields. |
@@ -44,6 +46,8 @@ removed in a later minor version (see COMPATIBILITY.md).
 | `build` | string |  | Shell command `agentworks build` runs from the artifact's directory. `agentworks export` runs it first. |
 | `entrypoint` | string |  | Path (relative to the artifact) to its main file. `agentworks doctor` checks it exists. |
 | `eval_runner` | string |  | Shell command `agentworks eval` pipes each case's prompt to; its stdout is what the assertions check. Falls back to the project's `eval.default_runner`. |
+| `eval_protocol` | string |  | How the eval runner reports a response: `text` (stdout is the response) or `json` (one JSON object that also reports tool calls and activations, needed by the tool and trigger assertions). Falls back to the project's `eval.protocol`. |
+| `judge_runner` | string |  | Shell command that grades `rubric` assertions: reads a JSON request on stdin, prints a JSON verdict. Falls back to the project's `eval.judge_runner`. |
 | `source` | object |  | Provenance written by `agentworks add` (where an imported artifact came from). Not meant to be edited by hand. |
 | `targets` | list of strings |  | *Deprecated:* targets are set once in agentworks.yaml, not per artifact. Ignored. Targets live in `agentworks.yaml`. |
 | `license` | string |  | SPDX license identifier, exported into the skill's `SKILL.md`. |
@@ -62,6 +66,8 @@ removed in a later minor version (see COMPATIBILITY.md).
 | `build` | string |  | Shell command `agentworks build` runs from the artifact's directory. `agentworks export` runs it first. |
 | `entrypoint` | string |  | Path (relative to the artifact) to its main file. `agentworks doctor` checks it exists. |
 | `eval_runner` | string |  | Shell command `agentworks eval` pipes each case's prompt to; its stdout is what the assertions check. Falls back to the project's `eval.default_runner`. |
+| `eval_protocol` | string |  | How the eval runner reports a response: `text` (stdout is the response) or `json` (one JSON object that also reports tool calls and activations, needed by the tool and trigger assertions). Falls back to the project's `eval.protocol`. |
+| `judge_runner` | string |  | Shell command that grades `rubric` assertions: reads a JSON request on stdin, prints a JSON verdict. Falls back to the project's `eval.judge_runner`. |
 | `source` | object |  | Provenance written by `agentworks add` (where an imported artifact came from). Not meant to be edited by hand. |
 | `targets` | list of strings |  | *Deprecated:* targets are set once in agentworks.yaml, not per artifact. Ignored. Targets live in `agentworks.yaml`. |
 | `transport` | string |  | `stdio` (default, a local process), `http` (streamable HTTP), or `sse`. |
@@ -85,6 +91,8 @@ removed in a later minor version (see COMPATIBILITY.md).
 | `build` | string |  | Shell command `agentworks build` runs from the artifact's directory. `agentworks export` runs it first. |
 | `entrypoint` | string |  | Path (relative to the artifact) to its main file. `agentworks doctor` checks it exists. |
 | `eval_runner` | string |  | Shell command `agentworks eval` pipes each case's prompt to; its stdout is what the assertions check. Falls back to the project's `eval.default_runner`. |
+| `eval_protocol` | string |  | How the eval runner reports a response: `text` (stdout is the response) or `json` (one JSON object that also reports tool calls and activations, needed by the tool and trigger assertions). Falls back to the project's `eval.protocol`. |
+| `judge_runner` | string |  | Shell command that grades `rubric` assertions: reads a JSON request on stdin, prints a JSON verdict. Falls back to the project's `eval.judge_runner`. |
 | `source` | object |  | Provenance written by `agentworks add` (where an imported artifact came from). Not meant to be edited by hand. |
 | `targets` | list of strings |  | *Deprecated:* targets are set once in agentworks.yaml, not per artifact. Ignored. Targets live in `agentworks.yaml`. |
 | `command` | string |  | Shell command. For an mcp server, what starts it (stdio only; run via `sh -c`, or exec'd directly when `args` is set). For a hook, shorthand for a single handler command together with `events`. |

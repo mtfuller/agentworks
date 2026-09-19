@@ -51,6 +51,20 @@ type EvalConfig struct {
 	// prompt to when an artifact doesn't declare its own "eval_runner"
 	// frontmatter field.
 	DefaultRunner string `yaml:"default_runner,omitempty"`
+	// Protocol is how runners report a response: "text" (the default) or
+	// "json", which also reports tool calls and activations. An artifact's
+	// own eval_protocol wins.
+	Protocol string `yaml:"protocol,omitempty"`
+	// JudgeRunner is the command that grades `rubric` assertions: it reads a
+	// JSON request on stdin and prints a JSON verdict. An artifact's own
+	// judge_runner wins.
+	JudgeRunner string `yaml:"judge_runner,omitempty"`
+	// Runs is how many times each case runs by default (a case's own runs
+	// wins); zero means once.
+	Runs int `yaml:"runs,omitempty"`
+	// Timeout is seconds to wait for a runner (or judge) per call; zero means
+	// two minutes.
+	Timeout int `yaml:"timeout,omitempty"`
 }
 
 // gitignoreTemplate is the .gitignore a new project starts with: regenerable
@@ -122,6 +136,16 @@ func Load(root string) (*Manifest, error) {
 	}
 	if m.Format < 0 {
 		return nil, fmt.Errorf("%s: format must be a positive integer, got %d", ManifestFile, m.Format)
+	}
+	if m.Eval != nil {
+		switch p := m.Eval.Protocol; p {
+		case "", "text", "json":
+		default:
+			return nil, fmt.Errorf("%s: eval.protocol must be \"text\" or \"json\", got %q", ManifestFile, p)
+		}
+		if m.Eval.Runs < 0 || m.Eval.Timeout < 0 {
+			return nil, fmt.Errorf("%s: eval.runs and eval.timeout can't be negative", ManifestFile)
+		}
 	}
 	if m.Format > CurrentFormat {
 		return nil, fmt.Errorf("%s declares project format %d, but this agentworks only understands up to format %d -- upgrade agentworks", ManifestFile, m.Format, CurrentFormat)

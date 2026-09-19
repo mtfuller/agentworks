@@ -17,11 +17,9 @@ what's been deliberately deferred (with reasons).
   pieces into a bundle. A `requires:` field, validated and honored by export, would replace
   what workflows used to check. MCP servers also have no declared runtime requirements
   beyond `doctor` finding the binary.
-- **Richer evals.** Assertions on the final text only. Missing: an LLM-graded rubric, an
-  assertion on the agent's tool-call trace, and a "skill triggers on this prompt / doesn't
-  trigger on that one" case type (a weak description is the commonest skill failure, and
-  `validate` only lints its wording). All need a runner protocol richer than "prompt in,
-  text out".
+- **Evals against other vendors' CLIs.** The reference runners cover Claude Code; a Copilot
+  CLI or Gemini CLI runner needs each one's headless mode, and the reference runners still
+  need a check against a live authenticated run.
 - **Remote MCP in `run` and the smoke test.** They only speak stdio; an HTTP/SSE transport
   in `internal/mcpclient` would let them inspect hosted servers too, and resources/prompts
   listing is cheap once there.
@@ -48,7 +46,9 @@ what's been deliberately deferred (with reasons).
   namespace).
 - Richer agents: a vendor-agnostic `tools:`/`model:` vocabulary mapped to Claude Code and
   Gemini CLI.
-- `agentworks eval`: deterministic assertions against a project-supplied `eval_runner`.
+- `agentworks eval`: text, tool-call, tool-argument, and activation assertions; trigger cases;
+  rubrics graded by a project-supplied judge; repeated runs with a pass threshold; timeouts;
+  JUnit output; a json runner protocol beside the text one.
 - MCP development loop: `agentworks run` inspector, `doctor`, a built-in smoke test, and
   working scaffolds for Python, Node, and TypeScript servers plus `npx-wrapper` and
   `remote-http` templates.

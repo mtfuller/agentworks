@@ -11,6 +11,12 @@
           "case": {
             "type": "string"
           },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "passes": {
+            "type": "integer"
+          },
           "path": {
             "type": "string"
           },
@@ -20,14 +26,35 @@
             },
             "type": "array"
           },
+          "runs": {
+            "type": "integer"
+          },
           "status": {
             "type": "string"
+          },
+          "usage": {
+            "properties": {
+              "input_tokens": {
+                "type": "integer"
+              },
+              "output_tokens": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "input_tokens",
+              "output_tokens"
+            ],
+            "type": "object"
           }
         },
         "required": [
           "artifact",
           "path",
-          "status"
+          "status",
+          "runs",
+          "passes",
+          "duration_ms"
         ],
         "type": "object"
       },
@@ -51,11 +78,15 @@
         },
         "ran": {
           "type": "integer"
+        },
+        "skipped": {
+          "type": "integer"
         }
       },
       "required": [
         "ran",
-        "failed"
+        "failed",
+        "skipped"
       ],
       "type": "object"
     }

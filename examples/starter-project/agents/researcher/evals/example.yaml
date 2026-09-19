@@ -1,13 +1,31 @@
 # See the "eval" section of README.md for the full agentworks eval format.
 #
-# This case's "prompt" is illustrative only -- scripts/eval-runner.sh is a
-# canned stand-in for a real model call (the same "simulate rather than
-# call the real thing" approach tools/jira-fetch's tests use for its API),
-# so every prompt gets the same fixed response back. Point eval_runner at
-# something that actually calls a model to get a real behavior test.
+# scripts/eval-runner.sh is a canned stand-in for a real model call, speaking
+# the json protocol (eval_protocol: json in agent.md), so every prompt gets the
+# same fixed response back: some text, one web-search call, and this agent
+# reported as activated. The cases below show each kind of assertion; point
+# eval_runner at something that actually calls a model (see
+# examples/eval-runners/) to turn them into a real behavior test.
 cases:
+  # Text assertions work under either protocol.
   - name: flags unconfirmed claims instead of repeating them
     prompt: "Research whether switching to library X gives a 2x speedup."
     assert:
       contains: ["unconfirmed"]
       not_contains: ["TODO"]
+
+  # Trace assertions need the json protocol: what tools did it use, and how?
+  - name: searches for the claim and doesn't edit anything
+    prompt: "Research whether switching to library X gives a 2x speedup."
+    assert:
+      tool_called: [web-search]
+      tool_not_called: [edit-files]
+      tool_args:
+        - tool: web-search
+          matches: {query: "(?i)speedup"}
+          equals: {max_results: 5}
+
+  # A trigger case tests the agent's description: would a model pick it for this prompt?
+  - name: is chosen for a research request
+    prompt: "Can you research whether library X is really 2x faster?"
+    should_trigger: true

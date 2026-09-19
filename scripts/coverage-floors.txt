@@ -5,6 +5,7 @@
 # package                                       floor
 ./cmd                                           70
 ./internal/artifact                             85
+./internal/evalspec                             90
 ./internal/importer                             80
 ./internal/inspector                            60
 ./internal/mcpclient                            85

@@ -10,6 +10,7 @@ tools:
   - read-files
 model: balanced
 eval_runner: "sh scripts/eval-runner.sh"
+eval_protocol: json
 ---
 
 # Researcher

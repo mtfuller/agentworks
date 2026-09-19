@@ -241,7 +241,7 @@ prompts, the inspector adds a section for each (keys `1`, `2`, `3`).
 | `agentworks validate [path]` | Parse and validate one artifact or the whole project. Beyond the generic checks (name/description/kind), also catches export-readiness gaps per kind: a hook's `events`/`command` must be set together, and an MCP server needs a known `transport` with a `command` (stdio) or `url` (http/sse) and no literal credentials in sensitive headers. Also lints description quality — too long (over the [Agent Skills spec](https://agentskills.io/specification)'s 1024-character limit), too short/vague, redundant with the name, or overlapping heavily with another same-kind artifact's description (checked project-wide) — and flags a hook/mcp `command` shaped like something hostile (see "Drift and supply-chain safety") — printed as warnings that don't fail the command unless `--strict` is passed. Merely having a command is shown as a notice, never a warning, so a working project passes `--strict`. With `--json`, a machine-readable report (see "Continuous integration"). |
 | `agentworks build [path]` | Run the `build:` command an artifact declares in its frontmatter (any language — AgentWorks just shells out to it, e.g. installing dependencies, compiling, or bundling before the artifact can run or be exported). With no path, runs every artifact that declares one. |
 | `agentworks test [path]` | Run the `test:` command an artifact declares (an MCP server with none gets a built-in smoke check: connect, run the MCP handshake, list its tools, resources, and prompts; `--remote` includes remote http/sse servers, which makes network calls) in its frontmatter (any language — AgentWorks just shells out to it). |
-| `agentworks eval [path]` | Behavior-test a skill/agent: for each case under its `evals/` directory, pipe the case's `prompt` to the artifact's `eval_runner` command (or the project's `agentworks.yaml` `eval.default_runner` if it doesn't set its own) and check the runner's stdout against the case's `assert` rules (`contains`/`not_contains`/`matches`/`not_matches`/`max_length`/`min_length`). AgentWorks never calls a model itself here — `eval_runner` is your own shell command (a script calling whatever model/API you want, `claude -p`, or anything else reading a prompt on stdin and printing a response on stdout), the same "orchestrate, don't execute" split `agentworks test` follows. With no path, runs every artifact with an `evals/` directory; artifacts without one, or without a runner configured, are skipped rather than failed. Pass `--case <name>` to re-run a single case. |
+| `agentworks eval [path]` | Behavior-test a skill/agent: for each case under its `evals/` directory, pipe the case's `prompt` to the artifact's `eval_runner` command (or the project's `eval.default_runner`) and check what comes back. AgentWorks never calls a model itself — the runner (and a rubric judge) is your own shell command, the same "orchestrate, don't execute" split `agentworks test` follows. See "Behavior evals" below for the two runner protocols, the assertions (text, tool-call trace, activation, rubric), trigger cases, repeated runs, and timeouts. `--case <name>` re-runs one case; `--junit <file>` writes a JUnit XML report for CI; `--json` gives a machine-readable report. With no path, runs every artifact with an `evals/` directory; artifacts without one, or without a runner configured, are skipped rather than failed. |
 | `agentworks doctor [path]` | A static, side-effect-free preflight check: resolves every declared shell command's (`command:`/`test:`/`build:`/`eval_runner:`) interpreter/binary against `PATH`, checks a declared `entrypoint:` file actually exists, and checks an MCP server's `auth:` environment variables are set (a warning, not a failure, unless `--strict` — they're only needed to actually call the server, not to discover what it offers) and that no scaffold `REPLACE-WITH-...` placeholder is left. With no path, checks every artifact in the project. Run this before `agentworks run` if you're not sure the command/environment is even set up. |
 | `agentworks run <mcp>` | Connect to an MCP artifact's server -- starting its local `command` as a real process, or reaching its remote `url` over http/sse -- and open a full-screen inspector: browse the tools it exposes, fill in and submit a call from a form generated off each tool's `inputSchema`, and see the result — the same way an agent actually would, instead of only unit-testing the server's logic with mocked calls. A server that offers resources or prompts gets a section for each (read a resource, render a prompt with its arguments). Also shows a call-history pane and the raw JSON-RPC/stderr traffic (reachable even from a connection-failure screen, so the real cause isn't hidden behind a generic protocol error; never includes headers). Only mcp artifacts qualify; unlike `export`'s `${VAR}` placeholders, this actually connects with your real environment. Needs an interactive terminal. |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
@@ -257,6 +257,69 @@ Global flags: `-p, --project` (path inside the project to operate on, default `.
 resolved upward like `git` finds a repo root), `-v, --verbose`, `-l, --log-level`.
 The reporting commands (`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`,
 `marketplace --check`) also take `--json`; see "Continuous integration".
+
+## Behavior evals
+
+`agentworks test` checks code; `agentworks eval` checks how a skill or agent *responds*. Each
+case under `<artifact>/evals/*.yaml` sends a prompt to a runner (your own command: a script that
+calls a model, `claude -p`, anything that reads a prompt on stdin) and asserts on what comes back.
+
+```yaml
+cases:
+  - name: cites a source
+    prompt: "Is library X really 2x faster?"
+    runs: 5                       # repeat a nondeterministic case...
+    pass_threshold: 0.8           # ...and pass if 80% of runs do
+    timeout: 60                   # seconds per run (default 120)
+    assert:
+      contains: ["benchmark"]     # text: contains, not_contains, matches, not_matches,
+      max_length: 800             #       max_length, min_length
+      tool_called: [web-search]   # trace (needs eval_protocol: json)
+      tool_not_called: [edit-files]
+      tool_args:
+        - tool: web-search
+          matches: {query: "(?i)speedup"}    # regex on the argument, or
+          equals: {max_results: 5}           # an exact value
+      rubric: "Says whether the claim is confirmed, and cites where."   # graded by a judge
+  - name: is chosen for a research request
+    prompt: "Can you research whether library X is really 2x faster?"
+    should_trigger: true          # would a model pick this artifact for this prompt?
+  - name: is not chosen for arithmetic
+    prompt: "What is 2 + 2?"
+    should_trigger: false
+```
+
+**Trigger cases** test the artifact's *description*, the text a model reads to decide whether to
+use it, which is the commonest way a skill fails. `should_trigger` passes or fails on whether the
+runner reports the artifact as activated, and a failure says which way the description is wrong.
+
+**Runner protocols.** Set `eval_protocol` in the artifact's frontmatter, or `eval.protocol` in
+`agentworks.yaml`. `text` (the default): stdout is the response. `json`: stdout is exactly one
+object, `{"text": "...", "tool_calls": [{"name": "...", "arguments": {}}], "activated": ["skill"],
+"usage": {"input_tokens": 0, "output_tokens": 0}}`, which is what the trace assertions and trigger
+cases read. Only `text` is required; a case that asserts on `tool_calls` or `activated` fails if the
+runner didn't report it (an empty list means "none"; a missing key means "not reported"), so an
+unreported trace can never pass a "not called" assertion by accident. Under `json`, logs belong on
+stderr.
+
+**Rubrics.** A `rubric` is graded by a *judge*: a command (`judge_runner` in frontmatter, or
+`eval.judge_runner`) that reads `{"subject", "prompt", "response", "rubric"}` as JSON on stdin and
+prints `{"pass": true|false, "reason": "..."}`. A case with a rubric and no judge fails loudly rather
+than passing unchecked, and so does a judge whose output can't be read.
+
+**Reliability.** Cases are parsed strictly: an unknown key (a typo like `contians:`) or a case that
+asserts nothing is an error, not a case that passes for any response. Names must be unique. A runner
+or judge that exceeds its timeout is killed along with any processes it started. Both run with
+`AGENTWORKS_ARTIFACT_NAME`, `_KIND`, `_DIR`, `AGENTWORKS_EVAL_CASE`, and `AGENTWORKS_EVAL_PROTOCOL` in
+their environment. Project defaults live under `eval:` in `agentworks.yaml`
+(`default_runner`, `protocol`, `judge_runner`, `runs`, `timeout`); an artifact's own frontmatter wins.
+
+`examples/eval-runners/` has reference runners for Claude Code: `claude_code.py` (a json-protocol
+runner that reports tool calls and skill activations) and `claude_judge.py` (a rubric judge). They
+fail loudly on an error from `claude` — including an authentication failure, which `claude -p`
+reports as an ordinary-looking result — so a broken setup is never scored as the model's answer.
+Their parsing is tested against fixtures; they have not been exercised against a live authenticated
+run, so check them against your installed version.
 
 ## Drift and supply-chain safety
 

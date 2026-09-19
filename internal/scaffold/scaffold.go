@@ -268,6 +268,21 @@ cases:
       # not_contains: ["a word or phrase the response should never include"]
       # matches: "a regex the response should match"
       # max_length: 500
+      #
+      # With eval_protocol: json (the runner also reports what the model did):
+      # tool_called: [some-tool]
+      # tool_not_called: [a-tool-it-must-not-use]
+      # activated: [` + name + `]
+      # rubric: "Criteria a judge_runner grades the response against."
+  #
+  # A trigger case tests this artifact's description -- would a model choose it
+  # for a prompt? (needs eval_protocol: json)
+  # - name: is chosen for the right request
+  #   prompt: "A request this artifact should handle."
+  #   should_trigger: true
+  # - name: is not chosen for an unrelated request
+  #   prompt: "Something unrelated."
+  #   should_trigger: false
 `
 }
 

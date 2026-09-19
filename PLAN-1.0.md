@@ -11,7 +11,8 @@ sets the design.
 | M1 Freeze the formats | Done (v0.18 content) |
 | M2 Import completeness | Done: MCP and hook import, path rewriting, safer updates, commit pinning, npm and generic git sources, Copilot layout, `SECURITY.md`. Not done: `command`-sourced marketplace entries (deliberately), Copilot `plugin.json` inline `mcpServers`. |
 | M4 MCP transports and coverage | Done: streamable HTTP and SSE transports, `run`/`test --remote`, resources and prompts in the inspector, coverage floors in CI, scaffold e2e job. |
-| M3, M5 to M7 | Not started |
+| M5 Evals v2 | Done: json runner protocol, trace/tool-argument/activation assertions, trigger cases, judge-graded rubrics, `runs`/`pass_threshold`, timeouts, JUnit, reference Claude Code runner and judge (the runner is not verified against a live authenticated `claude`). |
+| M3, M6, M7 | Not started |
 
 ## What 1.0 promises
 

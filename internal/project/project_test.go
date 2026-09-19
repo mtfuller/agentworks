@@ -396,3 +396,31 @@ func TestInitWritesFormatAndLoadEnforcesIt(t *testing.T) {
 		t.Error("Load() of a negative format expected an error")
 	}
 }
+
+func TestLoadValidatesTheEvalBlock(t *testing.T) {
+	dir := t.TempDir()
+	load := func(body string) error {
+		if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load(dir)
+		return err
+	}
+
+	if err := load("name: p\neval:\n  default_runner: x\n  protocol: json\n  judge_runner: j\n  runs: 3\n  timeout: 60\n"); err != nil {
+		t.Errorf("a full eval block should load: %v", err)
+	}
+	m, _ := Load(dir)
+	if m.Eval.Protocol != "json" || m.Eval.JudgeRunner != "j" || m.Eval.Runs != 3 || m.Eval.Timeout != 60 {
+		t.Errorf("eval = %+v", m.Eval)
+	}
+	if err := load("name: p\neval:\n  protocol: xml\n"); err == nil || !strings.Contains(err.Error(), "eval.protocol") {
+		t.Errorf("a bad eval.protocol error = %v", err)
+	}
+	if err := load("name: p\neval:\n  runs: -1\n"); err == nil {
+		t.Error("negative eval.runs should be refused")
+	}
+	if err := load("name: p\neval:\n  timeout: -5\n"); err == nil {
+		t.Error("negative eval.timeout should be refused")
+	}
+}

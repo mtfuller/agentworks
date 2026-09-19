@@ -105,7 +105,7 @@ func TestEvaluate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			failures := Evaluate(tt.assert, tt.output)
+			failures := Evaluate(Case{Assert: tt.assert}, Response{Text: tt.output}, "subject")
 			if tt.wantErr && len(failures) == 0 {
 				t.Errorf("Evaluate(%+v, %q) = no failures, want at least one", tt.assert, tt.output)
 			}

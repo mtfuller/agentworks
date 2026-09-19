@@ -55,6 +55,8 @@ var extraFields = []Field{
 	{Name: "build", Type: TypeString, Doc: "Shell command `agentworks build` runs from the artifact's directory. `agentworks export` runs it first."},
 	{Name: "entrypoint", Type: TypeString, Doc: "Path (relative to the artifact) to its main file. `agentworks doctor` checks it exists."},
 	{Name: "eval_runner", Type: TypeString, Doc: "Shell command `agentworks eval` pipes each case's prompt to; its stdout is what the assertions check. Falls back to the project's `eval.default_runner`."},
+	{Name: "eval_protocol", Type: TypeString, Doc: "How the eval runner reports a response: `text` (stdout is the response) or `json` (one JSON object that also reports tool calls and activations, needed by the tool and trigger assertions). Falls back to the project's `eval.protocol`."},
+	{Name: "judge_runner", Type: TypeString, Doc: "Shell command that grades `rubric` assertions: reads a JSON request on stdin, prints a JSON verdict. Falls back to the project's `eval.judge_runner`."},
 	{Name: "source", Type: TypeObject, Doc: "Provenance written by `agentworks add` (where an imported artifact came from). Not meant to be edited by hand."},
 	{Name: "targets", Type: TypeList, Deprecated: "targets are set once in agentworks.yaml, not per artifact", Doc: "Ignored. Targets live in `agentworks.yaml`."},
 

@@ -110,14 +110,20 @@ main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea brow
   in either front end. `mcp_servers.go` holds the starter MCP server sources (Python,
   Node, TypeScript): complete, dependency-free stdio servers, so a scaffold passes
   `agentworks test` immediately. `TestScaffoldedMCPServersAreWorking` runs them.
-- **`internal/evalspec`** — the `evals/*.yaml` case file format (`Case`/`Assertions`,
-  `LoadDir`) and `Evaluate`, a pure function checking a runner's output string against
-  a case's deterministic assertions (`contains`/`not_contains`/`matches`/`not_matches`/
-  `max_length`/`min_length`). It doesn't run anything — `cmd/eval.go` pipes a case's
-  `prompt` to an artifact's declared `eval_runner` command (or the project's
-  `agentworks.yaml` `eval.default_runner`) and hands the runner's stdout back to
-  `Evaluate`. AgentWorks never calls a model itself: `eval_runner` is the project's own
-  shell command, not a vendor SDK call made on its behalf.
+- **`internal/evalspec`** — the `evals/*.yaml` case format, the response model, and the
+  checks. `LoadDir` parses strictly (`KnownFields`, so a typo can't make a vacuous case) and
+  refuses a case that asserts nothing or a duplicate name. `ParseResponse` reads a runner's
+  stdout under the **text** protocol (the response) or the **json** protocol (`{text,
+  tool_calls, activated, usage}`), tracking whether the trace keys were *reported* so an
+  unreported trace can't satisfy a "not called" assertion. `Evaluate(case, response,
+  subject)` covers text, tool-call, tool-argument, activation, and `should_trigger`
+  assertions; `rubric` is graded by a judge command (`judge.go`: `JudgeRequest` in,
+  `JudgeVerdict` out, and a verdict with no `pass` is an error). `junit.go` writes the
+  report. It doesn't run anything — `cmd/eval.go` does: it resolves the runner, protocol,
+  and judge (artifact frontmatter over `agentworks.yaml`'s `eval:` block), runs each case
+  `runs` times under a timeout (in its own process group, killed whole on timeout so a
+  model call isn't orphaned), and aggregates against `pass_threshold`. AgentWorks never
+  calls a model itself: the runner and the judge are the project's own commands.
 - **`internal/targets`** — the static vendor registry (which artifact kinds each vendor
   can consume — this is what `agentworks targets` prints) and the `Exporter` interface.
   Vendor-specific exporters live in their own subpackage and self-register via `init()`
@@ -281,8 +287,10 @@ import (`add`/`update`); the marketplace publisher; and the CI surface (`--json`
 - **`tools:`/`model:` mapping for `github-copilot` and `cursor` agents.** Neither vendor's
   public spec confirms those fields (Cursor's `model:` takes only `inherit` or a
   fast-moving literal ID), so AgentWorks doesn't guess. Re-open once documented.
-- **An LLM-graded eval assertion, and assertions on an agent's tool-call trace.** Both
-  need a runner protocol richer than "prompt in, text out."
+- **Eval runners for vendors other than Claude Code**, and per-run trace capture beyond
+  tool calls and activations (token cost is reported, not asserted on). The reference
+  runners in `examples/eval-runners/` have not been run against a live authenticated
+  `claude`; they are tested against fixtures modeled on its stream-json envelope.
 - **Project-defined custom templates** (built-in only for now).
 - **Removing stale entries from merged loose files** (see `internal/targets` above).
 - **`--json` for `add`, `update`, and `export`**, which the CI recipe doesn't need yet.

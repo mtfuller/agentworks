@@ -140,7 +140,7 @@ type doctorIssue struct {
 // cmd/test.go, cmd/eval.go, internal/targets/mcpconfig) -- doctor checks its
 // interpreter/binary is resolvable now, rather than the first sign of
 // trouble being a raw "command not found" from the shell later.
-var shellCommandFields = []string{"command", "test", "build", "eval_runner"}
+var shellCommandFields = []string{"command", "test", "build", "eval_runner", "judge_runner"}
 
 // doctorChecks runs every preflight check against a, given the environment
 // (os.Environ() normally; a fake slice in tests) it would actually run in.
