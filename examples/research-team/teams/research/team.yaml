@@ -1,0 +1,6 @@
+name: research
+description: Research and edit evidence-backed notes in an ordinary local folder.
+agents: [researcher, editor]
+default_agent: researcher
+memory:
+  team: memory/team.md

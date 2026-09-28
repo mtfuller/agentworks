@@ -1,0 +1,5 @@
+{"type":"session.info","data":{"infoType":"configuration","message":"Disabled tools include shell and file editing"},"ephemeral":true}
+{"type":"assistant.message_start","data":{"phase":"final_answer"},"ephemeral":true}
+{"type":"assistant.message_delta","data":{"deltaContent":"restricted-ready"},"ephemeral":true}
+{"type":"assistant.message","data":{"model":"<model>","content":"restricted-ready","toolRequests":[],"phase":"final_answer"}}
+{"type":"result","exitCode":0,"usage":{"premiumRequests":1,"codeChanges":{"linesAdded":0,"linesRemoved":0,"filesModified":[]}}}

@@ -1,0 +1,31 @@
+name: manual-implementation
+description: Route explicit implementation requests to the team implementer.
+priority: 100
+when:
+  source: manual
+  type: work.requested
+  fields:
+    role: implementer
+invoke:
+  team: engineering
+  agent: implementer
+  workspace: product
+  harness: claude-code
+  permission: readwrite
+tests:
+  - name: implementation request
+    event:
+      source: manual
+      type: work.requested
+      subject: example-task
+      data:
+        role: implementer
+    expect: manual-implementation
+  - name: reviewer does not match
+    event:
+      source: manual
+      type: work.requested
+      data:
+        role: reviewer
+    expect: unrouted
+

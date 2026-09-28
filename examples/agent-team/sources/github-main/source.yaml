@@ -1,0 +1,12 @@
+name: github-main
+description: Poll a GitHub repository for pull request comments, checks, and state changes.
+kind: github
+enabled: false
+poll:
+  every: 1m
+  initial_lookback: 24h
+github:
+  repository: example/agentworks
+  token_env: GITHUB_TOKEN
+  work_item_pattern: '[A-Z][A-Z0-9]+-[0-9]+'
+

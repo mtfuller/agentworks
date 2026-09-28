@@ -1,0 +1,59 @@
+name: Update Homebrew RC tap formula
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    # Stable users consume Formula/agentworks.rb. This separate formula is
+    # deliberately updated only by a GitHub prerelease.
+    if: ${{ github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Render the opt-in RC formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "::error::RC Homebrew updates require a vX.Y.Z-rc.N release tag"
+            exit 1
+          fi
+
+          gh release download "$TAG" --repo mtfuller/agentworks \
+            --pattern SHA256SUMS --output SHA256SUMS --clobber
+          ARM64_SHA=$(grep '_darwin_arm64\.tar\.gz$' SHA256SUMS | awk '{print $1}')
+          AMD64_SHA=$(grep '_darwin_amd64\.tar\.gz$' SHA256SUMS | awk '{print $1}')
+          if [ -z "$ARM64_SHA" ] || [ -z "$AMD64_SHA" ]; then
+            echo "::error::couldn't find both darwin archive checksums in ${TAG}'s SHA256SUMS"
+            exit 1
+          fi
+
+          sed \
+            -e "s/@VERSION@/${VERSION}/g" \
+            -e "s/@SHA256_ARM64@/${ARM64_SHA}/g" \
+            -e "s/@SHA256_AMD64@/${AMD64_SHA}/g" \
+            homebrew/agentworks-rc.rb.tmpl > agentworks-rc.rb
+          ruby -c agentworks-rc.rb
+
+      - name: Push the RC formula to mtfuller/homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          CURRENT_SHA=$(gh api repos/mtfuller/homebrew-tap/contents/Formula/agentworks-rc.rb --jq .sha 2>/dev/null || true)
+          MESSAGE="agentworks RC ${TAG}
+
+          Automated RC bump on prerelease ${TAG}."
+          ARGS=(--method PUT repos/mtfuller/homebrew-tap/contents/Formula/agentworks-rc.rb
+            -f message="$MESSAGE" -f content="$(base64 -w0 agentworks-rc.rb)" -f branch=main)
+          if [ -n "$CURRENT_SHA" ]; then ARGS+=(-f sha="$CURRENT_SHA"); fi
+          gh api "${ARGS[@]}"

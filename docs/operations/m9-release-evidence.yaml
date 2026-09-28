@@ -1,0 +1,21 @@
+# Change status to approved only after every item below has linked evidence and
+# the release-blocker review reports no open critical/high finding.
+status: pending
+tested_commit: ""
+soak:
+  started_at: ""
+  completed_at: ""
+  evidence: ""
+software_factory_dogfood:
+  jira_issue: ""
+  pull_request: ""
+  findings: ""
+authenticated_conformance:
+  workflow_run: ""
+security_review:
+  report: ""
+  open_critical: 0
+  open_high: 0
+approval:
+  reviewer: ""
+  approved_at: ""

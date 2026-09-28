@@ -7,6 +7,9 @@ repository's Security tab, rather than in a public issue.
 
 ## What AgentWorks does and doesn't protect you from
 
+The format-2 Studio runtime's trust boundaries, threats, controls, and release gate are documented
+in [docs/security/runtime-threat-model.md](docs/security/runtime-threat-model.md).
+
 AgentWorks is a local tool. It runs commands you author (`test:`, `build:`, an MCP server's
 `command:`) and exports commands that *other programs* will later run with your permissions
 (a hook's command, an MCP server's command). The security question is mostly about what

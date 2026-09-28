@@ -1,9 +1,8 @@
 # AgentWorks
 
-A local-first, vendor-agnostic tool for building agent contexts, skills, MCP servers,
-and hooks — author them once as plain files, then export target-specific artifacts
-for the AI harnesses you actually use (Claude Code, ChatGPT, GitHub Copilot,
-Cursor, Gemini CLI, and others).
+A local-first Studio and runtime for defining agent teams with shared skills and tools, routing
+events to them, and running them through Claude Code or GitHub Copilot. The same portable plans can
+also be packed or rendered into vendor-native static artifacts.
 
 ## Why
 
@@ -35,7 +34,22 @@ task build
 ./agentworks --help
 ```
 
-### Try it
+### Try the runtime
+
+```bash
+./agentworks init --runtime my-agents
+cd my-agents
+cp agentworks.local.yaml.example agentworks.local.yaml
+# Bind workspace to an absolute local folder, then:
+../agentworks plan default
+../agentworks studio --experimental
+```
+
+See the [runtime quickstart](docs/guides/runtime-quickstart.md), the software-oriented
+[`examples/agent-team`](examples/agent-team), and the non-Git
+[`examples/research-team`](examples/research-team).
+
+### Legacy artifact export
 
 ```bash
 ./agentworks init my-project
@@ -48,7 +62,7 @@ cd my-project
 ../agentworks tui
 ```
 
-Or look at [`examples/starter-project`](examples/starter-project) — a checked-in
+Or look at [`examples/starter-project`](examples/starter-project) — the compatibility
 project with one of each artifact kind, including two real, tested implementations (a
 CSV-outlier skill and a Jira-fetching MCP server) — to see a finished example
 without building one yourself.
@@ -250,7 +264,7 @@ prompts, the inspector adds a section for each (keys `1`, `2`, `3`).
 
 | Command | What it does |
 | --- | --- |
-| `agentworks init [path]` | Scaffold a new project (`agentworks.yaml`, the 4 kind directories, and an `AGENTS.md` + `.agents/skills/` teaching a coding agent how to drive this CLI and author each artifact kind in the project). Pass `--target` (repeatable) to set the project's export targets, or leave it out in an interactive terminal for a prompt. Targets live only in `agentworks.yaml` -- artifacts don't declare their own -- and `agentworks export` reads them, so it needs no `--target` once they're set. Pass `--ci` to also write a GitHub Actions workflow that runs the project's checks. |
+| `agentworks init [path]` | Pass `--runtime` to create a format-2 Studio project with a default team, agent, shared skill, manual route, memory, and local-workspace template. Without `--runtime`, scaffold the compatibility artifact project (`agentworks.yaml`, four kind directories, and embedded authoring skills). Compatibility mode accepts `--target` and `--ci`. |
 | `agentworks new <kind> [name]` | Scaffold a new agent/skill/mcp/hook. Give `--description` (and kind/name) for a non-interactive run; leave any out in a terminal and a short wizard fills in the rest. Pass `--from-template <id>` to start from a curated built-in template instead of the generic blank scaffold (see `agentworks templates`) — its own description covers you if you don't pass `--description`. |
 | `agentworks templates [kind]` | Table of the built-in starter templates `--from-template` can scaffold from (two for hook, three for agent, four for skill, six for mcp: e.g. an MCP server's `api-wrapper`/`cli-wrapper` (Python), `node-mcp`/`node-ts-mcp` (Node.js or TypeScript -- the TypeScript variant bundles with esbuild via a `build:` command), `npx-wrapper`, or `remote-http`; or a skill's `node-skill`/`node-ts-skill`). Pass a kind to filter. |
 | `agentworks list [kind]` | Table of the project's discovered artifacts. |
@@ -261,18 +275,23 @@ prompts, the inspector adds a section for each (keys `1`, `2`, `3`).
 | `agentworks doctor [path]` | A static, side-effect-free preflight check: resolves every declared shell command's (`command:`/`test:`/`build:`/`eval_runner:`) interpreter/binary against `PATH`, checks a declared `entrypoint:` file actually exists, and checks an MCP server's `auth:` environment variables are set (a warning, not a failure, unless `--strict` — they're only needed to actually call the server, not to discover what it offers) and that no scaffold `REPLACE-WITH-...` placeholder is left. With no path, checks every artifact in the project. Run this before `agentworks run` if you're not sure the command/environment is even set up. |
 | `agentworks run <mcp>` | Connect to an MCP artifact's server -- starting its local `command` as a real process, or reaching its remote `url` over http/sse -- and open a full-screen inspector: browse the tools it exposes, fill in and submit a call from a form generated off each tool's `inputSchema`, and see the result — the same way an agent actually would, instead of only unit-testing the server's logic with mocked calls. A server that offers resources or prompts gets a section for each (read a resource, render a prompt with its arguments). Also shows a call-history pane and the raw JSON-RPC/stderr traffic (reachable even from a connection-failure screen, so the real cause isn't hidden behind a generic protocol error; never includes headers). Only mcp artifacts qualify; unlike `export`'s `${VAR}` placeholders, this actually connects with your real environment. Needs an interactive terminal. |
 | `agentworks targets` | Print the capability matrix: which artifact kinds each vendor target supports, and whether a real exporter exists yet. |
+| `agentworks harnesses` | Probe Claude Code and GitHub Copilot CLI installation, programmatic-interface compatibility, and authentication configuration without submitting a prompt or consuming model usage. This is the readiness surface for the new runtime adapters. |
+| `agentworks plan <team>` | Resolve a format-2 agent team into its deduplicated agents, native skills, tools, selected execution-provider variants, and content digest. This is the first isolated rearchitecture slice: it is read-only, does not launch a harness, and does not change any format-1 command. `--provider` declares an available `host`, `container`, or `remote` provider and may be repeated; `--json` emits the published plan document. |
+| `agentworks providers <team>` | Probe each format-2 tool's host, Docker, and remote variants in declared preference order. It distinguishes missing executables from incompatible versions, reports the selected ready runtime and image digest, and exits non-zero when no provider is usable. |
+| `agentworks pack <team>` | Create a deterministic `.agentworks` archive containing exactly the team's resolved definition and dependency closure. `pack install <archive> <destination>` verifies every content digest, installs only into an absent directory, and reports provider readiness without changing the portable pack. |
 | `agentworks export [path...]` | Bundle the project into a plugin for each target in `agentworks.yaml`'s `targets:` (`--target <id>`, repeatable, overrides it; required only when none are configured). Everything lands in one plugin named after the project; `--namespace <ns>` (repeatable; `.` = your own un-namespaced artifacts) writes one plugin per listed namespace instead, and `--format skills.zip` / `--format skill` export every skill as one `.zip` or as individual `.skill` files (vendor-neutral, no target needed). Output goes to `dist/<target>/<plugin>/`. Paths restrict the export to those artifacts. Before exporting, every artifact being exported that declares a `build:` command is built first (so bundled output like `dist/main.js` is fresh); if any build fails, nothing is exported. `--no-build` skips this. Vendors with no plugin format (`chatgpt`, `cursor`, `gemini-cli`) get each artifact exported on its own. Per-vendor detail: each artifact is translated to the vendor's native format. `claude-code` and `github-copilot` have a real exporter for all four kinds: skills (the shared [Agent Skills](https://agentskills.io/specification) format, also used by `chatgpt`), MCP servers as a server registration (`.mcp.json` / Agent Plugins' `mcp.json`, `auth` env vars passed through as `${VAR}` references, never literal secrets), agents as a subagent file (`agents/<name>.md` / `com.github.copilot/agents/<name>.agent.md`), hooks as a lifecycle-event handler (`hooks/hooks.json` / `com.github.copilot/hooks/hooks.json`) (remote http/sse servers register just their URL and headers). `cursor` and `gemini-cli` have a real exporter for skills/agents/MCP servers/hooks, each writing loose, project-scoped files rather than a plugin: Cursor a project rule (`.cursor/rules/<name>.mdc`), a subagent file (`.cursor/agents/<name>.md`, name/description only -- Cursor's docs don't confirm a tools/model mapping yet), `.cursor/mcp.json`, and `.cursor/hooks.json` (the last two are merged into as each artifact is exported, so N servers or hooks all land in the one file); Gemini CLI a distributable extension directory (`gemini-extension.json` + `GEMINI.md` for a skill, or just an `mcpServers`-only manifest for a bare MCP server), a subagent file (`.gemini/agents/<name>.md`, with a real tools/model mapping), and a `.gemini/settings.json` hooks fragment meant to be merged by hand (Gemini CLI hooks live only in a shared settings file, not an extension-scoped format). See AGENTS.md, "Cursor and Gemini CLI: what's real vs. deferred," for the full reasoning. `agentworks targets` shows the full matrix. Bundled skills/agents are filed by bare name (`skills/<name>/`), or `<namespace>-<name>` when two namespaces share a name; an MCP server member's own `src/`-relative command is namespaced under `mcp/<name>/` so multiple servers' files don't collide. |
 | `agentworks add <url>` | Import a published skill or Claude Code plugin into this project — the reverse of `export`. Accepts an `owner/repo` GitHub shorthand, a full `github.com` repo/tree/blob URL, a `raw.githubusercontent.com` file URL, a direct `.zip`/`.tar.gz` archive URL (including agentskills.codes's download links), `npm:@scope/name[@version]` (checksum-verified against the registry), or any git remote over https or ssh (GitLab, Bitbucket, self-hosted; `https://host/owner/repo` or `git@host:owner/repo.git`, with an optional `#<ref>[:<path>]` suffix; uses the `git` command). Both Claude Code plugins and GitHub Copilot (Agent Plugins) plugins are understood. A bare Agent Skill (`SKILL.md` at its root) becomes one skill artifact, supporting files included. A Claude Code plugin (`.claude-plugin/plugin.json` at its root) decomposes into one artifact per skill, agent, and MCP server it contains, plus hook artifacts (handlers that run the same script are grouped into one). Files an MCP server or hook references through `${CLAUDE_PLUGIN_ROOT}` are copied into the artifact and the reference rewritten, keeping scripts executable. Anything that can't be represented faithfully -- a prompt-type hook, a hook guarded by an `if`, a server with a literal credential in its env or headers -- is reported and not imported; a literal credential is never written to your project. The exact commit a GitHub import resolved to is pinned in `agentworks.lock`. A name that doesn't fit AgentWorks' slug rules is converted automatically, with the original preserved in a `source:` provenance block alongside where it came from. `--name` overrides the derived name (single-skill imports only); `--dry-run` shows what would be imported without writing anything. If any imported content declares a shell `command` (see "Drift and supply-chain safety"), it's printed and you're asked to confirm — `--yes` skips that prompt for scripted use. Every import is pinned in `agentworks.lock`. Everything imported is filed under a namespace so plugin-sourced artifacts stay distinguishable from your own: by default the GitHub owner (`obra/superpowers` lands at `skills/obra/<name>`, shown as `@obra/<name>`), or `--namespace` to choose one. With no URL and no argument, it launches the plugin browser TUI in an interactive terminal. `--force` replaces an artifact that already exists. |
 | `agentworks update [path...]` | Check artifacts imported with `add` for upstream changes: re-fetches each locked source and compares its content hash against what was pinned at import time. Report-only by default; `--apply` overwrites a changed artifact with the fresh content (refusing rather than silently renaming/moving it if upstream itself renamed the artifact) and updates the pin, subject to the same shell-command confirmation gate as `add` (`--yes` to skip it). With no path, checks every import in `agentworks.lock`. Your own edits are protected: an artifact you changed since importing it is not overwritten by `--apply` unless you pass `--force`, and `--diff` shows what would change. |
 | `agentworks status [path]` | Fully offline check of `dist/` output against `agentworks.lock`'s export records: `in sync`, `stale` (source artifact changed, re-export), `modified` (dist was hand-edited since the last export — re-exporting discards it), or `missing`. `--fail-on-drift` exits non-zero unless everything is in sync. |
 | `agentworks marketplace` | Publish this project as a plugin marketplace repo a team can point Claude Code or GitHub Copilot at directly — see "Becoming a plugin marketplace repo" below. |
 | `agentworks graph` | Show which artifacts `requires:` which (`--dot` for Graphviz). See [dependencies](docs/guides/dependencies.md). |
+| `agentworks studio --experimental` | Start the current format-2 Studio runtime on loopback in the foreground. It chooses an available port by default, embeds its UI in the Go binary, and opens a migrated per-project SQLite/WAL database outside the checkout. Manual requests and CloudEvents-compatible local events route through the same durable one-winner runtime; checked-in schedules catch up safely after restart, while ties and unmatched events remain in the inspectable inbox for manual resolution. Enabled Jira and GitHub sources poll with credentials read from the environment variables named in `source.yaml`; Studio shows their health, cursor, last poll, next poll, and rate-limit state and provides test, poll-now, pause, and resume controls. Jira issues and correlated GitHub PR activity share one work-item timeline. Route fixtures use the production evaluator without starting an agent. Workspace aliases resolve only through machine-local bindings. Installed Claude Code and GitHub Copilot CLIs execute readonly or write-capable runs; writes and commands pause for bounded, run-only approval in Studio. Immutable execution plans record ready tool-provider choices. Runtime storage is capped at 1 GB by default: oldest unpinned raw detail is pruned while retained conclusions and audit records remain, and runs can be pinned or manually stripped of raw detail in Studio. It opens the browser unless `--no-open` is set and shuts down on Ctrl-C/SIGTERM. |
 | `agentworks tui` | Full-screen Bubble Tea browser: a tab per artifact kind (`tab`/`shift+tab` to switch) showing that kind's artifacts directly, drill into one with `enter` for its rendered frontmatter and body. Press `n` to scaffold a new artifact (the same wizard `agentworks new` uses, pre-filled with the current tab's kind), `e` to export the whole project (one plugin, a plugin per namespace, or skills as `.zip`/`.skill`) to the project's configured targets, `t` to run its declared `test:` command, `p` to browse plugins from the Claude Code and GitHub Copilot marketplaces -- only permissively licensed ones (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0, Zlib), with a detail pane beside the list showing license, author, and exactly which skills/agents importing it would add --, or `b` to browse/search the built-in starter templates (also tabbed by kind) and create straight from one — all run right there, no dropping back to the CLI. |
 | `agentworks version` | Print version/commit/build-date info. |
 
 Global flags: `-p, --project` (path inside the project to operate on, default `.`,
 resolved upward like `git` finds a repo root), `-v, --verbose`, `-l, --log-level`.
-The reporting commands (`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`,
+The reporting commands (`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`, `harnesses`, `plan`, `providers`, `pack`,
 `marketplace --check`) also take `--json`; see "Continuous integration".
 
 ## Behavior evals
@@ -413,7 +432,7 @@ human-readable messages go to stderr, so `agentworks validate --json | jq` is sa
                    "errors": ["..."], "warnings": [], "notices": [] } ] }
 ```
 
-`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`, `version`, `add`,
+`list`, `validate`, `doctor`, `test`, `eval`, `status`, `targets`, `harnesses`, `plan`, `version`, `add`,
 `update`, `export`, `build`, and `marketplace --check` support it. Every document has `schema_version`, `command`, and `ok` (true exactly when the
 command exits 0); a failure that happens before a command can build its own document still
 yields `{"ok": false, "error": "..."}` on stdout. `schema_version` changes only for a
@@ -441,7 +460,8 @@ jobs:
 
 `marketplace` only runs when a `marketplace.json` is committed. `test` and `eval` are opt-in
 because they run your own commands (and, for `eval`, whatever model your `eval_runner` calls).
-Release archives for macOS and Linux (arm64 and amd64) are attached to each GitHub release.
+Signed release archives for macOS and Windows and release archives for Linux are attached to
+each GitHub release, with checksums and build provenance. See [release and installation](docs/release.md).
 
 ## Development
 

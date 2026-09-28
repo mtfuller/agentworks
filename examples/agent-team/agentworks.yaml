@@ -1,0 +1,16 @@
+format: 2
+name: engineering-agents
+
+teams:
+  - engineering
+
+workspaces:
+  - product
+
+dependencies:
+  skills: {}
+  tools: {}
+
+runtime:
+  storage_limit: 1GB
+  shutdown_grace: 8s

@@ -1,0 +1,27 @@
+class AgentworksRc < Formula
+  desc "Release candidate of the AgentWorks local-first agent studio and runtime"
+  homepage "https://github.com/mtfuller/agentworks"
+  version "@VERSION@"
+  license "MIT"
+
+  conflicts_with "agentworks", because: "both install the agentworks executable"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/mtfuller/agentworks/releases/download/v@VERSION@/agentworks_v@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA256_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/mtfuller/agentworks/releases/download/v@VERSION@/agentworks_v@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA256_AMD64@"
+    end
+  end
+
+  def install
+    bin.install "agentworks"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/agentworks version --short")
+  end
+end

@@ -54,7 +54,7 @@ func jsonProject(t *testing.T) string {
 func TestJSONStdoutIsOnlyTheDocument(t *testing.T) {
 	dir := jsonProject(t)
 
-	for _, cmd := range []string{"list", "validate", "doctor", "targets", "status", "eval"} {
+	for _, cmd := range []string{"list", "validate", "doctor", "targets", "harnesses", "status", "eval"} {
 		t.Run(cmd, func(t *testing.T) {
 			stdout, _, exit := runJSON(t, cmd, "--project", dir)
 			doc := decodeDoc(t, stdout)
@@ -100,6 +100,35 @@ func TestJSONStdoutIsOnlyTheDocument(t *testing.T) {
 			t.Errorf("stderr should still show the human report, got: %q", stderr)
 		}
 	})
+}
+
+func TestJSONPlanMatchesPublishedSchema(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"agentworks.yaml":             "format: 2\nname: example\nteams: [engineering]\n",
+		"teams/engineering/team.yaml": "name: engineering\nagents: [researcher]\ndefault_agent: researcher\n",
+		"agents/researcher/AGENT.md":  "---\nname: researcher\nskills: [research]\nmax_permission: readonly\n---\nResearch the question.\n",
+		"skills/research/SKILL.md":    "---\nname: research\ndescription: Research a question using available local context.\n---\nFind and summarize evidence.\n",
+	}
+	for relative, contents := range files {
+		path := filepath.Join(dir, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	stdout, stderr, exit := runJSON(t, "plan", "engineering", "--project", dir)
+	if exit != 0 {
+		t.Fatalf("plan failed (exit %d): %s\n%s", exit, stdout, stderr)
+	}
+	assertMatchesSchema(t, "plan", stdout)
+	doc := decodeDoc(t, stdout)
+	if doc["command"] != "plan" || doc["ok"] != true {
+		t.Fatalf("document = %#v", doc)
+	}
 }
 
 func TestJSONTestCommandKeepsChildOutputOffStdout(t *testing.T) {

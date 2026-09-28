@@ -2,113 +2,226 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    name: Build binaries and draft a release
+  runtime-release-gate:
+    name: Release evidence and preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          go-version: stable
+          fetch-depth: 0
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
           cache: true
+      - name: Require a supported release tag
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::tag must be vX.Y.Z or vX.Y.Z-rc.N; got $GITHUB_REF_NAME"
+            exit 1
+          fi
+      - name: Require approved evidence and unchanged tested source
+        run: |
+          go run . release-check
+          TESTED_COMMIT="$(sed -n 's/^tested_commit: *//p' docs/operations/m9-release-evidence.yaml)"
+          git cat-file -e "${TESTED_COMMIT}^{commit}"
+          git merge-base --is-ancestor "$TESTED_COMMIT" "$GITHUB_SHA" || {
+            echo "::error::release tag must descend from the evidence's tested commit"
+            exit 1
+          }
+          git diff --quiet "$TESTED_COMMIT" "$GITHUB_SHA" -- . ':(exclude)docs/operations/m9-release-evidence.yaml' || {
+            echo "::error::only the approved release-evidence file may differ from the tested commit"
+            exit 1
+          }
+      - name: Run release preflight
+        run: |
+          go build ./...
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+          go test -race ./...
+          scripts/check-coverage.sh
 
-      # Prebuilt convenience downloads for anyone not using Homebrew. The
-      # Homebrew formula itself builds from the tag's source archive instead
-      # (see .github/workflows/homebrew.yml) -- these tarballs aren't part of
-      # that path.
-      - name: Build (darwin and linux, arm64 and amd64)
+  linux:
+    name: Linux ${{ matrix.arch }}
+    needs: runtime-release-gate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: {arch: [amd64, arm64]}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: {go-version-file: go.mod, cache: true}
+      - name: Build and package
         env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: '0'
         run: |
           VERSION="${GITHUB_REF_NAME}"
           BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           PKG=github.com/mtfuller/agentworks/internal/version
-          for OS in darwin linux; do
-            for ARCH in arm64 amd64; do
-              mkdir -p "dist/agentworks_${OS}_${ARCH}"
-              GOOS="$OS" GOARCH="$ARCH" go build -trimpath \
-                -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA} -X ${PKG}.BuildDate=${BUILD_DATE}" \
-                -o "dist/agentworks_${OS}_${ARCH}/agentworks" ./main.go
-            done
-          done
+          mkdir package
+          go build -trimpath -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA} -X ${PKG}.BuildDate=${BUILD_DATE}" -o package/agentworks .
+          cp LICENSE README.md scripts/install.sh scripts/uninstall.sh package/
+          ARCHIVE="agentworks_${VERSION}_linux_${GOARCH}.tar.gz"
+          tar -C package -czf "$ARCHIVE" agentworks LICENSE README.md install.sh uninstall.sh
+          sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          tar -tzf "$ARCHIVE" | grep -qx agentworks
+          if [ "$GOARCH" = "$(go env GOARCH)" ]; then
+            RELEASE_SMOKE_DIR="$(mktemp -d)"
+            tar -C "$RELEASE_SMOKE_DIR" -xzf "$ARCHIVE"
+            test "$("$RELEASE_SMOKE_DIR/agentworks" version --short)" = "$VERSION"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: agentworks_*
 
-      # Experimental: built so it can be tried, but not part of the tested
-      # matrix's guarantees (see COMPATIBILITY.md).
-      - name: Build (windows/amd64, experimental)
+  macos:
+    name: Signed and notarized macOS ${{ matrix.arch }}
+    needs: runtime-release-gate
+    runs-on: macos-latest
+    strategy:
+      matrix: {arch: [amd64, arm64]}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: {go-version-file: go.mod, cache: true}
+      - name: Require signing credentials
         env:
-          CGO_ENABLED: '0'
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          PKG=github.com/mtfuller/agentworks/internal/version
-          mkdir -p dist/agentworks_windows_amd64
-          GOOS=windows GOARCH=amd64 go build -trimpath \
-            -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA}" \
-            -o dist/agentworks_windows_amd64/agentworks.exe ./main.go
-          cp LICENSE README.md dist/agentworks_windows_amd64/
-          (cd dist/agentworks_windows_amd64 && zip -q "../../agentworks_${VERSION}_windows_amd64.zip" agentworks.exe LICENSE README.md)
-          shasum -a 256 "agentworks_${VERSION}_windows_amd64.zip" >> SHA256SUMS.windows
-
-      - name: Package
-        run: |
-          VERSION="${GITHUB_REF_NAME}"
-          : > SHA256SUMS
-          for OS in darwin linux; do
-            for ARCH in arm64 amd64; do
-              cp LICENSE README.md "dist/agentworks_${OS}_${ARCH}/"
-              tar -C "dist/agentworks_${OS}_${ARCH}" -czf "agentworks_${VERSION}_${OS}_${ARCH}.tar.gz" agentworks LICENSE README.md
-              shasum -a 256 "agentworks_${VERSION}_${OS}_${ARCH}.tar.gz" >> SHA256SUMS
-            done
+          for name in CERTIFICATE CERTIFICATE_PASSWORD SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+            test -n "$(eval echo \$$name)" || { echo "::error::missing release secret $name"; exit 1; }
           done
-          cat SHA256SUMS.windows >> SHA256SUMS
-
-      - name: Draft release notes
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          cat > NOTES.md <<'EOF'
-          ## agentworks ${{ github.ref_name }}
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
+          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/release.keychain-db"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$RUNNER_TEMP/release.keychain-db"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
+          security list-keychains -d user -s "$RUNNER_TEMP/release.keychain-db" login.keychain-db
+      - name: Build, sign, notarize, and package
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PKG=github.com/mtfuller/agentworks/internal/version
+          mkdir package
+          go build -trimpath -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA} -X ${PKG}.BuildDate=${BUILD_DATE}" -o package/agentworks .
+          codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" package/agentworks
+          codesign --verify --strict --verbose=2 package/agentworks
+          cp LICENSE README.md scripts/install.sh scripts/uninstall.sh package/
+          ditto -c -k --keepParent package/agentworks "$RUNNER_TEMP/agentworks-notary.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/agentworks-notary.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          ARCHIVE="agentworks_${VERSION}_darwin_${GOARCH}.tar.gz"
+          tar -C package -czf "$ARCHIVE" agentworks LICENSE README.md install.sh uninstall.sh
+          shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          tar -tzf "$ARCHIVE" | grep -qx agentworks
+          if [ "$GOARCH" = "$(go env GOARCH)" ]; then
+            RELEASE_SMOKE_DIR="$(mktemp -d)"
+            tar -C "$RELEASE_SMOKE_DIR" -xzf "$ARCHIVE"
+            test "$("$RELEASE_SMOKE_DIR/agentworks" version --short)" = "$VERSION"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-macos-${{ matrix.arch }}
+          path: agentworks_*
 
-          Prebuilt binaries for macOS and Linux, each on arm64 and amd64.
+  windows:
+    name: Authenticode-signed Windows amd64
+    needs: runtime-release-gate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: {go-version-file: go.mod, cache: true}
+      - name: Require signing credentials
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:CERTIFICATE -or -not $env:CERTIFICATE_PASSWORD) { throw "Missing Windows signing secrets" }
+      - name: Build, sign, and package
+        shell: pwsh
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $version = $env:GITHUB_REF_NAME
+          $pkg = "github.com/mtfuller/agentworks/internal/version"
+          $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          New-Item -ItemType Directory package | Out-Null
+          go build -trimpath -ldflags "-s -w -X $pkg.Version=$version -X $pkg.Commit=$env:GITHUB_SHA -X $pkg.BuildDate=$buildDate" -o package/agentworks.exe .
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\certificate.pfx", [Convert]::FromBase64String($env:CERTIFICATE))
+          $secure = ConvertTo-SecureString $env:CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\certificate.pfx" -CertStoreLocation Cert:\CurrentUser\My -Password $secure
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName | Select-Object -Last 1
+          if (-not $signtool) { throw "signtool.exe was not found" }
+          & $signtool.FullName sign /sha1 $cert.Thumbprint /fd sha256 /tr http://timestamp.digicert.com /td sha256 package/agentworks.exe
+          & $signtool.FullName verify /pa /all package/agentworks.exe
+          Copy-Item LICENSE,README.md,scripts/install.ps1,scripts/uninstall.ps1 package/
+          $archive = "agentworks_${version}_windows_amd64.zip"
+          Compress-Archive -Path package/* -DestinationPath $archive
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          "$hash  $archive" | Set-Content "$archive.sha256"
+          $smoke = Join-Path $env:RUNNER_TEMP "release-smoke"
+          Expand-Archive -Path $archive -DestinationPath $smoke
+          if ((& (Join-Path $smoke "agentworks.exe") version --short) -ne $version) { throw "release archive version did not match tag" }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-windows-amd64
+          path: agentworks_*
 
-          The macOS binaries are **not notarized**. After downloading and extracting,
-          clear the Gatekeeper quarantine flag before first run:
-
-          ```bash
-          xattr -d com.apple.quarantine agentworks
-          ./agentworks version
-          ```
-
-          Verify the download:
-
-          ```bash
-          shasum -a 256 -c SHA256SUMS
-          ```
-
-          Or install via Homebrew (builds from source, works on both architectures):
-
-          ```bash
-          brew install mtfuller/tap/agentworks
-          ```
-          EOF
-
-      - name: Create draft release
+  publish:
+    name: Publish attested release
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: {pattern: release-*, merge-multiple: true}
+      - name: Build checksum manifest
+        run: cat agentworks_*.sha256 | sort -k2 > SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            agentworks_*.tar.gz
+            agentworks_*.zip
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # A tag with a hyphen (v1.0.0-rc.1) is a pre-release: it is not offered
-          # as "latest" and does not update the Homebrew tap.
           PRE=""
-          case "${GITHUB_REF_NAME}" in *-*) PRE="--prerelease" ;; esac
-          gh release create "${GITHUB_REF_NAME}" \
-            $PRE \
-            --draft \
-            --title "agentworks ${GITHUB_REF_NAME}" \
-            --notes-file NOTES.md \
-            agentworks_*.tar.gz agentworks_*.zip \
-            SHA256SUMS
+          case "${GITHUB_REF_NAME}" in *-rc.*) PRE="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" $PRE --generate-notes --title "agentworks ${GITHUB_REF_NAME}" agentworks_*.tar.gz agentworks_*.zip SHA256SUMS

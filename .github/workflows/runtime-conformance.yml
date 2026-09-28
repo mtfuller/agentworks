@@ -1,0 +1,55 @@
+name: Authenticated runtime conformance
+
+on:
+  schedule:
+    - cron: '47 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harness-authentication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: stable, cache: true}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm install -g @anthropic-ai/claude-code @github/copilot
+      - name: Require configured harness credentials
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: test -n "$CLAUDE_CODE_OAUTH_TOKEN" && test -n "$COPILOT_GITHUB_TOKEN"
+      - name: Probe authenticated harnesses
+        env:
+          AGENTWORKS_RUNTIME_CONFORMANCE: '1'
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: go test -count=1 -v ./tests -run TestLiveHarnessAuthentication
+
+  connector-authentication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: stable, cache: true}
+      - name: Require configured connector credentials
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          CONNECTOR_GITHUB_REPOSITORY: ${{ secrets.CONNECTOR_GITHUB_REPOSITORY }}
+          CONNECTOR_GITHUB_TOKEN: ${{ secrets.CONNECTOR_GITHUB_TOKEN }}
+        run: test -n "$JIRA_BASE_URL" && test -n "$JIRA_EMAIL" && test -n "$JIRA_API_TOKEN" && test -n "$CONNECTOR_GITHUB_REPOSITORY" && test -n "$CONNECTOR_GITHUB_TOKEN"
+      - name: Probe authenticated connectors
+        env:
+          AGENTWORKS_CONNECTOR_SMOKE: '1'
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          GITHUB_REPOSITORY: ${{ secrets.CONNECTOR_GITHUB_REPOSITORY }}
+          GITHUB_TOKEN: ${{ secrets.CONNECTOR_GITHUB_TOKEN }}
+        run: go test -count=1 -v ./internal/connectors -run TestLiveConnectorAuthentication

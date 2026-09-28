@@ -1,0 +1,17 @@
+name: jira
+description: Read and update Jira work items through an MCP server.
+transport: stdio
+runtime:
+  variants:
+    - provider: host
+      command: node
+      args:
+        - dist/server.js
+      requires:
+        - node>=22
+    - provider: container
+      image: ghcr.io/example/agentworks-jira@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      command:
+        - /app/server
+auth:
+  - JIRA_TOKEN

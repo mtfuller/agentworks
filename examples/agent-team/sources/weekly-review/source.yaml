@@ -1,0 +1,13 @@
+name: weekly-review
+description: A durable scheduled review that demonstrates safe restart catch-up.
+kind: schedule
+schedule:
+  every: 168h
+  start_at: 2035-01-01T09:00:00Z
+  catch_up: latest
+event:
+  type: review.requested
+  subject: product
+  data:
+    scope: weekly
+

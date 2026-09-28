@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AgentWorks Studio</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">AgentWorks</p>
+      <h1>Studio is running</h1>
+      <p id="project">Loading project readiness…</p>
+      <section aria-labelledby="runtime-heading">
+        <h2 id="runtime-heading">Runtime spine</h2>
+        <dl>
+          <div><dt>Server</dt><dd id="server-status">Connecting</dd></div>
+          <div><dt>Storage</dt><dd id="storage-status">Connecting</dd></div>
+          <div><dt>Event stream</dt><dd id="event-status">Connecting</dd></div>
+          <div><dt>Durable runs</dt><dd id="run-count">Loading</dd></div>
+        </dl>
+      </section>
+      <section aria-labelledby="definitions-heading">
+        <h2 id="definitions-heading">Project definitions</h2>
+        <p class="note compact">Edit the canonical tracked YAML and Markdown files. Saves require the file version you loaded, so an external edit is never overwritten silently.</p>
+        <form id="definition-form">
+          <label class="wide">File<select id="definition-file" required></select></label>
+          <label class="wide">Contents<textarea id="definition-content" class="code-editor" rows="18" spellcheck="false" required></textarea></label>
+          <span class="button-row"><button id="save-definition" type="submit">Save file</button><button id="reload-definition" type="button" class="secondary">Reload</button></span>
+          <p id="definition-status" class="form-status" role="status"></p>
+        </form>
+      </section>
+      <section aria-labelledby="manual-run-heading">
+        <h2 id="manual-run-heading">Create a manual run</h2>
+        <form id="manual-run-form">
+          <label>Team<select id="team" name="team" required></select></label>
+          <label>Agent<select id="agent" name="agent" required></select></label>
+          <label>Workspace<select id="workspace" name="workspace" required></select></label>
+		  <label class="wide">Ad hoc folder
+			<span class="inline-control"><input id="workspace-path" type="text" placeholder="/absolute/path/to/folder"><button id="confirm-workspace" type="button">Confirm folder</button></span>
+			<small>Confirmation permits write-capable runs for this folder until Studio closes.</small>
+		  </label>
+          <label>Harness<select id="harness" name="harness" required></select></label>
+          <label>Permission<select id="permission" name="permission" required></select></label>
+          <label class="wide">Request<textarea id="prompt" name="prompt" rows="6" maxlength="65536" required></textarea></label>
+          <button type="submit">Queue run</button>
+          <p id="manual-run-status" class="form-status" role="status"></p>
+        </form>
+      </section>
+      <section aria-labelledby="runs-heading">
+        <h2 id="runs-heading">Recent runs</h2>
+        <ol id="runs" class="runs"><li>No runs yet.</li></ol>
+		<div id="run-detail" hidden>
+		  <h3>Selected run</h3>
+		  <p id="run-summary"></p>
+		  <span class="button-row"><button id="cancel-run" type="button">Cancel run</button><button id="pin-run" type="button" class="secondary">Pin run</button><button id="delete-run-detail" type="button" class="secondary">Delete raw detail</button></span>
+		  <div id="run-approvals"></div>
+		  <div id="memory-proposals"></div>
+		  <pre id="run-conclusion">Structured conclusion pending.</pre>
+		  <p id="change-summary">No workspace changes recorded.</p>
+		  <pre id="run-log" aria-live="polite">Waiting for output…</pre>
+		</div>
+      </section>
+      <section aria-labelledby="outcomes-heading">
+		<h2 id="outcomes-heading">Outcomes and monitors</h2>
+		<p class="note compact">Outcomes are generic correlated facts. Monitor templates evaluate the same facts without vendor-specific runtime branches.</p>
+		<form id="outcome-form">
+		  <label>Type<input id="outcome-type" placeholder="github.checks.passed" required></label>
+		  <label>Subject<input id="outcome-subject" placeholder="github:org/repo:pull/123"></label>
+		  <label>Work-item kind<input id="work-item-kind" placeholder="jira"></label>
+		  <label>Work-item key<input id="work-item-key" placeholder="ABC-123"></label>
+		  <button type="submit">Record outcome</button><p id="outcome-status" class="form-status" role="status"></p>
+		</form>
+		<ul id="monitors"><li>No monitor evaluations yet.</li></ul>
+		<ol id="outcomes"><li>No outcomes yet.</li></ol>
+		<pre id="work-item-timeline">Select a correlated outcome to inspect its work-item timeline.</pre>
+	  </section>
+	  <section aria-labelledby="events-heading">
+		<h2 id="events-heading">Events and routes</h2>
+		<p class="note compact">Submit a CloudEvents-compatible local event, preview its deterministic route, or dispatch it. Tied highest-priority matches remain unrouted.</p>
+		<form id="event-form">
+		  <label>Event ID<input id="event-id" required></label>
+		  <label>Source<input id="event-source" value="manual" required></label>
+		  <label>Type<input id="event-type" required></label>
+		  <label>Subject<input id="event-subject"></label>
+		  <label class="wide">Data JSON<textarea id="event-data" rows="5" spellcheck="false">{}</textarea></label>
+		  <span class="button-row"><button id="preview-event" type="button">Preview route</button><button type="submit">Ingest and route</button></span>
+		  <p id="event-form-status" class="form-status" role="status"></p>
+		</form>
+		<h3>Route definitions</h3><ul id="routes"><li>No routes loaded.</li></ul>
+		<h3>Event inbox</h3><ol id="event-inbox"><li>No events yet.</li></ol>
+		<div id="event-actions" class="button-row"></div>
+		<pre id="event-detail">Select an event to inspect its normalized/raw payload and routing decision.</pre>
+	  </section>
+	  <section aria-labelledby="sources-heading">
+		<h2 id="sources-heading">External sources</h2>
+		<p class="note compact">Jira and GitHub poll locally with environment-supplied credentials. Cursor, health, rate-limit backoff, and redacted poll diagnostics are durable; credential values and payloads are never stored.</p>
+		<ul id="sources"><li>No external sources loaded.</li></ul>
+		<pre id="source-detail">Select a source action to inspect its latest state.</pre>
+	  </section>
+	  <p class="note">Claude Code and GitHub Copilot execute readonly or write-capable runs. Writes and commands pause for bounded, run-only approval. The fake harness is development-only.</p>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

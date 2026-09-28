@@ -1,0 +1,550 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/pack.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "command": {
+      "const": "pack",
+      "type": "string"
+    },
+    "destination": {
+      "type": "string"
+    },
+    "manifest": {
+      "properties": {
+        "content_digest": {
+          "type": "string"
+        },
+        "files": {
+          "items": {
+            "properties": {
+              "mode": {},
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "sha256",
+              "size",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "format": {
+          "type": "integer"
+        },
+        "plan": {
+          "properties": {
+            "agents": {
+              "items": {
+                "properties": {
+                  "delegates": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "max_permission": {
+                    "type": "string"
+                  },
+                  "memory": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "skills": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "tools": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "name",
+                  "skills",
+                  "tools",
+                  "delegates",
+                  "max_permission",
+                  "digest"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "default_agent": {
+              "type": "string"
+            },
+            "definition_digest": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "format": {
+              "type": "integer"
+            },
+            "memory": {
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            },
+            "skills": {
+              "items": {
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "origin",
+                  "digest"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "team": {
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "properties": {
+                  "auth": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "command": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "image_digest": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "network": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "runtime": {
+                    "type": "string"
+                  },
+                  "runtime_version": {
+                    "type": "string"
+                  },
+                  "selected_provider": {
+                    "type": "string"
+                  },
+                  "transport": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "origin",
+                  "digest",
+                  "transport",
+                  "selected_provider",
+                  "auth"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "format",
+            "project",
+            "team",
+            "definition_digest",
+            "agents",
+            "skills",
+            "tools",
+            "digest"
+          ],
+          "type": "object"
+        },
+        "plan_digest": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "team": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "project",
+        "team",
+        "plan_digest",
+        "content_digest",
+        "plan",
+        "files"
+      ],
+      "type": "object"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "provider_readiness": {
+      "items": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "selected": {
+            "properties": {
+              "detail": {
+                "type": "string"
+              },
+              "image_digest": {
+                "type": "string"
+              },
+              "network": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "state",
+              "network"
+            ],
+            "type": "object"
+          },
+          "variants": {
+            "items": {
+              "properties": {
+                "detail": {
+                  "type": "string"
+                },
+                "image_digest": {
+                  "type": "string"
+                },
+                "network": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "runtime": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "state",
+                "network"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "variants"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "result": {
+      "properties": {
+        "archive_digest": {
+          "type": "string"
+        },
+        "content_digest": {
+          "type": "string"
+        },
+        "files": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "plan": {
+          "properties": {
+            "agents": {
+              "items": {
+                "properties": {
+                  "delegates": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "max_permission": {
+                    "type": "string"
+                  },
+                  "memory": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "skills": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "tools": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "name",
+                  "skills",
+                  "tools",
+                  "delegates",
+                  "max_permission",
+                  "digest"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "default_agent": {
+              "type": "string"
+            },
+            "definition_digest": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "format": {
+              "type": "integer"
+            },
+            "memory": {
+              "type": "string"
+            },
+            "project": {
+              "type": "string"
+            },
+            "skills": {
+              "items": {
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "origin",
+                  "digest"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "team": {
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "properties": {
+                  "auth": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "command": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "image_digest": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "network": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "runtime": {
+                    "type": "string"
+                  },
+                  "runtime_version": {
+                    "type": "string"
+                  },
+                  "selected_provider": {
+                    "type": "string"
+                  },
+                  "transport": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "origin",
+                  "digest",
+                  "transport",
+                  "selected_provider",
+                  "auth"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "format",
+            "project",
+            "team",
+            "definition_digest",
+            "agents",
+            "skills",
+            "tools",
+            "digest"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "path",
+        "archive_digest",
+        "content_digest",
+        "files",
+        "plan"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "action",
+    "ready",
+    "provider_readiness"
+  ],
+  "title": "agentworks pack --json",
+  "type": "object"
+}

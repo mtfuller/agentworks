@@ -1,0 +1,13 @@
+name: jira-main
+description: Poll Jira Cloud for issues assigned to the authenticated user and their transitions.
+kind: jira
+enabled: false
+poll:
+  every: 1m
+  initial_lookback: 24h
+jira:
+  base_url: https://example.atlassian.net
+  jql: assignee = currentUser()
+  email_env: JIRA_EMAIL
+  token_env: JIRA_API_TOKEN
+

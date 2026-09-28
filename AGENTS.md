@@ -4,10 +4,11 @@ Guidance for coding agents working in this repository.
 
 ## What this project is
 
-**AgentWorks** is a local-first, vendor-agnostic tool for building agent contexts,
-skills, MCP servers, and hooks: author them once as plain files, then export
-target-specific artifacts for the AI harnesses people actually use (Claude Code,
-ChatGPT, GitHub Copilot, Cursor, Gemini CLI).
+**AgentWorks** is becoming a local-first studio and runtime for defining teams of agents
+with shared skills and tools, then running or exporting them through the AI harness a user
+chooses. The existing format-1 artifact/export product remains operational while the isolated
+format-2 runtime is built behind `agentworks studio --experimental`; `PLAN-2.0.md` and
+`docs/architecture/runtime-rearchitecture.md` are the source of truth for that transition.
 
 The repo was bootstrapped from `starterpack-go-cli` (a Go/Cobra CLI template) — the
 logging, color output, and Taskfile are that template's conventions, kept because
@@ -36,13 +37,11 @@ of truth for what "done" looks like for any given piece of functionality:
    resources, exported to Claude Code, GitHub Copilot, Cursor, and Gemini CLI as native
    subagent files. *(`agentworks export agents/x --target claude-code`. `chatgpt` is a
    deliberate, closed gap — see "ChatGPT: why skills only" below.)*
-4. **Engineering leader** — several agents and MCP servers that work together as a
-   pipeline, exported as one or more plugins. There is deliberately no "workflow" kind:
-   an agent whose instructions describe how it delegates to other agents and calls MCP
-   servers is the same thing, and the vendor's own agent loop executes it — AgentWorks
-   never runs anything itself. *(See `examples/starter-project/agents/software-factory`;
-   `export` bundles a whole project, or one plugin per namespace, and `marketplace`
-   publishes it as a plugin marketplace repo.)*
+4. **Engineering leader** — several agents and tools form a team with shared capabilities.
+   There is deliberately no general "workflow" kind: an agent invocation is the durable work
+   unit, and the selected harness owns its reasoning/tool loop. AgentWorks owns routing,
+   state, permissions, process supervision, memory, and monitoring. Format-1 can still export
+   the team as plugins; format-2 runs it locally through Studio.
 5. **Any user** — guided boilerplate generation for a new agent/skill/MCP server/hook,
    including generated sample artifacts to learn the system from. *(`agentworks new`'s
    interactive wizard, `--from-template`, and `examples/starter-project`. The mcp
@@ -72,6 +71,56 @@ reverse-engineer the rest.
 main.go → cmd/ (Cobra commands, CLI surface) → internal/tui (Bubble Tea browser + `new` wizard)
                                               → internal/{artifact,project,scaffold,export,targets,importer,...}
 ```
+
+The format-2 runtime adds these isolated layers without redirecting format-1 commands:
+
+```text
+internal/spec        strict portable team/agent/tool/workspace definitions
+internal/resolver    deterministic shared dependency closure and execution plan
+internal/store       SQLite migrations, durable events/runs/attempts, and leases
+internal/studio      loopback HTTP API and embedded browser UI
+internal/worker      durable claims and harness-process execution
+internal/process     cross-platform process-tree supervision
+internal/approval    bounded run-only grants and durable approval waiting
+internal/workspace   ephemeral ad hoc bindings and bounded change snapshots
+internal/harness     vendor readiness, invocation adapters, and normalized events
+internal/permissionbridge ephemeral Claude MCP and Copilot hook permission transports
+internal/runtimepath platform-native per-project operational storage
+internal/memory      reviewable optimistic Markdown memory proposals and atomic application
+internal/monitors    generic outcome and runtime-effectiveness evaluation
+internal/router      CloudEvents normalization, redaction, deterministic one-winner routing
+internal/scheduler   durable schedule synchronization and restart-safe catch-up
+internal/connectors  durable Jira/GitHub polling, cursors, correlation, and source health
+internal/pack        deterministic, integrity-verified portable team archives
+internal/providers   host/Docker readiness and isolated invocation construction
+internal/teamexport  resolved-team static rendering for Claude Code and Copilot
+internal/storage     runtime accounting, pinned-run retention, and raw-detail pruning
+```
+
+M9 cutover is in progress. `agentworks init --runtime` is the fresh-project path for format 2;
+plain `init` and the artifact-first commands are frozen compatibility tooling until authenticated
+connector dogfood and the documented multi-day Studio soak are complete. Do not move runtime
+features back into format 1 or extend the artifact TUI. ADR 0002 defines the final switch gate.
+
+SQLite commits are authoritative; channels are wakeups only. Large logs stay outside SQLite.
+One write-capable run is allowed per workspace while readonly runs may overlap. Studio runs
+real Claude Code and Copilot CLI adapters; both readonly and write-capable paths have
+authenticated conformance evidence. Normal tests use fixtures and a fake harness and must
+never consume model usage. `--fake-harness` adds that deterministic development adapter to
+the two production adapters.
+Studio's SSE stream replays the small `runtime_events` journal by monotonic ID; never put raw
+output, prompts, credentials, or other large/sensitive values in that table.
+Ad hoc absolute paths live only in `workspace.Registry`; durable records use its random alias.
+Approval scopes are structured and run-only. They may reduce or authorize within the run's
+effective permission, but never elevate a readonly run. Claude uses an ephemeral MCP
+permission tool and Copilot an ephemeral `permissionRequest` plugin; never persist either
+bridge into the user's ordinary harness configuration.
+Portable team packs and format-2 static exports consume immutable resolved plans; the legacy
+format-1 export path remains operational. Machine-specific run resolution probes actual host,
+Docker, and remote readiness and records the selected tool runtime/version/image digest in the
+durable plan. Docker receives only the selected workspace mount, explicitly named environment
+variables, and an explicit network mode; it never receives the Docker socket. Runtime storage
+defaults to 1 GB and prunes oldest unpinned raw detail without deleting retained run records.
 
 - **`cmd/`** — one file per Cobra command. Commands parse flags/args, call into the
   packages below, and format output. Keep business logic out of `Run`/`RunE` — a
@@ -262,9 +311,9 @@ import (`add`/`update`); the marketplace publisher; and the CI surface (`--json`
 `marketplace --check`, `status --fail-on-drift`, `action.yml`).
 
 **Removed on purpose** (don't re-add without the user asking):
-- **Workflows.** A bespoke kind on top of agents/skills. An agent whose instructions
-  describe delegation to other agents and MCP servers covers it, and the vendor's own
-  agent loop executes that. AgentWorks never runs a workflow itself.
+- **Workflows.** A bespoke general workflow kind on top of agents/skills. An agent invocation
+  is the durable runtime unit; AgentWorks may schedule and supervise it, but does not become a
+  second reasoning/workflow engine above the vendor harness.
 - **`m365-copilot`.** An outlier (a Teams-style declarative-agent app package with its own
   manifest, publisher identity, and icon handling) that shared nothing with the other
   exporters.

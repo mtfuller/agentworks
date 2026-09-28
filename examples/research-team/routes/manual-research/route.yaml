@@ -1,0 +1,20 @@
+name: manual-research
+description: Route research requests to the researcher in the local library folder.
+priority: 100
+when:
+  source: manual
+  type: research.requested
+invoke:
+  team: research
+  agent: researcher
+  workspace: library
+  harness: claude-code
+  permission: readwrite
+tests:
+  - name: research request
+    event:
+      source: manual
+      type: research.requested
+      subject: example-question
+      data: {}
+    expect: manual-research

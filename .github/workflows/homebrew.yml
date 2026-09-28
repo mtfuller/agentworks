@@ -13,7 +13,7 @@ jobs:
     if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       # mislav/bump-homebrew-formula-action can only bump ONE url/sha256
       # pair per run (a non-global regex replace) -- fine for a single
@@ -25,8 +25,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           TAG="${{ github.event.release.tag_name }}"   # e.g. v0.0.3
           VERSION="${TAG#v}"                             # e.g. 0.0.3
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::stable Homebrew updates require a vX.Y.Z release tag"
+            exit 1
+          fi
 
           gh release download "$TAG" --repo mtfuller/agentworks \
             --pattern SHA256SUMS --output SHA256SUMS --clobber
@@ -44,19 +50,20 @@ jobs:
             -e "s/@SHA256_ARM64@/${ARM64_SHA}/g" \
             -e "s/@SHA256_AMD64@/${AMD64_SHA}/g" \
             homebrew/agentworks.rb.tmpl > agentworks.rb
+          ruby -c agentworks.rb
 
       - name: Push the formula to mtfuller/homebrew-tap
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${{ github.event.release.tag_name }}"
-          CURRENT_SHA=$(gh api repos/mtfuller/homebrew-tap/contents/Formula/agentworks.rb --jq .sha)
+          CURRENT_SHA=$(gh api repos/mtfuller/homebrew-tap/contents/Formula/agentworks.rb --jq .sha 2>/dev/null || true)
           MESSAGE="agentworks ${TAG}
 
           Automated bump on release ${TAG}."
 
-          gh api --method PUT repos/mtfuller/homebrew-tap/contents/Formula/agentworks.rb \
-            -f message="$MESSAGE" \
-            -f content="$(base64 -w0 agentworks.rb)" \
-            -f sha="$CURRENT_SHA" \
-            -f branch=main
+          ARGS=(--method PUT repos/mtfuller/homebrew-tap/contents/Formula/agentworks.rb
+            -f message="$MESSAGE" -f content="$(base64 -w0 agentworks.rb)" -f branch=main)
+          if [ -n "$CURRENT_SHA" ]; then ARGS+=(-f sha="$CURRENT_SHA"); fi
+          gh api "${ARGS[@]}"

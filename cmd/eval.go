@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/mtfuller/agentworks/internal/artifact"
 	"github.com/mtfuller/agentworks/internal/color"
 	"github.com/mtfuller/agentworks/internal/evalspec"
+	"github.com/mtfuller/agentworks/internal/process"
 	"github.com/mtfuller/agentworks/internal/project"
 )
 
@@ -417,11 +417,7 @@ func runShellCommand(command string, a *artifact.Artifact, c evalspec.Case, prot
 	if err != nil {
 		abs = a.Dir
 	}
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
-	cmd.Dir = a.Dir
-	killWithChildren(cmd)
-	cmd.Stdin = bytes.NewBufferString(stdin)
-	cmd.Env = append(os.Environ(),
+	environment := append(os.Environ(),
 		"AGENTWORKS_ARTIFACT_NAME="+a.Name,
 		"AGENTWORKS_ARTIFACT_KIND="+string(a.Kind),
 		"AGENTWORKS_ARTIFACT_DIR="+abs,
@@ -430,12 +426,23 @@ func runShellCommand(command string, a *artifact.Artifact, c evalspec.Case, prot
 		"AGENTWORKS_EVAL_ROLE="+role,
 	)
 	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = os.Stderr
-	// sh -c may leave grandchildren holding the pipes open after a kill.
-	cmd.WaitDelay = 2 * time.Second
-
-	if err := cmd.Run(); err != nil {
+	_, err = process.Run(ctx, process.Spec{
+		Executable:  "sh",
+		Args:        []string{"-c", command},
+		Dir:         a.Dir,
+		Env:         environment,
+		Stdin:       bytes.NewBufferString(stdin),
+		GracePeriod: 2 * time.Second,
+		Sink: func(output process.Output) {
+			switch output.Stream {
+			case process.Stdout:
+				_, _ = stdout.Write(output.Data)
+			case process.Stderr:
+				_, _ = os.Stderr.Write(output.Data)
+			}
+		},
+	})
+	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return "", fmt.Errorf("timed out after %s", timeout)
 		}
