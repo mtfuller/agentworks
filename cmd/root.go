@@ -17,14 +17,14 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "agentworks",
-	Short: "A local-first, vendor-agnostic tool for building agent contexts, skills, tools, and hooks",
-	Long: color.Bold("agentworks") + ` is a local-first, vendor-agnostic platform for authoring agents,
-skills, tools, and hooks once and exporting them to the harnesses you actually use
-(Claude Code, ChatGPT, GitHub Copilot, Cursor, Gemini CLI, and others).
+	Short: "A local-first Studio and runtime for portable agent teams",
+	Long: color.Bold("agentworks") + ` defines teams of agents with shared skills and tools,
+routes local or external events to them, and supervises Claude Code or GitHub Copilot runs
+through a localhost Studio with durable state and bounded approvals.
 
-Author artifacts as plain files in a project directory, test and validate them
-locally, then export versioned, target-specific bundles (skill zips, plugins,
-or vendor-native formats) without hand-maintaining a copy per vendor.`,
+Resolved teams can also be packed into portable archives or rendered into vendor-native
+static bundles. The format-1 artifact commands remain available during the release-candidate
+transition.`,
 	// Execute reports errors itself (colored, and as JSON under --json), and
 	// a failed check isn't a usage mistake, so neither cobra's own "Error:"
 	// line nor the usage text is wanted.

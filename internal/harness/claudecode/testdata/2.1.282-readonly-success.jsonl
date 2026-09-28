@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","tools":["Glob","Grep","Read"],"mcp_servers":[],"permissionMode":"dontAsk","claude_code_version":"2.1.282"}
+{"type":"system","subtype":"status"}
+{"type":"assistant","message":{"model":"<model>","role":"assistant","content":[{"type":"text","text":"claude-restricted-ready"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"claude-restricted-ready","num_turns":1}

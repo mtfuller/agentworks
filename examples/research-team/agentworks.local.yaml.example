@@ -1,0 +1,3 @@
+workspaces:
+  library:
+    path: /absolute/path/to/notes-or-documents

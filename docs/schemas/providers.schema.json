@@ -1,0 +1,116 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/providers.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "providers",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "team": {
+      "type": "string"
+    },
+    "tools": {
+      "items": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "selected": {
+            "properties": {
+              "detail": {
+                "type": "string"
+              },
+              "image_digest": {
+                "type": "string"
+              },
+              "network": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "state",
+              "network"
+            ],
+            "type": "object"
+          },
+          "variants": {
+            "items": {
+              "properties": {
+                "detail": {
+                  "type": "string"
+                },
+                "image_digest": {
+                  "type": "string"
+                },
+                "network": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "runtime": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "state",
+                "network"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "variants"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "team",
+    "ready",
+    "tools"
+  ],
+  "title": "agentworks providers --json",
+  "type": "object"
+}

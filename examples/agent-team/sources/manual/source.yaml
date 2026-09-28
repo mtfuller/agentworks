@@ -1,0 +1,4 @@
+name: manual
+description: Local events submitted from AgentWorks Studio or its loopback HTTP API.
+kind: manual
+

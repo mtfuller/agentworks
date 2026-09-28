@@ -1,0 +1,66 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/harnesses.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "harnesses",
+      "type": "string"
+    },
+    "harnesses": {
+      "items": {
+        "properties": {
+          "auth_method": {
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "capabilities",
+          "diagnostics"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "harnesses"
+  ],
+  "title": "agentworks harnesses --json",
+  "type": "object"
+}

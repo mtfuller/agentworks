@@ -29,6 +29,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Portable format-2 pack and provider tests
+        run: go test ./internal/pack ./internal/providers
+
       - name: Test (race)
         run: go test -race ./...
 
@@ -108,3 +111,7 @@ jobs:
       # exist there yet (see COMPATIBILITY.md).
       - name: Vet
         run: go vet ./...
+
+      - name: Portable format-2 pack and provider tests
+        if: runner.os != 'Windows'
+        run: go test ./internal/pack ./internal/providers

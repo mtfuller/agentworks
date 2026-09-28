@@ -1,0 +1,10 @@
+format: 2
+name: research-team
+teams: [research]
+workspaces: [library]
+dependencies:
+  skills: {}
+  tools: {}
+runtime:
+  storage_limit: 1GB
+  shutdown_grace: 8s

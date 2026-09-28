@@ -1,0 +1,8 @@
+name: engineering
+description: Agents that take scoped engineering work from request through review.
+agents:
+  - implementer
+  - reviewer
+default_agent: implementer
+memory:
+  team: memory/team.md

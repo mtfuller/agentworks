@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,7 @@ import (
 	"github.com/mtfuller/agentworks/internal/export"
 	"github.com/mtfuller/agentworks/internal/lockfile"
 	"github.com/mtfuller/agentworks/internal/project"
+	"github.com/mtfuller/agentworks/internal/teamexport"
 )
 
 var (
@@ -21,6 +23,8 @@ var (
 	exportNamespaces []string
 	exportName       string
 	exportNoBuild    bool
+	exportTeam       string
+	exportProviders  []string
 )
 
 var exportCmd = &cobra.Command{
@@ -30,6 +34,10 @@ var exportCmd = &cobra.Command{
 --out (default: ./dist/<target>/). Targets come from the "targets:" list in
 agentworks.yaml; pass --target (repeatable) to override it for one run.
 "agentworks targets" shows what each vendor supports.
+
+  agentworks export --team engineering --target claude-code
+      Resolve one format-2 team and render its shared closure into the
+      vendor's native static format. GitHub Copilot is also supported.
 
   agentworks export
       Everything in one plugin, named after the project.
@@ -64,6 +72,44 @@ like dist/main.js is fresh. If any build fails, nothing is exported. Pass
 		}
 		if format != export.FormatPlugin && (len(exportNamespaces) > 0 || exportZip) {
 			return fmt.Errorf("--namespace and --zip only apply to --format plugin")
+		}
+		if exportTeam != "" {
+			if format != export.FormatPlugin || len(args) != 0 || len(exportNamespaces) != 0 {
+				return fmt.Errorf("--team exports one resolved format-2 team and cannot be combined with artifact paths, --namespace, or a skill format")
+			}
+			if len(exportTargets) == 0 {
+				return fmt.Errorf("--team requires --target (claude-code or github-copilot)")
+			}
+			root, err := project.FindRoot(projectFlag)
+			if err != nil {
+				return err
+			}
+			providers, err := parsePlanProviders(exportProviders)
+			if err != nil {
+				return err
+			}
+			out := exportOut
+			if !filepath.IsAbs(out) {
+				out = filepath.Join(root, out)
+			}
+			outputs, runErr := teamexport.Run(teamexport.Request{Root: root, Team: exportTeam, Targets: exportTargets, OutDir: out, Providers: providers, Zip: exportZip})
+			if jsonFlag {
+				doc := exportDoc{envelope: newEnvelope("export", runErr == nil), Format: "team", Outputs: []exportOutput{}, Warnings: []string{}}
+				for _, output := range outputs {
+					doc.Outputs = append(doc.Outputs, exportOutput{Target: output.Target, Name: output.Name, Path: output.Path, Members: output.Members})
+				}
+				if runErr != nil {
+					doc.Error = runErr.Error()
+				}
+				if err := emitJSON(doc); err != nil {
+					return err
+				}
+				return runErr
+			}
+			for _, output := range outputs {
+				color.Success("Exported %s (%s) -- %d component(s) -- to %s", output.Name, output.Target, output.Members, output.Path)
+			}
+			return runErr
 		}
 
 		root, err := projectRoot()
@@ -216,4 +262,6 @@ func init() {
 	exportCmd.Flags().StringSliceVar(&exportNamespaces, "namespace", nil, `bundle one plugin per namespace ("." for your own un-namespaced artifacts; repeatable)`)
 	exportCmd.Flags().BoolVar(&exportNoBuild, "no-build", false, "skip running artifacts' build: commands before exporting")
 	exportCmd.Flags().StringVar(&exportName, "name", "", "plugin/archive name (default: the project name)")
+	exportCmd.Flags().StringVar(&exportTeam, "team", "", "export a resolved format-2 team instead of format-1 artifacts")
+	exportCmd.Flags().StringSliceVar(&exportProviders, "provider", []string{"host", "container", "remote"}, "available provider for a format-2 team export (repeatable, in preference order)")
 }

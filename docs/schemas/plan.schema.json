@@ -1,0 +1,202 @@
+{
+  "$id": "https://github.com/mtfuller/agentworks/docs/schemas/plan.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "const": "plan",
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "plan": {
+      "properties": {
+        "agents": {
+          "items": {
+            "properties": {
+              "delegates": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "description": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "max_permission": {
+                "type": "string"
+              },
+              "memory": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "skills": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "name",
+              "skills",
+              "tools",
+              "delegates",
+              "max_permission",
+              "digest"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "default_agent": {
+          "type": "string"
+        },
+        "definition_digest": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "format": {
+          "type": "integer"
+        },
+        "memory": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "skills": {
+          "items": {
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "origin",
+              "digest"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "team": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "properties": {
+              "auth": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "command": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "description": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "image": {
+                "type": "string"
+              },
+              "image_digest": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "network": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "string"
+              },
+              "runtime_version": {
+                "type": "string"
+              },
+              "selected_provider": {
+                "type": "string"
+              },
+              "transport": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "origin",
+              "digest",
+              "transport",
+              "selected_provider",
+              "auth"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "format",
+        "project",
+        "team",
+        "definition_digest",
+        "agents",
+        "skills",
+        "tools",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command",
+    "ok",
+    "plan"
+  ],
+  "title": "agentworks plan --json",
+  "type": "object"
+}

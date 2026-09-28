@@ -9,6 +9,7 @@ import (
 
 	"github.com/mtfuller/agentworks/internal/color"
 	"github.com/mtfuller/agentworks/internal/project"
+	"github.com/mtfuller/agentworks/internal/spec"
 	"github.com/mtfuller/agentworks/internal/targets"
 )
 
@@ -16,6 +17,7 @@ var (
 	initName    string
 	initTargets []string
 	initCI      bool
+	initRuntime bool
 )
 
 var initCmd = &cobra.Command{
@@ -23,6 +25,10 @@ var initCmd = &cobra.Command{
 	Short: "Scaffold a new AgentWorks project",
 	Long: `Create agentworks.yaml and the agents/, skills/, mcp/, and hooks/
 directories for a new project at path (default: current directory).
+
+Pass --runtime to create a format-2 agent-team project that opens directly in
+AgentWorks Studio. The legacy artifact scaffold remains the default during the
+release-candidate transition.
 
 With --ci, also write .github/workflows/agentworks.yml, a GitHub Actions
 workflow that runs the project's checks (validate --strict, doctor, and the
@@ -41,6 +47,18 @@ committed-marketplace freshness check) on every pull request.`,
 		name := initName
 		if name == "" {
 			name = filepath.Base(absDir)
+		}
+
+		if initRuntime {
+			if len(initTargets) != 0 || initCI {
+				return fmt.Errorf("--runtime cannot currently be combined with --target or --ci")
+			}
+			if err := spec.Init(absDir, name); err != nil {
+				return err
+			}
+			color.Success("Initialized AgentWorks runtime project %q in %s", name, absDir)
+			color.Info("Next: copy agentworks.local.yaml.example to agentworks.local.yaml, bind a folder, then run agentworks studio --experimental")
+			return nil
 		}
 
 		projectTargets := initTargets
@@ -100,5 +118,6 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVar(&initName, "name", "", "project name (default: the directory name)")
 	initCmd.Flags().BoolVar(&initCI, "ci", false, "also write a GitHub Actions workflow that runs the project's checks on pull requests")
+	initCmd.Flags().BoolVar(&initRuntime, "runtime", false, "create a format-2 agent-team Studio project")
 	initCmd.Flags().StringSliceVar(&initTargets, "target", nil, "vendor target(s) this project exports to (repeatable)")
 }

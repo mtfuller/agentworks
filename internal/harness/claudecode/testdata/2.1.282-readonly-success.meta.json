@@ -1,0 +1,13 @@
+{
+  "harness": "claude-code",
+  "version": "2.1.282",
+  "captured_at": "2026-09-25",
+  "platform": "darwin-arm64",
+  "mode": "print-stream-json-restricted-readonly",
+  "redactions": [
+    "event and session IDs",
+    "working directory",
+    "user configuration inventories",
+    "timestamps"
+  ]
+}

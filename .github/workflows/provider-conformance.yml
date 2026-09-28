@@ -1,0 +1,31 @@
+name: Provider conformance
+
+on:
+  pull_request:
+    paths:
+      - 'internal/providers/**'
+      - '.github/workflows/provider-conformance.yml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: stable, cache: true}
+      - name: Resolve a digest-pinned test image
+        run: |
+          docker pull alpine:3.22
+          echo "AGENTWORKS_DOCKER_TEST_IMAGE=$(docker image inspect alpine:3.22 --format '{{index .RepoDigests 0}}')" >> "$GITHUB_ENV"
+      - name: Verify the real Docker boundary
+        env:
+          AGENTWORKS_DOCKER_SMOKE: '1'
+        run: go test -count=1 -v ./internal/providers -run TestDockerSmoke

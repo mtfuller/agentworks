@@ -1,0 +1,22 @@
+name: github-pr-comment
+description: Start a fresh implementation run when review feedback arrives on a pull request.
+priority: 100
+when:
+  source: github-main
+  type: github.pr.comment.created
+invoke:
+  team: engineering
+  agent: implementer
+  workspace: product
+  harness: github-copilot
+  permission: readwrite
+tests:
+  - name: pull request feedback
+    event:
+      source: github-main
+      type: github.pr.comment.created
+      subject: github:example/agentworks:pull/7
+      data:
+        comment: Please add a regression test.
+    expect: github-pr-comment
+

@@ -1,0 +1,22 @@
+name: weekly-review
+description: Route the durable weekly schedule to the readonly reviewer.
+priority: 50
+when:
+  source: weekly-review
+  type: review.requested
+invoke:
+  team: engineering
+  agent: reviewer
+  workspace: product
+  harness: github-copilot
+  permission: readonly
+tests:
+  - name: scheduled review
+    event:
+      source: weekly-review
+      type: review.requested
+      subject: product
+      data:
+        scope: weekly
+    expect: weekly-review
+

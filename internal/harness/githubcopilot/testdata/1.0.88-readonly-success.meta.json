@@ -1,0 +1,14 @@
+{
+  "harness": "github-copilot",
+  "version": "1.0.88",
+  "captured_at": "2026-09-25",
+  "platform": "darwin-arm64",
+  "mode": "prompt-jsonl-stream-restricted-readonly",
+  "redactions": [
+    "event IDs",
+    "session ID",
+    "provider API call ID",
+    "provider request IDs",
+    "timestamps"
+  ]
+}

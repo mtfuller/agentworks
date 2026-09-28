@@ -1,0 +1,4 @@
+# Copy this file to agentworks.local.yaml and use an absolute path on this machine.
+workspaces:
+  product:
+    path: /absolute/path/to/the/workspace
