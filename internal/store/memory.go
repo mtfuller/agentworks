@@ -101,7 +101,7 @@ func (s *Store) DecideMemoryProposal(ctx context.Context, id string, state Memor
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE memory_proposals SET state=?,decided_at=? WHERE id=? AND state=?`, state, millis(at), id, MemoryProposalPending)
 	if err != nil {
 		return err

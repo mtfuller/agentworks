@@ -271,7 +271,7 @@ func (s *Store) CancelPendingRun(ctx context.Context, id string, now time.Time) 
 	if err != nil {
 		return false, fmt.Errorf("begin pending cancellation: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE runs SET state = ?, conclusion = ?, updated_at = ?
 		WHERE id = ? AND state IN (?, ?)

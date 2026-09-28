@@ -83,7 +83,7 @@ func (s *Store) PruneRunDetail(ctx context.Context, runID string, now time.Time)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var pinned bool
 	var state RunState
 	var eventID sql.NullString

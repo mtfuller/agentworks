@@ -22,7 +22,7 @@ func (s *Store) IngestEvent(ctx context.Context, event Event) (stored Event, cre
 	if err != nil {
 		return Event{}, false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO events (
 			record_id, source, external_id, type, subject, occurred_at, received_at,
@@ -66,7 +66,7 @@ func (s *Store) MarkEventUnrouted(ctx context.Context, recordID, reason string, 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE events
 		SET status = ?, routing_reason = ?, routing_decided_at = ?, routed_run_id = NULL

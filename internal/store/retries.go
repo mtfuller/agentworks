@@ -46,7 +46,7 @@ func (s *Store) ScheduleClaimRetry(ctx context.Context, claim Claim, dueAt time.
 	if err != nil {
 		return fmt.Errorf("begin retry scheduling: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := verifyLease(ctx, tx, claim, now); err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (s *Store) ActivateDueRetries(ctx context.Context, now time.Time, limit int
 	if err != nil {
 		return 0, fmt.Errorf("begin retry activation: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, json_extract(payload_json, '$.run_id')
 		FROM timers WHERE kind = 'run-retry' AND state = 'pending' AND due_at <= ?

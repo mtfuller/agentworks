@@ -33,7 +33,7 @@ func (s *Store) SyncSource(ctx context.Context, value SourceStatus) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO sources(id,kind,config_revision,state,definition_enabled,paused,next_poll_at,failure_count,created_at,updated_at)
 		VALUES(?,?,?,'unknown',?,0,?,0,?,?)
@@ -236,7 +236,7 @@ func (s *Store) FailSourcePoll(ctx context.Context, attempt SourcePollAttempt) (
 	if err != nil {
 		return SourcePollAttempt{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE source_poll_attempts SET state='failed',error_code=NULLIF(?,''),error_message=NULLIF(?,''),finished_at=?,next_poll_at=?,rate_limit_reset_at=NULLIF(?,0) WHERE id=? AND source_id=? AND state='running'`, attempt.ErrorCode, attempt.ErrorMessage, millis(attempt.FinishedAt), millis(attempt.NextPollAt), optionalMillis(attempt.RateLimitResetAt), attempt.ID, attempt.SourceID)
 	if err != nil {
 		return SourcePollAttempt{}, err
@@ -330,7 +330,7 @@ func (s *Store) CommitPoll(ctx context.Context, commit PollCommit) (PollCommitRe
 	if err != nil {
 		return PollCommitResult{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, item := range commit.WorkItems {
 		data := item.Data
 		if len(data) == 0 {

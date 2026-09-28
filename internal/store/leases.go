@@ -212,7 +212,7 @@ func (s *Store) PrepareClaim(ctx context.Context, claim Claim, now time.Time) er
 	if err != nil {
 		return fmt.Errorf("begin claim preparation: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := verifyLease(ctx, tx, claim, now); err != nil {
 		return err
 	}
@@ -248,7 +248,7 @@ func (s *Store) StartAttempt(ctx context.Context, claim Claim, processID int, no
 	if err != nil {
 		return fmt.Errorf("begin attempt start: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := verifyLease(ctx, tx, claim, now); err != nil {
 		return err
 	}
@@ -321,7 +321,7 @@ func (s *Store) CompleteClaim(ctx context.Context, claim Claim, state RunState, 
 	if err != nil {
 		return fmt.Errorf("begin claim completion: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := verifyLease(ctx, tx, claim, now); err != nil {
 		return err
 	}
@@ -398,7 +398,7 @@ func (s *Store) RecoverExpiredLeases(ctx context.Context, now time.Time) (int, e
 	if err != nil {
 		return 0, fmt.Errorf("begin lease recovery: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx, `
 		SELECT l.run_id, r.state
 		FROM run_leases l JOIN runs r ON r.id = l.run_id
