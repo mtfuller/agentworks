@@ -5,7 +5,7 @@
 - [Harness conformance ledger](architecture/harness-conformance.md): observed Claude/Copilot CLI readiness and required fixture evidence.
 - [Architecture decisions](architecture/decisions/README.md): accepted implementation choices and their tradeoffs.
 - [Post-1.0 implementation plan](../PLAN-2.0.md): phased development plan and acceptance criteria.
-- [Release and installation](release.md): signed artifacts, required release secrets, and native installers.
+- [Release and installation](release.md): unsigned RC archives, provenance, and native installers.
 
 **Guides** (start here)
 - [Runtime quickstart](guides/runtime-quickstart.md): create a format-2 team and run it locally from a fresh install.

@@ -73,10 +73,11 @@ boundary.
 Imports resolve before writing, constrain transports, extract defensively, verify registry
 integrity when available, and pin source plus local content digest. Local and installed components
 cannot silently shadow one another. Team packs include a deterministic manifest and verify every
-file before installation. Container variants require image digests. Tagged release jobs require
-macOS Developer ID signing and notarization or Windows Authenticode signing, publish SHA-256 sums,
-and attach build provenance. These controls establish identity and integrity, not that third-party
-instructions or binaries are benign.
+file before installation. Container variants require image digests. Tagged release jobs publish
+SHA-256 sums and attach build provenance. Release-candidate archives are intentionally unsigned,
+so their publisher identity is not established and users must verify the release source and
+checksum. Signing/notarization is a future hardening milestone. These controls do not establish
+that third-party instructions or binaries are benign.
 
 ### Secret exposure and logs
 

@@ -460,8 +460,8 @@ jobs:
 
 `marketplace` only runs when a `marketplace.json` is committed. `test` and `eval` are opt-in
 because they run your own commands (and, for `eval`, whatever model your `eval_runner` calls).
-Signed release archives for macOS and Windows and release archives for Linux are attached to
-each GitHub release, with checksums and build provenance. See [release and installation](docs/release.md).
+Release archives for macOS, Linux, and Windows are attached to each GitHub release, with checksums
+and build provenance. RC archives are intentionally unsigned; see [release and installation](docs/release.md).
 
 ## Development
 

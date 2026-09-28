@@ -1,16 +1,10 @@
 # Release and installation
 
 Tagged releases are built for macOS and Linux on amd64/arm64 and Windows on amd64.
-The release workflow refuses to publish an unsigned build. macOS binaries are signed with a
-Developer ID certificate and submitted to Apple's notarization service; Windows binaries are
-Authenticode-signed and timestamped. GitHub also publishes a build-provenance attestation and a
-SHA-256 manifest.
-
-The repository must configure these release secrets:
-
-- `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGNING_IDENTITY`
-- `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`
-- `WINDOWS_CERTIFICATE_PFX`, `WINDOWS_CERTIFICATE_PASSWORD`
+Release archives are intentionally unsigned during the release-candidate phase. GitHub publishes
+a SHA-256 manifest and build-provenance attestation for every archive, but macOS Gatekeeper and
+Windows SmartScreen may warn that the executable has an unknown publisher. Signing and
+notarization are a future hardening milestone, not release prerequisites.
 
 The scheduled authenticated runtime-conformance workflow additionally requires:
 
@@ -38,7 +32,7 @@ GitHub Releases are the source of truth. Stable tags use `vX.Y.Z`; release candi
 from the approved tested commit with no source changes; the sole permitted difference is the
 committed release-evidence file. This makes the soak evidence reviewable without allowing a later
 code change to inherit its approval. The workflow then runs build, formatting, vet, race-test,
-and coverage preflight before it signs or publishes an archive.
+and coverage preflight before it publishes archives.
 
 On macOS, Homebrew has two intentionally separate formulae:
 
@@ -64,19 +58,12 @@ gh attestation verify ARCHIVE -R mtfuller/agentworks
 ```
 
 On Windows, use `Get-FileHash ARCHIVE -Algorithm SHA256` and compare its value with
-`SHA256SUMS`, then verify the executable's Authenticode signature in Explorer or with
-`Get-AuthenticodeSignature`. GitHub's provenance attestation is optional but recommended for
-all platforms.
-
-macOS release archives contain a Developer ID-signed standalone binary submitted to Apple's
-notary service. Standalone binaries cannot carry a stapled ticket, so the first Gatekeeper check
-needs network access. A future `.pkg` or `.dmg` distribution can add an offline-stapled option.
+`SHA256SUMS`. GitHub's provenance attestation is optional but recommended for all platforms.
 
 ## Release operator checklist
 
 1. Merge the release workflow, Homebrew workflows, and the intended runtime changes to `main`.
-2. Configure the signing, notarization, authenticated-conformance, connector, and tap secrets
-   listed above.
+2. Configure the authenticated-conformance, connector, and tap secrets listed above.
 3. Complete the M9 soak and dogfood evidence for a tested commit. Commit the approved evidence
    document without changing any other file, then tag that evidence-only descendant.
 4. Push `vX.Y.Z-rc.N` for an opt-in RC, validate its GitHub assets and `agentworks-rc` formula,

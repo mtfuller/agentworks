@@ -83,7 +83,7 @@ jobs:
           path: agentworks_*
 
   macos:
-    name: Signed and notarized macOS ${{ matrix.arch }}
+    name: macOS ${{ matrix.arch }}
     needs: runtime-release-gate
     runs-on: macos-latest
     strategy:
@@ -92,51 +92,18 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with: {go-version-file: go.mod, cache: true}
-      - name: Require signing credentials
-        env:
-          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: |
-          for name in CERTIFICATE CERTIFICATE_PASSWORD SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
-            test -n "$(eval echo \$$name)" || { echo "::error::missing release secret $name"; exit 1; }
-          done
-      - name: Import Developer ID certificate
-        env:
-          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
-          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/release.keychain-db"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$RUNNER_TEMP/release.keychain-db"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/release.keychain-db"
-          security list-keychains -d user -s "$RUNNER_TEMP/release.keychain-db" login.keychain-db
-      - name: Build, sign, notarize, and package
+      - name: Build and package
         env:
           GOOS: darwin
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: '0'
-          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           VERSION="${GITHUB_REF_NAME}"
           BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           PKG=github.com/mtfuller/agentworks/internal/version
           mkdir package
           go build -trimpath -ldflags "-s -w -X ${PKG}.Version=${VERSION} -X ${PKG}.Commit=${GITHUB_SHA} -X ${PKG}.BuildDate=${BUILD_DATE}" -o package/agentworks .
-          codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" package/agentworks
-          codesign --verify --strict --verbose=2 package/agentworks
           cp LICENSE README.md scripts/install.sh scripts/uninstall.sh package/
-          ditto -c -k --keepParent package/agentworks "$RUNNER_TEMP/agentworks-notary.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/agentworks-notary.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
           ARCHIVE="agentworks_${VERSION}_darwin_${GOARCH}.tar.gz"
           tar -C package -czf "$ARCHIVE" agentworks LICENSE README.md install.sh uninstall.sh
           shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
@@ -152,41 +119,25 @@ jobs:
           path: agentworks_*
 
   windows:
-    name: Authenticode-signed Windows amd64
+    name: Windows amd64
     needs: runtime-release-gate
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with: {go-version-file: go.mod, cache: true}
-      - name: Require signing credentials
-        shell: pwsh
-        env:
-          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
-          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          if (-not $env:CERTIFICATE -or -not $env:CERTIFICATE_PASSWORD) { throw "Missing Windows signing secrets" }
-      - name: Build, sign, and package
+      - name: Build and package
         shell: pwsh
         env:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: '0'
-          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
-          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $version = $env:GITHUB_REF_NAME
           $pkg = "github.com/mtfuller/agentworks/internal/version"
           $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
           New-Item -ItemType Directory package | Out-Null
           go build -trimpath -ldflags "-s -w -X $pkg.Version=$version -X $pkg.Commit=$env:GITHUB_SHA -X $pkg.BuildDate=$buildDate" -o package/agentworks.exe .
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\certificate.pfx", [Convert]::FromBase64String($env:CERTIFICATE))
-          $secure = ConvertTo-SecureString $env:CERTIFICATE_PASSWORD -AsPlainText -Force
-          $cert = Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\certificate.pfx" -CertStoreLocation Cert:\CurrentUser\My -Password $secure
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName | Select-Object -Last 1
-          if (-not $signtool) { throw "signtool.exe was not found" }
-          & $signtool.FullName sign /sha1 $cert.Thumbprint /fd sha256 /tr http://timestamp.digicert.com /td sha256 package/agentworks.exe
-          & $signtool.FullName verify /pa /all package/agentworks.exe
           Copy-Item LICENSE,README.md,scripts/install.ps1,scripts/uninstall.ps1 package/
           $archive = "agentworks_${version}_windows_amd64.zip"
           Compress-Archive -Path package/* -DestinationPath $archive
