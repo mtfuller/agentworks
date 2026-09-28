@@ -33,7 +33,7 @@ func (s *Store) RequestApproval(ctx context.Context, claim Claim, approval Appro
 	if err != nil {
 		return Approval{}, false, fmt.Errorf("begin approval request: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := verifyLease(ctx, tx, claim, now); err != nil {
 		return Approval{}, false, err
 	}
@@ -102,7 +102,7 @@ func (s *Store) DecideApproval(ctx context.Context, id string, decision Approval
 	if err != nil {
 		return Approval{}, fmt.Errorf("begin approval decision: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	approval, err := getApproval(ctx, tx, id)
 	if err != nil {
 		return Approval{}, err
@@ -153,7 +153,7 @@ func (s *Store) CancelApproval(ctx context.Context, id, reason string, now time.
 	if err != nil {
 		return fmt.Errorf("begin approval cancellation: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	approval, err := getApproval(ctx, tx, id)
 	if err != nil {
 		return err

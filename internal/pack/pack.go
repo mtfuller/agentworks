@@ -268,8 +268,7 @@ func writeArchive(path string, entries []entry) error {
 	defer os.Remove(temporaryPath)
 	writer := zip.NewWriter(temporary)
 	for _, item := range entries {
-		header := &zip.FileHeader{Name: item.path, Method: zip.Store}
-		header.SetModTime(archiveTime)
+		header := &zip.FileHeader{Name: item.path, Method: zip.Store, Modified: archiveTime}
 		header.SetMode(packMode(item.mode))
 		output, err := writer.CreateHeader(header)
 		if err != nil {

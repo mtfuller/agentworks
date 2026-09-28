@@ -61,3 +61,44 @@ func TestValidateRejectsShortSoakAndFindings(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestValidateForCommit(t *testing.T) {
+	evidence, err := Load(writeEvidence(t, approvedEvidence))
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := "0123456789abcdef0123456789abcdef01234567"
+	if err := evidence.ValidateForCommit("  " + commit + "  "); err != nil {
+		t.Fatalf("matching commit: %v", err)
+	}
+	if err := evidence.ValidateForCommit("not-a-sha"); err == nil || !strings.Contains(err.Error(), "expected release commit") {
+		t.Fatalf("invalid expected commit: %v", err)
+	}
+	if err := evidence.ValidateForCommit("fedcba9876543210fedcba9876543210fedcba98"); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("mismatched commit: %v", err)
+	}
+	evidence.Status = "pending"
+	if err := evidence.ValidateForCommit(commit); err == nil || !strings.Contains(err.Error(), "status must be approved") {
+		t.Fatalf("invalid evidence: %v", err)
+	}
+}
+
+func TestLoadRejectsMissingAndInvalidApprovalTimestamp(t *testing.T) {
+	if _, err := Load(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
+		t.Fatal("Load missing evidence succeeded")
+	}
+	invalid := strings.Replace(approvedEvidence, "approved_at: 2026-09-27T13:00:00Z", "approved_at: not-a-time", 1)
+	_, err := Load(writeEvidence(t, invalid))
+	if err == nil || !strings.Contains(err.Error(), "approval.approved_at") {
+		t.Fatalf("invalid approval timestamp: %v", err)
+	}
+}
+
+func writeEvidence(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "evidence.yaml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
